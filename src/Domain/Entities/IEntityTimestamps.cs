@@ -2,7 +2,7 @@ namespace Domain.Entities;
 
 public interface IEntityTimestamps
 {
-    DateTimeOffset CreatedAt { get; set; }
-    DateTimeOffset? UpdatedAt { get; set; }
-    DateTimeOffset? DeletedAt { get; set; }
+    DateTimeOffset CreatedDate { get; set; }
+    DateTimeOffset? UpdatedDate { get; set; }
+    DateTimeOffset? DeletedDate { get; set; }
 }
