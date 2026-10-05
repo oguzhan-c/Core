@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Northwind.Application\Northwind.Application.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Security.EntityFrameworkCore\Can.Core.Security.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Northwind.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Northwind örnek verisi (Ms-PL, bkz. Seeding/NOTICE.md) -->
+    <EmbeddedResource Include="Seeding\northwind.sql" LogicalName="Northwind.Infrastructure.Seeding.northwind.sql" />
+  </ItemGroup>
+
+</Project>
