@@ -1,4 +1,5 @@
 using Can.Core.Application;
+using Can.Core.MultiTenancy;
 using Can.Core.WebApi.CurrentUser;
 using Can.Core.WebApi.ExceptionHandling;
 using Microsoft.AspNetCore.Builder;
@@ -15,7 +16,7 @@ public static class WebApiExtensions
     /// </summary>
     /// <example>
     /// <code>
-    /// builder.Services.AddCanWebApi(o =&gt; o.TenantHeaderName = "X-Tenant-Id");
+    /// builder.Services.AddCanWebApi();
     ///
     /// app.UseCanExceptionHandler();   // en başta
     /// app.UseAuthentication();
@@ -36,8 +37,10 @@ public static class WebApiExtensions
         services.RemoveAll<ICurrentUser>();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
-        services.RemoveAll<ICurrentTenant>();
-        services.AddScoped<ICurrentTenant, HttpCurrentTenant>();
+        // Aktif tenant TenantContext'te tutulur (UseCanTenantResolution doldurur). AddCanMultiTenancy(...) ayrıca
+        // çağrıldıysa onun ayarları korunur; çağrılmadıysa varsayılanlarla (tek veritabanı) kaydedilir.
+        if (!services.Any(d => d.ServiceType == typeof(MultiTenancyOptions)))
+            services.AddCanMultiTenancy();
 
         services.AddProblemDetails();
         services.AddExceptionHandler<CanExceptionHandler>();
@@ -53,7 +56,7 @@ public static class WebApiExtensions
     }
 
     /// <summary>
-    /// Aktif tenant'ı istek başında çözer ve yetkisiz tenant seçimini 403 ile reddeder.
+    /// Aktif tenant'ı istek başında çözer (gerekirse tenant deposundan yükler) ve yetkisiz seçimi 403 ile reddeder.
     /// <c>UseAuthentication()</c>'dan SONRA ekle.
     /// </summary>
     public static IApplicationBuilder UseCanTenantResolution(this IApplicationBuilder app)
