@@ -9,6 +9,10 @@
     <Project Path="src/Can.Core.Persistence/Can.Core.Persistence.csproj" />
     <Project Path="src/Can.Core.Application/Can.Core.Application.csproj" />
     <Project Path="src/Can.Core.Security/Can.Core.Security.csproj" />
+    <Project Path="src/Can.Core.MultiTenancy/Can.Core.MultiTenancy.csproj" />
+    <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
+    <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
+    <Project Path="src/Can.Core.Logging.Serilog/Can.Core.Logging.Serilog.csproj" />
     <Project Path="src/Can.Core.WebApi/Can.Core.WebApi.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -18,6 +22,9 @@
     <Project Path="tests/Can.Core.Persistence.Tests/Can.Core.Persistence.Tests.csproj" />
     <Project Path="tests/Can.Core.Application.Tests/Can.Core.Application.Tests.csproj" />
     <Project Path="tests/Can.Core.Security.Tests/Can.Core.Security.Tests.csproj" />
+    <Project Path="tests/Can.Core.MultiTenancy.Tests/Can.Core.MultiTenancy.Tests.csproj" />
+    <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
+    <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
