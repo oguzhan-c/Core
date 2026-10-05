@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Can.Core.Persistence</RootNamespace>
-    <Description>EF Core implementasyonu: CanDbContext (soft delete + tenant filtreleri), EfRepository, UnitOfWork, audit ve domain event interceptor'ları.</Description>
+    <Description>EF Core implementasyonu: CanDbContext (soft delete + tenant filtreleri), EfRepository, UnitOfWork, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi (audit trail) ve seed.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,6 +10,7 @@
     <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
     <ProjectReference Include="..\Can.Core.Mediator.Abstractions\Can.Core.Mediator.Abstractions.csproj" />
     <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
+    <ProjectReference Include="..\Can.Core.BackgroundJobs\Can.Core.BackgroundJobs.csproj" />
   </ItemGroup>
 
   <ItemGroup>
