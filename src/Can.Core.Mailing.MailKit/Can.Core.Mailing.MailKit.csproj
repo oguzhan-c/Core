@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Mailing.MailKit</RootNamespace>
+    <Description>IEmailSender'ın MailKit (MIT) ile SMTP implementasyonu ve geliştirme ortamı için e-postaları .eml dosyası olarak klasöre yazan gönderici.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Mailing\Can.Core.Mailing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Mailing.Tests" />
+  </ItemGroup>
+
+</Project>
