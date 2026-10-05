@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Security.EntityFrameworkCore</RootNamespace>
+    <Description>Can.Core.Security entity'leri (User, Role, UserRole, RefreshToken, OTP/e-posta doğrulayıcı, passkey) için EF Core tablo, index ve ilişki yapılandırmaları.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Security\Can.Core.Security.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+</Project>
