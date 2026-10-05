@@ -1,0 +1,12 @@
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+# macOS / IDE
+.DS_Store
+.idea/
+
+# Build / IDE çıktıları
+*.log
+*.DotSettings.user
