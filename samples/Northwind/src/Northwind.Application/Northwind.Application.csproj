@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Northwind.Domain\Northwind.Domain.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Application\Can.Core.Application.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Mapping\Can.Core.Mapping.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Persistence\Can.Core.Persistence.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing\Can.Core.Mailing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Northwind.Application.Tests" />
+  </ItemGroup>
+
+</Project>
