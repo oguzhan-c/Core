@@ -1,0 +1,321 @@
+# Can.Core
+
+Yeni .NET projelerinde tekrar kullanılmak üzere yazılmış çekirdek paketler.
+nArchitecture, CCA (Backend) ve CleanArchitectureWithBlazorServer projelerinin en iyi yanlarından derlendi.
+Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımızı içerir.
+
+| Paket | Bağımlılık | İçerik |
+|---|---|---|
+| `Can.Core.Domain` | yok | `Entity<TId>`, `AggregateRoot<TId>`, audit/soft delete arayüzleri ve base sınıfları, `IDomainEvent`, `ValueObject` |
+| `Can.Core.Mediator.Abstractions` | yok | `IRequest`, `IRequestHandler`, `INotificationHandler`, `IPipelineBehavior`, `ISender`, `IPublisher` |
+| `Can.Core.Mediator` | DI.Abstractions | `Mediator`, publish stratejileri, `AddCanMediator(...)` |
+| `Can.Core.Mapping` | DI.Abstractions | `MappingProfile`, `IMapper`, `ProjectTo`, `AddCanMapping(...)` |
+| `Can.Core.Application.Abstractions` | yok | `ICurrentUser`, `ICurrentTenant`, istek işaretleyicileri (`ISecuredRequest`, `ICachableRequest` ...), hata tipleri |
+| `Can.Core.Application` | Mediator, FluentValidation, HybridCache | Pipeline behavior'ları, `BaseBusinessRules`, `AddCanApplication(...)` |
+| `Can.Core.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
+| `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, `HttpCurrentTenant`, `AddCanJwtAuthentication()` |
+| `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
+| `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, `AddCanPersistence(...)` |
+
+```bash
+dotnet build Core.slnx
+dotnet test Core.slnx
+```
+
+## Domain
+
+```csharp
+public readonly record struct OrderId(Guid Value);          // TId'yi sen seçersin: int, Guid, string, strongly-typed...
+
+public sealed record OrderConfirmed(OrderId OrderId) : DomainEvent;
+
+public sealed class Order : FullAuditedAggregateRoot<OrderId>
+{
+    private Order() { }                                      // EF Core için
+    public Order(OrderId id) : base(id) { }
+
+    public OrderStatus Status { get; private set; }
+
+    public void Confirm()
+    {
+        Status = OrderStatus.Confirmed;
+        RaiseDomainEvent(new OrderConfirmed(Id));            // event'i sadece aggregate ekler
+    }
+}
+```
+
+| Sınıf | Ne ekler |
+|---|---|
+| `Entity<TId>` | kimlik, `IsTransient()`, `IsSameAs(other)` |
+| `AuditedEntity<TId>` | + `CreatedAt/By`, `UpdatedAt/By` |
+| `FullAuditedEntity<TId>` | + `IsDeleted`, `DeletedAt/By` (soft delete) |
+| `AggregateRoot<TId>` | kimlik + domain event'ler |
+| `AuditedAggregateRoot<TId>` / `FullAuditedAggregateRoot<TId>` | aynısı, aggregate için |
+
+Base sınıf istemezsen sadece arayüzü uygula: `ICreationAudited`, `IModificationAudited`, `ISoftDeletable`, `IMultiTenant<TTenantId>`.
+
+**Neden `Equals` override edilmiyor?** EF Core change tracker'ı, `HashSet` ve lazy-loading proxy'leri ile
+sürpriz yaşamamak için entity'ler referans eşitliğini korur. Kimliğe göre karşılaştırma için `a.IsSameAs(b)` kullan.
+Değere göre eşitlik `ValueObject`'te var.
+
+## Mediator
+
+```csharp
+services.AddCanMediator(cfg =>
+{
+    cfg.RegisterServicesFromAssemblyContaining<CreateOrderCommand>();
+    cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));   // ilk eklenen en dışta çalışır
+    cfg.AddOpenBehavior(typeof(TransactionBehavior<,>));
+    // cfg.NotificationPublisherType = typeof(TaskWhenAllPublisher);   // varsayılan: sırayla
+});
+```
+
+```csharp
+public sealed record CreateOrderCommand(string CustomerId) : IRequest<OrderId>;
+
+public sealed class CreateOrderHandler(IOrderRepository orders) : IRequestHandler<CreateOrderCommand, OrderId>
+{
+    public async Task<OrderId> Handle(CreateOrderCommand request, CancellationToken ct) { ... }
+}
+
+public sealed record DeleteOrderCommand(OrderId Id) : IRequest;                // yanıtsız
+public sealed class DeleteOrderHandler : IRequestHandler<DeleteOrderCommand>   // Unit ile uğraşma
+{
+    public Task Handle(DeleteOrderCommand request, CancellationToken ct) { ... }
+}
+```
+
+**Domain event'ler için ayrı dispatcher yok.** Handler'lar doğrudan domain event tipini dinler;
+Domain katmanı mediator'a bağımlı olmaz:
+
+```csharp
+public sealed class SendConfirmationMail : INotificationHandler<OrderConfirmed> { ... }
+public sealed class WriteToOutbox : INotificationHandler<IDomainEvent> { ... }   // tüm domain event'ler
+
+// Persistence'taki interceptor:
+foreach (IDomainEvent e in events) await publisher.Publish(e, ct);   // gerçek tipe göre handler'lar bulunur
+```
+
+Belirli isteklere uygulanan behavior'lar generic kısıtla yazılır (nArchitecture'daki `ICachableRequest` gibi);
+kısıtı sağlamayan istekler için behavior otomatik atlanır:
+
+```csharp
+public sealed class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : ICachableRequest { ... }
+```
+
+## Mapping
+
+```csharp
+services.AddCanMapping(typeof(ProductProfile).Assembly);
+
+public sealed class ProductProfile : MappingProfile
+{
+    public ProductProfile()
+    {
+        CreateMap<Product, ProductDto>()                                    // Brand.Name → BrandName otomatik
+            .ForMember(d => d.Label, o => o.MapFrom(s => s.Name + " (" + s.Code + ")"))
+            .ForMember(d => d.Secret, o => o.Ignore());
+
+        CreateMap<UpdateProductCommand, Product>();
+    }
+}
+```
+
+```csharp
+ProductDto dto        = mapper.Map<ProductDto>(product);
+List<ProductDto> list = mapper.Map<List<ProductDto>>(products);
+mapper.Map(command, existingProduct);                                       // mevcut nesneyi güncelle
+var page = await db.Products.ProjectTo<ProductDto>(mapper).ToListAsync();   // EF: sadece gereken kolonlar
+```
+
+Desteklenenler: aynı isim (büyük/küçük harf duyarsız), flattening (`CustomerAddressCity` → `Customer.Address.City`),
+iç içe map'ler, koleksiyonlar (`List`, dizi, `IEnumerable`, `IReadOnlyList`, `HashSet`), `T?` ↔ `T`,
+sayısal dönüşümler, enum ↔ sayı, enum → string, positional record constructor'ları, `AfterMap`, `ReverseMap`.
+Bellekte yapılan eşlemelerde null navigation'lar `NullReferenceException` yerine default değer verir.
+
+Açılışta ya da bir testte `mapper.Configuration.AssertConfigurationIsValid()` çağır: eşlenemeyen her üye listelenir.
+
+## Persistence
+
+```csharp
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant currentTenant)
+    : CanDbContext(options, currentTenant)
+{
+    public DbSet<Product> Products => Set<Product>();
+
+    protected override void ConfigureModel(ModelBuilder modelBuilder) =>
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+}
+
+services.AddCanMediator(cfg => cfg.RegisterServicesFromAssemblyContaining<AppDbContext>());
+services.AddCanPersistence<AppDbContext>(o => o.UseNpgsql(connectionString));
+// ICurrentUser / ICurrentTenant'ı WebApi katmanında kaydet (yoksa "boş" implementasyonlar kullanılır)
+```
+
+Handler'da:
+
+```csharp
+public sealed class ChangePriceHandler(IRepository<Product, int> products, IUnitOfWork unitOfWork)
+    : IRequestHandler<ChangePriceCommand>
+{
+    public async Task Handle(ChangePriceCommand request, CancellationToken ct)
+    {
+        Product product = await products.GetByIdAsync(request.Id, cancellationToken: ct)
+            ?? throw new NotFoundException(...);
+
+        product.ChangePrice(request.Price);       // event aggregate'in içinde eklenir
+        await unitOfWork.SaveChangesAsync(ct);    // audit + soft delete + event yayını burada
+    }
+}
+```
+
+**SaveChanges sırasında otomatik olanlar**
+
+| Ne | Nasıl |
+|---|---|
+| `CreatedAt/By`, `UpdatedAt/By` | `AuditingInterceptor`, `ICurrentUser` ve `TimeProvider` ile. Oluşturma bilgisi sonradan değiştirilemez. |
+| Soft delete | `repository.Delete(x)` → `IsDeleted = true` (cascade tetiklemez). Doğrudan `db.Remove(x)` da işaretlemeye çevrilir. Kalıcı silme: `Delete(x, permanent: true)`. |
+| Tenant | Yeni kayda aktif tenant yazılır; başka tenant'a yazmaya çalışmak hata verir; tenant değiştirilemez. |
+| Domain event'ler | Kayıt **başarılı olduktan sonra** `IPublisher` ile yayınlanır. Kayıt başarısızsa event'ler aggregate'te kalır. |
+
+**Global filtreler** (EF Core 10 isimli filtreler): `CanQueryFilters.SoftDelete` silinmişleri, `CanQueryFilters.Tenant`
+diğer tenant'ların kayıtlarını gizler. `withDeleted: true` yalnızca soft delete filtresini kapatır; **tenant filtresi her zaman açık kalır**.
+Tenant yoksa (`ICurrentTenant.Id == null`) tenant'a ait hiçbir kayıt görünmez.
+
+**Dinamik sorgu** (nArchitecture ile aynı JSON):
+
+```json
+{ "sort": [{ "field": "price", "dir": "desc" }],
+  "filter": { "field": "name", "operator": "contains", "value": "kalem",
+              "logic": "or", "filters": [{ "field": "category.name", "operator": "eq", "value": "Ofis" }] } }
+```
+
+Operatörler: `eq, neq, lt, lte, gt, gte, isnull, isnotnull, startswith, endswith, contains, doesnotcontain, in, between`.
+System.Linq.Dynamic.Core yerine doğrudan expression tree kurulur: alan adları gerçek property'lere karşı doğrulanır,
+değerler SQL parametresi olarak gider. Not: istemci herhangi bir public property'ye göre filtreleyebilir; hassas alanları
+(ör. `PasswordHash`) DTO'ya değil entity'ye filtre açan endpoint'lerde dikkatli ol.
+
+**Transaction**
+
+```csharp
+await unitOfWork.ExecuteInTransactionAsync(async ct =>
+{
+    ...
+    return result;
+}, ct);   // başarılıysa kaydet + commit, hata olursa rollback
+```
+
+## Application
+
+```csharp
+services.AddCanApplication(o => o.AdminRole = "Admin", typeof(CreateProductCommand).Assembly);
+// handler'lar, FluentValidation validator'ları, BaseBusinessRules sınıfları ve behavior'lar tek çağrıyla kaydedilir
+```
+
+Bir isteğin hangi davranışlara gireceğini işaretleyiciler belirler (nArchitecture'daki gibi):
+
+```csharp
+public sealed record CreateProductCommand(string Name, int Price)
+    : IRequest<int>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest, ILoggableRequest
+{
+    public IReadOnlyCollection<string> Roles => ["Product.Write"];
+    public IReadOnlyCollection<string> CacheTagsToRemove => ["products"];
+}
+
+public sealed record GetProductsQuery(int Page) : IRequest<List<ProductDto>>, ICachableRequest
+{
+    public string CacheKey => $"products:{Page}";
+    public IReadOnlyCollection<string> CacheTags => ["products"];
+}
+```
+
+| Behavior | İşaretleyici | Ne yapar |
+|---|---|---|
+| Logging | `ILoggableRequest` | başlangıç/bitiş/hata, kullanıcıyla (gövde loglanmaz) |
+| Performance | hepsi | `SlowRequestThreshold`'u aşanları uyarı olarak loglar |
+| Authorization | `ISecuredRequest` | giriş yoksa `UnauthorizedException`, rol yoksa `ForbiddenException`; `AdminRole` her zaman geçer |
+| Validation | validator'ı olan her istek | FluentValidation; hatalar alan bazlı `ValidationException.Errors` |
+| Caching | `ICachableRequest` | HybridCache (bellek + varsa Redis), etiketli |
+| CacheRemoving | `ICacheRemoverRequest` | işlem **commit edildikten sonra** etiketleri/anahtarları siler |
+| Transaction | `ITransactionalRequest` | handler'ı transaction'da çalıştırır, sonunda kaydeder; handler'da `SaveChangesAsync` gerekmez |
+
+Sıra: `Logging → Performance → Authorization → Validation → Caching → CacheRemoving → Transaction → Handler`.
+
+**Hatalar** exception olarak fırlatılır; WebApi katmanı HTTP koduna çevirir:
+`ValidationException` 400 · `BusinessException` (Domain) 400 · `UnauthorizedException` 401 · `ForbiddenException` 403 ·
+`NotFoundException` 404 (`NotFoundException.For<Product>(id)`) · `ConflictException` 409.
+
+## WebApi
+
+```csharp
+builder.Services.AddCanApplication(typeof(CreateProductCommand).Assembly);
+builder.Services.AddCanPersistence<AppDbContext>(o => o.UseNpgsql(connectionString));
+builder.Services.AddCanWebApi(o =>
+{
+    o.TenantHeaderName = "X-Tenant-Id";   // isteğe bağlı: birden fazla tenant'a üye kullanıcılar için
+    o.TenantAdminRole  = "SystemAdmin";   // isteğe bağlı: her tenant'ı seçebilen rol
+});
+builder.Services.AddAuthentication().AddJwtBearer(...);
+
+var app = builder.Build();
+app.UseCanExceptionHandler();   // en başta
+app.UseAuthentication();
+app.UseCanTenantResolution();   // authentication'dan SONRA
+app.UseAuthorization();
+
+app.MapPost("/products", (CreateProductCommand command, ISender sender, CancellationToken ct) => sender.Send(command, ct));
+app.MapGet("/me", (ISender sender, CancellationToken ct) => sender.Send(new GetMeQuery(), ct));
+```
+
+**Hatalar** RFC 9457 ProblemDetails olarak döner (`application/problem+json`). 500'lerde iç ayrıntı yalnızca Development'ta gösterilir.
+
+**Kullanıcı** yalnızca doğrulanmış token'ın claim'lerinden okunur (`sub` / `NameIdentifier`, `name`, `email`, `role`).
+
+**Tenant** kuralları:
+
+| Durum | Aktif tenant |
+|---|---|
+| Giriş yok | yok |
+| Token'da tek `tenant_id` claim'i | o tenant |
+| Header açık ve gönderilmiş, kullanıcı o tenant'a üye | header'daki tenant |
+| Header'daki tenant'a üye değil (ve `TenantAdminRole` değil) | **403** |
+| Birden fazla tenant, seçim yok | yok (hiçbir tenant verisi görünmez) |
+
+Tenant hiçbir zaman doğrulanmamış bir kaynaktan (çıplak header, query string) alınmaz.
+
+## Security
+
+```csharp
+builder.Services.AddCanSecurity(o =>
+{
+    builder.Configuration.GetSection("Security:Jwt").Bind(o.Jwt);          // Issuer, Audience, SigningKey (≥ 32 karakter)
+    o.VerificationCodeKey = builder.Configuration["Security:CodeKey"];     // e-posta kodları için (isteğe bağlı)
+    o.Passkey = new PasskeyOptions                                          // passkey için (isteğe bağlı)
+    {
+        ServerDomain = "example.com",
+        ServerName = "Can App",
+        Origins = ["https://example.com"],
+    };
+});
+builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarla token doğrulama
+```
+
+| Servis | Ne yapar | nArchitecture'dan farkı |
+|---|---|---|
+| `IPasswordHasher` | PBKDF2-SHA256, 600.000 iterasyon; tek metin (`v1.iter.salt.hash`) | HMACSHA512 yerine yavaş KDF; ayrı salt kolonu yok; iterasyon artınca `SuccessRehashNeeded` |
+| `ITokenService` | JWT access token (`sub`, `name`, `email`, `role`, `tenant_id`, `jti`) + refresh token | Refresh token veritabanında **hash'li**; `TimeProvider` ile test edilebilir |
+| `ITotpService` | Google/Microsoft Authenticator (RFC 6238), QR için `otpauth://` adresi | Dış paket yok; aynı kodun tekrar kullanımı engellenir |
+| `IVerificationCodeService` | 6 haneli e-posta/SMS kodu, HMAC'li saklanır | Deneme sınırı ve süre `EmailAuthenticator` entity'sinde |
+| `IPasskeyService` | Passkey kayıt ve giriş (WebAuthn, Fido2NetLib) | Yeni |
+
+**Entity'ler** (tek `TId` ile, türetip genişletilir): `User<TId>` (e-posta, şifre hash'i, 2FA tipi, hesap kilitleme,
+security stamp), `Role<TId>`, `UserRole<TId>`, `RefreshToken<TId>` (rotasyon ve iptal), `OtpAuthenticator<TId>`,
+`EmailAuthenticator<TId>`, `UserPasskey<TId>`.
+
+Roller JWT'ye `role` claim'i olarak yazılır; `ISecuredRequest.Roles`, `ICurrentUser.IsInRole` ve
+`[Authorize(Roles = ...)]` aynı claim'i kullanır.
+
+Güvenlik notları: imza anahtarlarını koda/appsettings'e yazma (User Secrets, ortam değişkeni, Key Vault);
+`OtpAuthenticator.SecretKey`'i veritabanında şifreli sakla; refresh token yeniden kullanımı tespit edilirse
+kullanıcının tüm token'larını iptal et (bkz. `RefreshToken<TId>` açıklaması).
