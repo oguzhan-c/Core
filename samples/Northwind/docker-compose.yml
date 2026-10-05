@@ -1,0 +1,16 @@
+# Geliştirme veritabanı (Homebrew ile Postgres kurulu değilse): docker compose up -d
+services:
+  postgres:
+    image: postgres:17
+    container_name: northwind-can-db
+    environment:
+      POSTGRES_DB: northwind_can
+      POSTGRES_USER: northwind
+      POSTGRES_PASSWORD: northwind
+    ports:
+      - "5432:5432"
+    volumes:
+      - northwind-can-data:/var/lib/postgresql/data
+
+volumes:
+  northwind-can-data:
