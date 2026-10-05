@@ -10,3 +10,10 @@ riderModule.iml
 # Build / IDE çıktıları
 *.log
 *.DotSettings.user
+
+# Örnek uygulamanın geliştirmede yazdığı e-postalar
+samples/**/mails/
+
+# Örnek uygulamanın arayüz derlemesi
+samples/**/ClientApp/node_modules/
+samples/**/wwwroot/
