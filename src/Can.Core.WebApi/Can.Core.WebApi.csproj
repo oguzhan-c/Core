@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
     <ProjectReference Include="..\Can.Core.Domain\Can.Core.Domain.csproj" />
     <ProjectReference Include="..\Can.Core.Security\Can.Core.Security.csproj" />
+    <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
   </ItemGroup>
 
   <ItemGroup>

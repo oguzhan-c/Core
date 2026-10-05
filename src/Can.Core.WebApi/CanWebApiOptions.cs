@@ -20,24 +20,9 @@ public sealed class CanWebApiOptions
     // ---------------------------------------------------------------- Tenant
 
     /// <summary>
-    /// Kullanıcının üye olduğu tenant'ları taşıyan claim (birden fazla değer olabilir).
-    /// Tenant HER ZAMAN doğrulanmış token'dan gelir.
+    /// Oturumun aktif tenant'ını taşıyan claim. Tenant YALNIZCA doğrulanmış (imzalı) token'dan okunur;
+    /// header, query string ya da istek gövdesinden okunmaz. Token'da birden fazla değer varsa tenant
+    /// belirsiz sayılır ve tenant'a ait hiçbir veri görünmez.
     /// </summary>
     public string TenantClaimType { get; set; } = "tenant_id";
-
-    /// <summary>
-    /// Birden fazla tenant'a üye kullanıcıların aktif tenant'ı seçtiği header (ör. <c>"X-Tenant-Id"</c>).
-    /// Varsayılan <see langword="null"/>: kapalı. Açıksa header'daki değer kullanıcının tenant claim'lerinden
-    /// biri olmak zorundadır; değilse istek 403 ile reddedilir.
-    /// </summary>
-    public string? TenantHeaderName { get; set; }
-
-    /// <summary>Header ile herhangi bir tenant'ı seçebilen rol (ör. sistem yöneticisi). Varsayılan: kapalı.</summary>
-    public string? TenantAdminRole { get; set; }
-
-    /// <summary>
-    /// Claim/header'daki metni entity'lerdeki <c>TenantId</c> tipine çevirir. Varsayılan: <see cref="Guid"/>.
-    /// int kullanıyorsan: <c>v =&gt; int.TryParse(v, out int id) ? id : null</c>.
-    /// </summary>
-    public Func<string, object?> TenantIdParser { get; set; } = value => Guid.TryParse(value, out Guid id) ? id : null;
 }
