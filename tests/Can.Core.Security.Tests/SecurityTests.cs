@@ -75,7 +75,7 @@ public class TokenServiceTests
     public async Task Access_token_contains_claims_and_validates()
     {
         AccessToken token = _tokens.CreateAccessToken(
-            new TokenSubject("u-1", "ada", "ada@test.local", Roles: ["Admin", "Editor"], TenantIds: ["t-1"])
+            new TokenSubject("u-1", "ada", "ada@test.local", Roles: ["Admin", "Editor"], TenantId: "t-1")
         );
 
         TokenValidationResult result = await new JsonWebTokenHandler().ValidateTokenAsync(token.Token, _tokens.CreateValidationParameters());
