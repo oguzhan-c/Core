@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Domain</RootNamespace>
+    <Description>DDD yapı taşları: Entity, AggregateRoot, ValueObject, domain event'ler ve audit arayüzleri. Hiçbir pakete bağımlı değildir.</Description>
+  </PropertyGroup>
+
+</Project>
