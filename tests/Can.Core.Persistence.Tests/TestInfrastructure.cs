@@ -7,7 +7,9 @@ using Can.Core.Domain.MultiTenancy;
 using Can.Core.Mediator;
 using Can.Core.Mediator.DependencyInjection;
 using Can.Core.Persistence.Context;
+using Can.Core.Persistence.AuditTrail;
 using Can.Core.Persistence.DependencyInjection;
+using Can.Core.Persistence.Outbox;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +21,27 @@ namespace Can.Core.Persistence.Tests;
 public sealed record ProductCreated(string Name) : DomainEvent;
 
 public sealed record ProductPriceChanged(int ProductId, int Price) : DomainEvent;
+
+/// <summary>Outbox üzerinden (kalıcı) yayınlanan event.</summary>
+public sealed record ProductDiscontinued(int ProductId, string Name) : DomainEvent, IIntegrationEvent;
+
+/// <summary>Değişiklik geçmişi tutulan entity.</summary>
+[Audited]
+public sealed class Customer : FullAuditedEntity<int>
+{
+    private Customer() { }
+
+    public Customer(string name, string secret)
+    {
+        Name = name;
+        Secret = secret;
+    }
+
+    public string Name { get; set; } = "";
+
+    [DisableAuditing]
+    public string Secret { get; set; } = "";
+}
 
 public sealed class Category : Entity<int>
 {
@@ -46,6 +69,8 @@ public sealed class Product : FullAuditedAggregateRoot<int>, IMultiTenant<Guid>
         return product;
     }
 
+    public void Discontinue() => RaiseDomainEvent(new ProductDiscontinued(Id, Name));
+
     public void ChangePrice(int price)
     {
         Price = price;
@@ -60,10 +85,15 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options, ICurr
 {
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Product>().HasOne(p => p.Category).WithMany().HasForeignKey(p => p.CategoryId);
+        modelBuilder.AddCanOutbox();
+        modelBuilder.AddCanAuditTrail();
     }
 }
 
@@ -110,6 +140,24 @@ public sealed class ProductCreatedHandler(EventLog log) : INotificationHandler<P
     }
 }
 
+/// <summary>Outbox handler'ının hata vermesini sağlamak için.</summary>
+public sealed class FailureSwitch
+{
+    public bool Fail { get; set; }
+}
+
+public sealed class ProductDiscontinuedHandler(EventLog log, FailureSwitch failure) : INotificationHandler<ProductDiscontinued>
+{
+    public Task Handle(ProductDiscontinued notification, CancellationToken cancellationToken)
+    {
+        if (failure.Fail)
+            throw new InvalidOperationException("handler hatası");
+
+        log.Add($"discontinued:{notification.Name}");
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class ProductPriceChangedHandler(EventLog log) : INotificationHandler<ProductPriceChanged>
 {
     public Task Handle(ProductPriceChanged notification, CancellationToken cancellationToken)
@@ -142,7 +190,7 @@ public sealed class TestHost : IAsyncDisposable
     public FixedClock Clock { get; }
     public EventLog Events { get; }
 
-    public static async Task<TestHost> CreateAsync()
+    public static async Task<TestHost> CreateAsync(Action<IServiceCollection>? configure = null)
     {
         var connection = new SqliteConnection("DataSource=:memory:");
         await connection.OpenAsync();
@@ -159,9 +207,12 @@ public sealed class TestHost : IAsyncDisposable
         services.AddSingleton<ICurrentTenant>(tenant);
         services.AddSingleton<TimeProvider>(clock);
         services.AddSingleton(events);
+        services.AddSingleton(new FailureSwitch());
+        services.AddLogging();
 
         services.AddCanMediator(cfg => cfg.RegisterServicesFromAssemblyContaining<TestHost>());
         services.AddCanPersistence<TestDbContext>(options => options.UseSqlite(connection));
+        configure?.Invoke(services);
 
         var host = new TestHost(connection, services.BuildServiceProvider(), user, tenant, clock, events);
 
@@ -174,6 +225,8 @@ public sealed class TestHost : IAsyncDisposable
     }
 
     public AsyncServiceScope CreateScope() => _provider.CreateAsyncScope();
+
+    public IServiceProvider Services => _provider;
 
     public async ValueTask DisposeAsync()
     {
