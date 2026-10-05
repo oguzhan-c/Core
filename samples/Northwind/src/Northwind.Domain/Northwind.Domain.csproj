@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Domain\Can.Core.Domain.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Security\Can.Core.Security.csproj" />
+  </ItemGroup>
+
+</Project>
