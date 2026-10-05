@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Security</RootNamespace>
+    <Description>Kimlik doğrulama yapı taşları: PBKDF2 şifre hash'leme, JWT access token, rotasyonlu refresh token, TOTP (Google Authenticator), e-posta doğrulama kodu, passkey (WebAuthn) ve User/Role/RefreshToken entity'leri.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Domain\Can.Core.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <PackageReference Include="Fido2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Security.Tests" />
+  </ItemGroup>
+
+</Project>
