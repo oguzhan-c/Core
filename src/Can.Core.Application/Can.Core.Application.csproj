@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Application</RootNamespace>
+    <Description>Uygulama katmanı altyapısı: Can.Core.Mediator üzerinde logging, performans, yetkilendirme, doğrulama (FluentValidation), önbellek (HybridCache) ve transaction pipeline'ları; business rule'lar; AddCanApplication(...).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\Can.Core.Mediator\Can.Core.Mediator.csproj" />
+    <ProjectReference Include="..\Can.Core.Persistence.Abstractions\Can.Core.Persistence.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>
