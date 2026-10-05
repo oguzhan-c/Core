@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Logging.Serilog</RootNamespace>
+    <Description>Serilog ile yapılandırılmış loglama: makul varsayılanlar (geliştirmede okunur konsol, üretimde JSON), appsettings ile tam kontrol ve her log satırına kullanıcı/tenant bilgisi ekleyen istek loglaması.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+
+</Project>
