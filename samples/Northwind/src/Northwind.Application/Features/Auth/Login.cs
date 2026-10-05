@@ -1,0 +1,110 @@
+using Can.Core.Application;
+using Can.Core.Application.Exceptions;
+using Can.Core.Mediator;
+using Can.Core.MultiTenancy;
+using Can.Core.Persistence.Repositories;
+using Can.Core.Security.Hashing;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Northwind.Domain.Identity;
+
+namespace Northwind.Application.Features.Auth;
+
+/// <summary>
+/// Mağaza + e-posta + şifre ile giriş. Tenant istemciden yalnızca BURADA alınır; sonraki tüm isteklerde imzalı
+/// token'daki tenant kullanılır.
+/// </summary>
+public sealed record LoginCommand(string Tenant, string Email, string Password, string? IpAddress = null) : IRequest<AuthResult>, ILoggableRequest;
+
+public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
+{
+    public LoginCommandValidator()
+    {
+        RuleFor(c => c.Tenant).NotEmpty().MaximumLength(64);
+        RuleFor(c => c.Email).NotEmpty().EmailAddress().MaximumLength(256);
+        RuleFor(c => c.Password).NotEmpty().MaximumLength(128);
+    }
+}
+
+public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResult>
+{
+    private const string InvalidCredentials = "Mağaza, e-posta ya da şifre hatalı.";
+
+    private readonly ITenantStore _tenantStore;
+    private readonly TenantContext _tenantContext;
+    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IPasswordHasher _passwordHasher;
+    private readonly AuthTokenIssuer _tokenIssuer;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly TimeProvider _timeProvider;
+
+    public LoginCommandHandler(
+        ITenantStore tenantStore,
+        TenantContext tenantContext,
+        IRepository<AppUser, Guid> users,
+        IPasswordHasher passwordHasher,
+        AuthTokenIssuer tokenIssuer,
+        IUnitOfWork unitOfWork,
+        TimeProvider timeProvider)
+    {
+        _tenantStore = tenantStore;
+        _tenantContext = tenantContext;
+        _users = users;
+        _passwordHasher = passwordHasher;
+        _tokenIssuer = tokenIssuer;
+        _unitOfWork = unitOfWork;
+        _timeProvider = timeProvider;
+    }
+
+    public async Task<AuthResult> Handle(LoginCommand request, CancellationToken cancellationToken)
+    {
+        TenantInfo? tenant = await _tenantStore.FindAsync(request.Tenant.Trim(), cancellationToken);
+        if (tenant is not { IsActive: true })
+            throw new UnauthorizedException(InvalidCredentials);
+
+        // Bu istekteki sorgular ve kayıtlar artık bu mağaza adına çalışır.
+        _tenantContext.Set(tenant);
+
+        string normalizedEmail = request.Email.Trim().ToUpperInvariant();
+        AppUser? user = await _users.GetAsync(
+            u => u.NormalizedEmail == normalizedEmail,
+            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            cancellationToken: cancellationToken
+        );
+
+        if (user?.PasswordHash is null)
+        {
+            // Kullanıcı yokken de aynı süreyi harca: yanıt süresinden e-postanın kayıtlı olup olmadığı anlaşılmasın.
+            _ = _passwordHasher.Hash(request.Password);
+            throw new UnauthorizedException(InvalidCredentials);
+        }
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        if (user.IsLockedOut(now))
+            throw new UnauthorizedException("Çok fazla hatalı deneme yapıldı; hesap geçici olarak kilitlendi.");
+
+        PasswordVerificationResult verification = _passwordHasher.Verify(request.Password, user.PasswordHash);
+        if (verification == PasswordVerificationResult.Failed)
+        {
+            user.RegisterFailedAccess(now);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            throw new UnauthorizedException(InvalidCredentials);
+        }
+
+        if (verification == PasswordVerificationResult.SuccessRehashNeeded)
+            user.SetPasswordHash(_passwordHasher.Hash(request.Password));
+
+        user.ResetAccessFailed();
+
+        // Şifre doğrulandıktan SONRA: aksi hâlde e-postanın kayıtlı olup olmadığı anlaşılırdı.
+        if (!user.EmailConfirmed)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            throw new ForbiddenException("E-posta adresin henüz doğrulanmadı. Gönderdiğimiz kodu gir.") { Code = AuthErrorCodes.EmailNotConfirmed };
+        }
+
+        AuthResult result = await _tokenIssuer.IssueAsync(user, request.IpAddress, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return result;
+    }
+}
