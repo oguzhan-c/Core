@@ -62,6 +62,8 @@ public class WebApiTests
         app.MapGet("/forbidden", () => { throw new ForbiddenException(); });
         app.MapGet("/notfound", () => { throw NotFoundException.For<string>(42); });
         app.MapGet("/conflict", () => { throw new ConflictException("Aynı isim var."); });
+        app.MapGet("/coded", () => { throw new ForbiddenException("E-posta doğrulanmadı.") { Code = "email_not_confirmed" }; });
+        app.MapGet("/coded-business", () => { throw new BusinessException("Stok yok.") { Code = "out_of_stock" }; });
         app.MapGet("/crash", () => { throw new InvalidOperationException("Server=db;Password=gizli"); });
 
         app.MapGet("/me", (ICurrentUser user) => new
@@ -114,6 +116,33 @@ public class WebApiTests
 
             JsonElement body = await JsonAsync(response);
             Assert.Equal(expectedStatus, body.GetProperty("status").GetInt32());
+        }
+    }
+
+    [Theory]
+    [InlineData("/coded", 403, "email_not_confirmed")]
+    [InlineData("/coded-business", 400, "out_of_stock")]
+    public async Task Error_code_is_written_to_problem_details(string path, int expectedStatus, string expectedCode)
+    {
+        (WebApplication app, HttpClient client) = await CreateAsync();
+        await using (app)
+        {
+            HttpResponseMessage response = await client.GetAsync(path);
+            JsonElement body = await JsonAsync(response);
+
+            Assert.Equal(expectedStatus, (int)response.StatusCode);
+            Assert.Equal(expectedCode, body.GetProperty("code").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task Errors_without_code_have_no_code_field()
+    {
+        (WebApplication app, HttpClient client) = await CreateAsync();
+        await using (app)
+        {
+            JsonElement body = await JsonAsync(await client.GetAsync("/conflict"));
+            Assert.False(body.TryGetProperty("code", out _));
         }
     }
 
