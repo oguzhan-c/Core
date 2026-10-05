@@ -19,6 +19,7 @@ namespace Can.Core.WebApi.ExceptionHandling;
 /// ConflictException      409
 /// diğer her şey          500  (ayrıntı yalnızca Development ortamında gösterilir)
 /// </code>
+/// Hata <see cref="IHasErrorCode"/> ile bir kod taşıyorsa yanıta <c>"code"</c> alanı eklenir.
 /// </summary>
 public sealed class CanExceptionHandler : IExceptionHandler
 {
@@ -62,6 +63,10 @@ public sealed class CanExceptionHandler : IExceptionHandler
 
         problem.Status = status;
         problem.Title = title;
+
+        // İstemcinin hatayı mesaja bakmadan ayırt edebilmesi için (ör. "email_not_confirmed").
+        if (exception is IHasErrorCode { Code: { Length: > 0 } code })
+            problem.Extensions["code"] = code;
 
         if (status >= StatusCodes.Status500InternalServerError)
         {

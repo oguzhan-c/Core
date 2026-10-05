@@ -1,3 +1,5 @@
+using Can.Core.Domain.Exceptions;
+
 namespace Can.Core.Application.Exceptions;
 
 // Uygulama katmanının fırlattığı hata tipleri. WebApi katmanındaki exception middleware bunları
@@ -11,8 +13,11 @@ namespace Can.Core.Application.Exceptions;
 //   BusinessException      → 400  (Can.Core.Domain.Exceptions)
 
 /// <summary>İstenen kayıt bulunamadı.</summary>
-public class NotFoundException : Exception
+public class NotFoundException : Exception, IHasErrorCode
 {
+    /// <inheritdoc />
+    public string? Code { get; init; }
+
     public NotFoundException(string message)
         : base(message) { }
 
@@ -21,29 +26,41 @@ public class NotFoundException : Exception
 }
 
 /// <summary>İstek mevcut durumla çakışıyor (ör. aynı isimde kayıt var, eşzamanlı güncelleme).</summary>
-public class ConflictException : Exception
+public class ConflictException : Exception, IHasErrorCode
 {
+    /// <inheritdoc />
+    public string? Code { get; init; }
+
     public ConflictException(string message)
         : base(message) { }
 }
 
 /// <summary>Kullanıcı kimliği doğrulanmamış (giriş yapılmamış).</summary>
-public class UnauthorizedException : Exception
+public class UnauthorizedException : Exception, IHasErrorCode
 {
+    /// <inheritdoc />
+    public string? Code { get; init; }
+
     public UnauthorizedException(string message = "Bu işlem için giriş yapmalısın.")
         : base(message) { }
 }
 
 /// <summary>Kullanıcı giriş yapmış ama bu işlem için yetkisi yok.</summary>
-public class ForbiddenException : Exception
+public class ForbiddenException : Exception, IHasErrorCode
 {
+    /// <inheritdoc />
+    public string? Code { get; init; }
+
     public ForbiddenException(string message = "Bu işlem için yetkin yok.")
         : base(message) { }
 }
 
 /// <summary>İstek doğrulanamadı. <see cref="Errors"/>: alan adı → hata mesajları.</summary>
-public class ValidationException : Exception
+public class ValidationException : Exception, IHasErrorCode
 {
+    /// <inheritdoc />
+    public string? Code { get; init; }
+
     public ValidationException(IReadOnlyDictionary<string, string[]> errors)
         : base(BuildMessage(errors))
     {

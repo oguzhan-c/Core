@@ -2,7 +2,11 @@
 
   <PropertyGroup>
     <RootNamespace>Can.Core.Application</RootNamespace>
-    <Description>Uygulama katmanının altyapıdan beklediği ortak sözleşmeler: ICurrentUser, ICurrentTenant. Bağımlılığı yoktur.</Description>
+    <Description>Uygulama katmanının altyapıdan beklediği ortak sözleşmeler: ICurrentUser, ICurrentTenant, istek işaretleyicileri ve hata tipleri. Yalnızca Can.Core.Domain'e bağımlıdır.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Domain\Can.Core.Domain.csproj" />
+  </ItemGroup>
 
 </Project>
