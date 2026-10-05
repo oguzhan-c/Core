@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.WebApi</RootNamespace>
+    <Description>ASP.NET Core entegrasyonu: Can.Core hata tiplerini ProblemDetails yanıtlarına çeviren exception handler, JWT claim'lerinden okuyan ICurrentUser ve üyelik kontrollü ICurrentTenant.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\Can.Core.Domain\Can.Core.Domain.csproj" />
+    <ProjectReference Include="..\Can.Core.Security\Can.Core.Security.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- JwtBearer'ın getirdiği IdentityModel sürümünü Security paketinin sürümüyle hizala -->
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.WebApi.Tests" />
+  </ItemGroup>
+
+</Project>
