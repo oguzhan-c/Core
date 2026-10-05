@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Persistence</RootNamespace>
+    <Description>Repository, Unit of Work, dinamik filtreleme/sıralama ve sayfalama sözleşmeleri. EF Core'a bağımlı DEĞİLDİR; Application katmanı bu paketi referans eder.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Domain\Can.Core.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
