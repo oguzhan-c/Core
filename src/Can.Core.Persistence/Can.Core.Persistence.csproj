@@ -9,10 +9,12 @@
     <ProjectReference Include="..\Can.Core.Persistence.Abstractions\Can.Core.Persistence.Abstractions.csproj" />
     <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
     <ProjectReference Include="..\Can.Core.Mediator.Abstractions\Can.Core.Mediator.Abstractions.csproj" />
+    <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
   </ItemGroup>
 
   <ItemGroup>
