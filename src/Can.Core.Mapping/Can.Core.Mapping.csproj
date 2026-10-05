@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Mapping</RootNamespace>
+    <Description>AutoMapper benzeri, lisans derdi olmayan nesne eşleyici: Profile/CreateMap/ForMember, konvansiyon ve flattening, iç içe nesneler ve koleksiyonlar, record constructor'ları, mevcut nesneye map ve EF Core için ProjectTo. Eşlemeler expression tree olarak derlenir.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Mapping.Tests" />
+  </ItemGroup>
+
+</Project>
