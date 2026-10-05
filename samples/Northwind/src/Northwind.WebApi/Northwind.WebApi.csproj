@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>northwind-can-starter</UserSecretsId>
+    <ClientAppRoot>ClientApp\</ClientAppRoot>
+  </PropertyGroup>
+
+  <!-- React uygulaması (ClientApp) .NET derlemesine girmez; yayında derlenip wwwroot'a konur. -->
+  <ItemGroup>
+    <Compile Remove="$(ClientAppRoot)**" />
+    <Content Remove="$(ClientAppRoot)**" />
+    <None Remove="$(ClientAppRoot)**" />
+    <None Include="$(ClientAppRoot)**" Exclude="$(ClientAppRoot)node_modules\**;$(ClientAppRoot)dist\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Northwind.Infrastructure\Northwind.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.WebApi\Can.Core.WebApi.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Logging.Serilog\Can.Core.Logging.Serilog.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing.MailKit\Can.Core.Mailing.MailKit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
+    <!-- dotnet ef migrations add ... için -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Northwind.WebApi.Tests" />
+  </ItemGroup>
+
+  <!-- dotnet publish: React uygulamasını derleyip (vite → wwwroot) yayına ekler. -->
+  <Target Name="PublishClientApp" AfterTargets="ComputeFilesToPublish">
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm ci" />
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm run build" />
+    <ItemGroup>
+      <ClientDistFiles Include="wwwroot\**" />
+      <ResolvedFileToPublish Include="@(ClientDistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>
