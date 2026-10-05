@@ -1,3 +1,4 @@
+using Can.Core.Domain.Auditing;
 using Can.Core.Domain.Entities;
 using Can.Core.Security.Passkeys;
 using Can.Core.Security.VerificationCodes;
@@ -29,6 +30,7 @@ public class OtpAuthenticator<TId> : Entity<TId>
 
     public TId UserId { get; protected set; }
 
+    [DisableAuditing]
     public byte[] SecretKey { get; protected set; }
 
     /// <summary>Kullanıcı ilk kodu girip kurulumu tamamladı mı?</summary>
@@ -63,6 +65,7 @@ public class EmailAuthenticator<TId> : Entity<TId>
 
     public TId UserId { get; protected set; }
 
+    [DisableAuditing]
     public string? CodeHash { get; protected set; }
 
     public DateTimeOffset? ExpiresAt { get; protected set; }
@@ -130,6 +133,7 @@ public class UserPasskey<TId> : Entity<TId>
     /// <summary>Benzersiz index konulmalı; girişte passkey bununla bulunur.</summary>
     public byte[] CredentialId { get; protected set; }
 
+    [DisableAuditing]
     public byte[] PublicKey { get; protected set; }
 
     public byte[] UserHandle { get; protected set; }
