@@ -7,12 +7,21 @@ using Microsoft.IdentityModel.Tokens;
 namespace Can.Core.Security.Tokens;
 
 /// <summary>Token'a yazılacak kullanıcı bilgisi.</summary>
+/// <param name="UserId">Kullanıcı kimliği (<c>sub</c>).</param>
+/// <param name="UserName">Kullanıcı adı (<c>name</c>).</param>
+/// <param name="Email">E-posta (<c>email</c>).</param>
+/// <param name="Roles">Roller (<c>role</c>).</param>
+/// <param name="TenantId">
+/// Oturumun AKTİF tenant'ı (<c>tenant_id</c>). Tenant bilgisi yalnızca imzalı token'dan okunur; kullanıcı tenant
+/// değiştirmek isterse sunucu üyeliği kontrol edip o tenant için yeni token üretir.
+/// </param>
+/// <param name="AdditionalClaims">Ek claim'ler.</param>
 public sealed record TokenSubject(
     string UserId,
     string? UserName = null,
     string? Email = null,
     IReadOnlyCollection<string>? Roles = null,
-    IReadOnlyCollection<string>? TenantIds = null,
+    string? TenantId = null,
     IReadOnlyCollection<Claim>? AdditionalClaims = null);
 
 public sealed record AccessToken(string Token, DateTimeOffset ExpiresAt);
@@ -86,8 +95,8 @@ public sealed class TokenService : ITokenService
         foreach (string role in subject.Roles ?? [])
             claims.Add(new Claim(RoleClaimType, role));
 
-        foreach (string tenantId in subject.TenantIds ?? [])
-            claims.Add(new Claim(TenantClaimType, tenantId));
+        if (!string.IsNullOrWhiteSpace(subject.TenantId))
+            claims.Add(new Claim(TenantClaimType, subject.TenantId));
 
         if (subject.AdditionalClaims is not null)
             claims.AddRange(subject.AdditionalClaims);
