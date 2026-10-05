@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Application</RootNamespace>
+    <Description>Uygulama katmanının altyapıdan beklediği ortak sözleşmeler: ICurrentUser, ICurrentTenant. Bağımlılığı yoktur.</Description>
+  </PropertyGroup>
+
+</Project>
