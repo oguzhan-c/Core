@@ -58,12 +58,14 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
 
     public bool EmailConfirmed { get; protected set; }
 
+    [DisableAuditing]
     public string? PasswordHash { get; protected set; }
 
     /// <summary>
     /// Şifre, e-posta ya da 2FA ayarı değiştiğinde yenilenir. Token'lara/oturumlara yazılırsa eski
     /// oturumları geçersiz kılmak için kullanılabilir.
     /// </summary>
+    [DisableAuditing]
     public string SecurityStamp { get; protected set; }
 
     public AuthenticatorType AuthenticatorType { get; protected set; }
@@ -73,6 +75,7 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
     public DateTimeOffset? LockoutEnd { get; protected set; }
 
     /// <summary>Passkey'lerde kullanılan, kişisel veri içermeyen rastgele kullanıcı kimliği.</summary>
+    [DisableAuditing]
     public byte[] PasskeyUserHandle { get; protected set; }
 
     public ICollection<UserRole<TId>> UserRoles { get; protected set; } = [];

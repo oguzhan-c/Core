@@ -1,3 +1,4 @@
+using Can.Core.Domain.Auditing;
 using Can.Core.Domain.Entities;
 using Can.Core.Security.Tokens;
 
@@ -38,6 +39,7 @@ public class RefreshToken<TId> : Entity<TId>
 
     public TId UserId { get; protected set; }
 
+    [DisableAuditing]
     public string TokenHash { get; protected set; }
 
     public DateTimeOffset ExpiresAt { get; protected set; }
@@ -53,6 +55,7 @@ public class RefreshToken<TId> : Entity<TId>
     public string? RevokedReason { get; protected set; }
 
     /// <summary>Rotasyonda bunun yerine verilen token'ın hash'i (token zincirini izlemek için).</summary>
+    [DisableAuditing]
     public string? ReplacedByTokenHash { get; protected set; }
 
     public bool IsRevoked => RevokedAt is not null;
