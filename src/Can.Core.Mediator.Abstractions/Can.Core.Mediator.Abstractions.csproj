@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Mediator</RootNamespace>
+    <Description>Can.Core.Mediator arayüzleri: IRequest, IRequestHandler, INotificationHandler, IPipelineBehavior, ISender, IPublisher. Bağımlılığı yoktur; Application katmanı yalnızca bu paketi referans eder.</Description>
+  </PropertyGroup>
+
+</Project>
