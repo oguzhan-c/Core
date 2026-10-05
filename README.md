@@ -13,6 +13,10 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Application.Abstractions` | yok | `ICurrentUser`, `ICurrentTenant`, istek işaretleyicileri (`ISecuredRequest`, `ICachableRequest` ...), hata tipleri |
 | `Can.Core.Application` | Mediator, FluentValidation, HybridCache | Pipeline behavior'ları, `BaseBusinessRules`, `AddCanApplication(...)` |
 | `Can.Core.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
+| `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
+| `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
+| `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
+| `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, `HttpCurrentTenant`, `AddCanJwtAuthentication()` |
 | `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
 | `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, `AddCanPersistence(...)` |
@@ -251,12 +255,9 @@ Sıra: `Logging → Performance → Authorization → Validation → Caching →
 ```csharp
 builder.Services.AddCanApplication(typeof(CreateProductCommand).Assembly);
 builder.Services.AddCanPersistence<AppDbContext>(o => o.UseNpgsql(connectionString));
-builder.Services.AddCanWebApi(o =>
-{
-    o.TenantHeaderName = "X-Tenant-Id";   // isteğe bağlı: birden fazla tenant'a üye kullanıcılar için
-    o.TenantAdminRole  = "SystemAdmin";   // isteğe bağlı: her tenant'ı seçebilen rol
-});
-builder.Services.AddAuthentication().AddJwtBearer(...);
+builder.Services.AddCanSecurity(o => builder.Configuration.GetSection("Security:Jwt").Bind(o.Jwt));
+builder.Services.AddCanWebApi();
+builder.Services.AddCanJwtAuthentication();   // JWT HttpOnly cookie'den okunur
 
 var app = builder.Build();
 app.UseCanExceptionHandler();   // en başta
@@ -270,19 +271,41 @@ app.MapGet("/me", (ISender sender, CancellationToken ct) => sender.Send(new GetM
 
 **Hatalar** RFC 9457 ProblemDetails olarak döner (`application/problem+json`). 500'lerde iç ayrıntı yalnızca Development'ta gösterilir.
 
-**Kullanıcı** yalnızca doğrulanmış token'ın claim'lerinden okunur (`sub` / `NameIdentifier`, `name`, `email`, `role`).
+**Kullanıcı ve tenant yalnızca imzalı JWT'den** okunur (`sub`, `name`, `email`, `role`, `tenant_id`). Header, query string
+ya da istek gövdesinden tenant/kullanıcı bilgisi alınmaz; istemci bunları değiştiremez.
+
+**JWT cookie'de taşınır** (`AddCanJwtAuthentication`):
+
+| Ayar | Varsayılan | Neden |
+|---|---|---|
+| `HttpOnly` | açık | JavaScript token'a erişemez; XSS ile çalınamaz |
+| `Secure` | açık | yalnızca HTTPS |
+| `SameSite` | `Strict` | başka sitelerden gelen isteklerle gönderilmez (CSRF koruması) |
+| Refresh token `Path` | `/auth/refresh` | yalnızca yenileme isteğinde gönderilir |
+| `AllowAuthorizationHeader` | kapalı | `Authorization: Bearer` header'ı yok sayılır; mobil/servis istemcileri için açılabilir |
+
+```csharp
+app.MapPost("/auth/login", async (LoginCommand command, ISender sender, IAuthCookieService cookies, HttpResponse response) =>
+{
+    LoginResult result = await sender.Send(command);
+    cookies.SetTokens(response, result.AccessToken, result.RefreshToken);   // HttpOnly cookie'ler
+    return Results.NoContent();
+});
+app.MapPost("/auth/logout", (IAuthCookieService cookies, HttpResponse response) => { cookies.Clear(response); return Results.NoContent(); });
+```
+
+Ön yüz farklı bir sitedeyse (`SameSite = None`) cookie'ler çapraz istekle gönderilebilir; o durumda antiforgery token ekle.
 
 **Tenant** kuralları:
 
 | Durum | Aktif tenant |
 |---|---|
 | Giriş yok | yok |
-| Token'da tek `tenant_id` claim'i | o tenant |
-| Header açık ve gönderilmiş, kullanıcı o tenant'a üye | header'daki tenant |
-| Header'daki tenant'a üye değil (ve `TenantAdminRole` değil) | **403** |
-| Birden fazla tenant, seçim yok | yok (hiçbir tenant verisi görünmez) |
+| Token'da tek `tenant_id` | o tenant |
+| Token'da tenant yok ya da birden fazla | yok (hiçbir tenant verisi görünmez) |
+| Tenant depoda yok ya da pasif | **403** (pasife alınan tenant'ın eski token'ları da hemen geçersiz) |
 
-Tenant hiçbir zaman doğrulanmamış bir kaynaktan (çıplak header, query string) alınmaz.
+Tenant değiştirmek isteyen kullanıcı için sunucu üyeliği kontrol eder ve o tenant için **yeni token** üretir.
 
 ## Security
 
@@ -298,13 +321,13 @@ builder.Services.AddCanSecurity(o =>
         Origins = ["https://example.com"],
     };
 });
-builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarla token doğrulama
+builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarla doğrulama, token HttpOnly cookie'de
 ```
 
 | Servis | Ne yapar | nArchitecture'dan farkı |
 |---|---|---|
 | `IPasswordHasher` | PBKDF2-SHA256, 600.000 iterasyon; tek metin (`v1.iter.salt.hash`) | HMACSHA512 yerine yavaş KDF; ayrı salt kolonu yok; iterasyon artınca `SuccessRehashNeeded` |
-| `ITokenService` | JWT access token (`sub`, `name`, `email`, `role`, `tenant_id`, `jti`) + refresh token | Refresh token veritabanında **hash'li**; `TimeProvider` ile test edilebilir |
+| `ITokenService` | JWT access token (`sub`, `name`, `email`, `role`, tek aktif `tenant_id`, `jti`) + refresh token | Refresh token veritabanında **hash'li**; `TimeProvider` ile test edilebilir |
 | `ITotpService` | Google/Microsoft Authenticator (RFC 6238), QR için `otpauth://` adresi | Dış paket yok; aynı kodun tekrar kullanımı engellenir |
 | `IVerificationCodeService` | 6 haneli e-posta/SMS kodu, HMAC'li saklanır | Deneme sınırı ve süre `EmailAuthenticator` entity'sinde |
 | `IPasskeyService` | Passkey kayıt ve giriş (WebAuthn, Fido2NetLib) | Yeni |
@@ -319,3 +342,78 @@ Roller JWT'ye `role` claim'i olarak yazılır; `ISecuredRequest.Roles`, `ICurren
 Güvenlik notları: imza anahtarlarını koda/appsettings'e yazma (User Secrets, ortam değişkeni, Key Vault);
 `OtpAuthenticator.SecretKey`'i veritabanında şifreli sakla; refresh token yeniden kullanımı tespit edilirse
 kullanıcının tüm token'larını iptal et (bkz. `RefreshToken<TId>` açıklaması).
+
+## Multi-tenancy: tek veritabanı ya da tenant başına veritabanı
+
+İki yaklaşım aynı uygulamada birlikte kullanılabilir: bir tenant'a `ConnectionString` verilirse kendi veritabanını,
+verilmezse ortak veritabanını (TenantId filtresiyle) kullanır. Tenant filtresi her durumda açık kalır (ek güvenlik).
+
+```csharp
+builder.Services.AddCanMultiTenancy(o =>
+{
+    o.DefaultConnectionString = builder.Configuration.GetConnectionString("Default");   // ortak veritabanı
+    builder.Configuration.GetSection("Tenants").Bind(o.Tenants);                        // ya da kendi ITenantStore'un
+});
+
+builder.Services.AddCanPersistence<AppDbContext>((sp, o) =>
+    o.UseNpgsql(sp.GetRequiredService<ITenantConnectionStringResolver>().Resolve()));
+
+builder.Services.AddCanWebApi();
+
+var app = builder.Build();
+await app.Services.InitializeTenantDatabasesAsync<AppDbContext>();   // ortak + her tenant DB'sine migration
+```
+
+```json
+"Tenants": [
+  { "Id": "8f1c...", "Identifier": "acme",   "Name": "Acme",   "ConnectionString": "Host=db-acme;Database=acme;..." },
+  { "Id": "2b7e...", "Identifier": "globex", "Name": "Globex" }
+]
+```
+
+| Durum | Sonuç |
+|---|---|
+| Token'da tek `tenant_id` | o tenant; depodan tanımı yüklenir, kendi DB'si varsa ona bağlanılır |
+| Depoda olmayan ya da pasif tenant | **403** |
+| Tenant yok (anonim istek) | ortak veritabanı, tenant'a ait kayıtlar görünmez |
+
+**Tenant başına veritabanında giriş:** anonim istekte tenant olmadığından login handler'ı tenant'ı isteğin kendisinden
+(ör. `LoginCommand.Tenant` = `"acme"`) alır, depodan bulur ve doğrulamayı o tenant'ın scope'unda yapar; başarılı olursa
+`tenant_id`'li token üretilir. Kimlik bilgisi doğrulanmadan hiçbir veri okunmaz.
+
+```csharp
+TenantInfo tenant = await tenantStore.FindAsync(command.Tenant, ct) ?? throw new UnauthorizedException();
+await using AsyncServiceScope scope = serviceProvider.CreateTenantScope(tenant);
+// scope.ServiceProvider üzerinden kullanıcı bulunur, şifre doğrulanır, token üretilir
+```
+
+Arka plan işleri ve seed için de aynı yöntem: `await using var scope = app.Services.CreateTenantScope(tenant);`
+
+## Mailing
+
+```csharp
+builder.Services.AddCanMailKit(o => builder.Configuration.GetSection("Mailing:Smtp").Bind(o));   // üretim
+builder.Services.AddCanEmailPickupDirectory("mails");                                            // geliştirme: .eml dosyaları
+builder.Services.AddCanInMemoryEmail();                                                          // testler
+
+var message = new EmailMessage("Doğrulama kodun") { HtmlBody = $"<p>Kodun: <b>{code}</b></p>", TextBody = $"Kodun: {code}" };
+message.To.Add(new EmailAddress(user.Email));
+await emailSender.SendAsync(message, ct);
+```
+
+E-postayı istek içinde değil, domain event handler'ından (ileride arka plan işinden) göndermek önerilir.
+
+## Logging
+
+```csharp
+builder.AddCanSerilog(o => o.FilePath = "logs/app-.json");   // isteğe bağlı dosya
+
+app.UseCanExceptionHandler();
+app.UseAuthentication();
+app.UseCanTenantResolution();
+app.UseCanRequestLogging();   // her isteğe tek özet satırı + tüm loglara UserId/TenantId
+```
+
+Varsayılanlar: Development'ta okunur konsol, diğer ortamlarda JSON; Microsoft/System kaynakları Warning.
+appsettings'teki `"Serilog"` bölümü her şeyi ezebilir (Seq, Elastic vb. için ilgili sink paketini ekleyip `WriteTo`'ya yaz).
+İstek/yanıt gövdeleri loglanmaz.
