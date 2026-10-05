@@ -13,13 +13,15 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Application.Abstractions` | yok | `ICurrentUser`, `ICurrentTenant`, istek işaretleyicileri (`ISecuredRequest`, `ICachableRequest` ...), hata tipleri |
 | `Can.Core.Application` | Mediator, FluentValidation, HybridCache | Pipeline behavior'ları, `BaseBusinessRules`, `AddCanApplication(...)` |
 | `Can.Core.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
+| `Can.Core.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()` |
+| `Can.Core.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
 | `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
 | `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
 | `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
-| `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, `HttpCurrentTenant`, `AddCanJwtAuthentication()` |
+| `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
 | `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
-| `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, `AddCanPersistence(...)` |
+| `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
 
 ```bash
 dotnet build Core.slnx
@@ -200,6 +202,51 @@ System.Linq.Dynamic.Core yerine doğrudan expression tree kurulur: alan adları 
 değerler SQL parametresi olarak gider. Not: istemci herhangi bir public property'ye göre filtreleyebilir; hassas alanları
 (ör. `PasswordHash`) DTO'ya değil entity'ye filtre açan endpoint'lerde dikkatli ol.
 
+**Outbox: kaybolmaması gereken event'ler**
+
+`IIntegrationEvent` uygulayan event'ler kayıttan hemen sonra bellekte yayınlanmaz; aggregate değişiklikleriyle aynı
+transaction'da `OutboxMessages` tablosuna yazılır ve arka plan işi tarafından yayınlanır (en az bir kez; handler'lar idempotent olmalı).
+
+```csharp
+public sealed record OrderShipped(int OrderId, string Email) : DomainEvent, IIntegrationEvent;
+
+// DbContext
+protected override void ConfigureModel(ModelBuilder modelBuilder)
+{
+    modelBuilder.AddCanOutbox();
+    modelBuilder.AddCanAuditTrail();
+}
+
+// Program.cs
+builder.Services.AddCanOutbox<AppDbContext>(o => o.Interval = TimeSpan.FromSeconds(5));
+```
+
+**Değişiklik geçmişi (audit trail)**
+
+`[Audited]` işaretli entity'lerin her değişikliği `AuditLogs` tablosuna yazılır: kim, ne zaman, hangi tenant,
+hangi alan neyden neye (`{"Price":{"old":10,"new":12}}`). Hassas alanlara `[DisableAuditing]` koy (Security
+entity'lerinde şifre hash'i, gizli anahtarlar ve token hash'leri zaten işaretli). Tüm entity'ler için:
+`services.AddCanAuditTrail(o => o.AuditAllEntities = true)`.
+
+**Başlangıç verisi**
+
+```csharp
+public sealed class CategorySeeder(AppDbContext db) : IDataSeeder
+{
+    public int Order => 1;
+    public async Task SeedAsync(DataSeedContext context, CancellationToken ct)
+    {
+        if (context.IsHost || await db.Categories.AnyAsync(ct)) return;   // idempotent
+        db.Categories.Add(new Category("İçecekler"));
+        await db.SaveChangesAsync(ct);
+    }
+}
+
+builder.Services.AddCanDataSeeders(typeof(Program).Assembly);
+await app.Services.InitializeTenantDatabasesAsync<AppDbContext>();   // migration
+await app.Services.SeedDataAsync();   // önce host, sonra her aktif tenant kendi scope'unda
+```
+
 **Transaction**
 
 ```csharp
@@ -336,6 +383,13 @@ builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarl
 security stamp), `Role<TId>`, `UserRole<TId>`, `RefreshToken<TId>` (rotasyon ve iptal), `OtpAuthenticator<TId>`,
 `EmailAuthenticator<TId>`, `UserPasskey<TId>`.
 
+Tabloları kurmak için (`Can.Core.Security.EntityFrameworkCore`):
+
+```csharp
+protected override void ConfigureModel(ModelBuilder modelBuilder) =>
+    modelBuilder.ApplyCanSecurityModel<AppUser, Guid>(o => o.Schema = "identity");
+```
+
 Roller JWT'ye `role` claim'i olarak yazılır; `ISecuredRequest.Roles`, `ICurrentUser.IsInRole` ve
 `[Authorize(Roles = ...)]` aynı claim'i kullanır.
 
@@ -417,3 +471,17 @@ app.UseCanRequestLogging();   // her isteğe tek özet satırı + tüm loglara U
 Varsayılanlar: Development'ta okunur konsol, diğer ortamlarda JSON; Microsoft/System kaynakları Warning.
 appsettings'teki `"Serilog"` bölümü her şeyi ezebilir (Seq, Elastic vb. için ilgili sink paketini ekleyip `WriteTo`'ya yaz).
 İstek/yanıt gövdeleri loglanmaz.
+
+
+## Arka plan işleri
+
+```csharp
+builder.Services.AddCanBackgroundJobs(typeof(Program).Assembly);
+builder.Services.AddCanRecurringJob<CleanupExpiredTokensJob>(o => o.Interval = TimeSpan.FromHours(1));
+
+// İstek içinde: hemen döner, iş arka planda isteği atan tenant adına çalışır.
+await queue.EnqueueAsync<SendWelcomeEmailJob, WelcomeEmailArgs>(new(user.Id));
+```
+
+Kuyruk bellektedir; uygulama kapanınca bekleyen işler kaybolur. Kaybolmaması gereken işler için outbox kullan.
+Tekrarlayan işler `PerTenant = true` ile her aktif tenant için ayrı çalıştırılabilir.
