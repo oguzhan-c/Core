@@ -222,56 +222,18 @@ public class WebApiTests
     }
 
     [Fact]
-    public async Task Header_is_ignored_when_not_enabled()
+    public async Task Tenant_header_is_never_used()
     {
         (WebApplication app, HttpClient client) = await CreateAsync();
         await using (app)
         {
+            // token'daki tenant geçerli; header ile başka tenant istenemez
             var (_, tenant) = await TenantAsync(client, Get("/tenant", user: "u", tenants: TenantA.ToString(), tenantHeader: TenantB.ToString()));
+            Assert.Equal(TenantA.ToString(), tenant);
 
-            Assert.Equal(TenantA.ToString(), tenant); // header kapalı: token'daki tenant geçerli
-        }
-    }
-
-    [Fact]
-    public async Task Header_selects_a_tenant_the_user_belongs_to()
-    {
-        (WebApplication app, HttpClient client) = await CreateAsync(o => o.TenantHeaderName = "X-Tenant-Id");
-        await using (app)
-        {
-            var (status, tenant) = await TenantAsync(client, Get("/tenant", user: "u", tenants: $"{TenantA},{TenantB}", tenantHeader: TenantB.ToString()));
-
-            Assert.Equal(HttpStatusCode.OK, status);
-            Assert.Equal(TenantB.ToString(), tenant);
-        }
-    }
-
-    [Fact]
-    public async Task Header_for_a_foreign_tenant_is_forbidden()
-    {
-        (WebApplication app, HttpClient client) = await CreateAsync(o => o.TenantHeaderName = "X-Tenant-Id");
-        await using (app)
-        {
-            var (status, _) = await TenantAsync(client, Get("/tenant", user: "u", tenants: TenantA.ToString(), tenantHeader: TenantB.ToString()));
-
-            Assert.Equal(HttpStatusCode.Forbidden, status);
-        }
-    }
-
-    [Fact]
-    public async Task Tenant_admin_can_select_any_tenant()
-    {
-        (WebApplication app, HttpClient client) = await CreateAsync(o =>
-        {
-            o.TenantHeaderName = "X-Tenant-Id";
-            o.TenantAdminRole = "SystemAdmin";
-        });
-        await using (app)
-        {
-            var (status, tenant) = await TenantAsync(client, Get("/tenant", user: "root", roles: "SystemAdmin", tenantHeader: TenantB.ToString()));
-
-            Assert.Equal(HttpStatusCode.OK, status);
-            Assert.Equal(TenantB.ToString(), tenant);
+            // token'da tenant yoksa header ile de seçilemez (anonim ya da çok tenant'lı)
+            Assert.Null((await TenantAsync(client, Get("/tenant", tenantHeader: TenantB.ToString()))).Tenant);
+            Assert.Null((await TenantAsync(client, Get("/tenant", user: "u", tenants: $"{TenantA},{TenantB}", tenantHeader: TenantB.ToString()))).Tenant);
         }
     }
 }
