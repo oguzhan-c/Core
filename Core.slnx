@@ -14,6 +14,7 @@
     <Project Path="src/Can.Core.BackgroundJobs/Can.Core.BackgroundJobs.csproj" />
     <Project Path="src/Can.Core.BackgroundJobs.Hangfire/Can.Core.BackgroundJobs.Hangfire.csproj" />
     <Project Path="src/Can.Core.Caching.Redis/Can.Core.Caching.Redis.csproj" />
+    <Project Path="src/Can.Core.EventBus/Can.Core.EventBus.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
     <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
     <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
@@ -32,6 +33,7 @@
     <Project Path="tests/Can.Core.BackgroundJobs.Tests/Can.Core.BackgroundJobs.Tests.csproj" />
     <Project Path="tests/Can.Core.BackgroundJobs.Hangfire.Tests/Can.Core.BackgroundJobs.Hangfire.Tests.csproj" />
     <Project Path="tests/Can.Core.Caching.Redis.Tests/Can.Core.Caching.Redis.Tests.csproj" />
+    <Project Path="tests/Can.Core.EventBus.Tests/Can.Core.EventBus.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
     <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />

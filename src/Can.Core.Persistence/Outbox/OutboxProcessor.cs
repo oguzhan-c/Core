@@ -1,4 +1,6 @@
 using Can.Core.BackgroundJobs;
+using Can.Core.Domain.Events;
+using Can.Core.EventBus;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Microsoft.EntityFrameworkCore;
@@ -150,7 +152,7 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
 
     private async Task DispatchAsync(OutboxMessage message, TenantInfo? databaseTenant, CancellationToken cancellationToken)
     {
-        object integrationEvent = message.Deserialize();
+        IIntegrationEvent integrationEvent = message.Deserialize();
 
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IServiceProvider services = scope.ServiceProvider;
@@ -174,7 +176,11 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
             }
         }
 
-        await services.GetRequiredService<IPublisher>().Publish(integrationEvent, cancellationToken).ConfigureAwait(false);
+        // Event bus kayıtlıysa (AddCanEventBus) taşıyıcıya gider; değilse bu süreçteki handler'lara yayınlanır.
+        if (services.GetService<IEventBus>() is { } eventBus)
+            await eventBus.PublishAsync(integrationEvent, cancellationToken).ConfigureAwait(false);
+        else
+            await services.GetRequiredService<IPublisher>().Publish(integrationEvent, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task DeleteOldMessagesAsync(DbSet<OutboxMessage> messages, CancellationToken cancellationToken)
