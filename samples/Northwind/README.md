@@ -24,6 +24,7 @@ o zaman her şey tek adresten (<http://localhost:5180>) çalışır. `dotnet pub
 | Adres | |
 |---|---|
 | `/` | Mağaza: katalog, sepet, kayıt + e-posta doğrulama, siparişlerim |
+| `/account/security` | Hesap güvenliği: iki adımlı doğrulama (authenticator / e-posta), passkey'ler |
 | `/admin` | Yönetim paneli (Admin/Sales/Warehouse) |
 | `/dev/mailbox` | Geliştirme posta kutusu: doğrulama kodları ve bildirimler |
 | `/swagger`, `/scalar` | API belgesi (yalnızca Development) |
@@ -119,11 +120,34 @@ dotnet ef migrations add Initial \
 Bundan sonra uygulama açılışta migration'ları uygular (`Database:InitializeOnStartup`). Migration'lardan önce
 oluşturulmuş bir geliştirme veritabanını silip (`docker compose down -v`) yeniden başlat.
 
+## İki adımlı doğrulama ve passkey
+
+Giriş yaptıktan sonra kullanıcı menüsü → **Hesap güvenliği** (`/account/security`):
+
+| | Nasıl çalışır |
+|---|---|
+| Authenticator uygulaması (TOTP) | QR kodu okutulur, ilk kod girilince açılır. Gizli anahtar `OtpAuthenticator`'da; aynı kod iki kez kabul edilmez |
+| E-posta ile kod | Her girişte e-postaya 6 haneli kod gider (`EmailAuthenticator`, 10 dk, 5 deneme) |
+| Passkey | Touch ID / Face ID / Windows Hello / telefon. Sunucuda yalnızca açık anahtar (`UserPasskey`); şifresiz giriş |
+
+İki adımlı doğrulama açıkken `POST /api/auth/login` oturum açmaz, `{ "twoFactor": { "method": "Otp" } }` döner.
+Bekleyen giriş (kullanıcı, mağaza, security stamp) Data Protection ile **şifrelenip** 10 dakikalık HttpOnly cookie'ye
+yazılır; istemci kodu `POST /api/auth/login/two-factor` ile gönderir. Hatalı kodlar hesabı kilitleme sayacına eklenir;
+şifre ya da 2FA ayarı o arada değişirse bekleyen giriş geçersiz olur.
+
+Passkey'de her akış iki adımdır (`/options` → tamamla). Challenge sunucu önbelleğinde 5 dakika tutulur, tarayıcıya
+yalnızca rastgele anahtarı HttpOnly cookie ile verilir ve bir kez kullanılabilir. Passkey ile girişte kullanıcı adı
+sorulmaz; passkey'in sahibi seçilen mağazada değilse giriş reddedilir. Ayarlar `Security:Passkey` (`ServerDomain`,
+`Origins`); bölüm yoksa passkey endpoint'leri açılmaz. Tarayıcılar http'yi yalnızca `localhost` için kabul eder.
+
 ## Üretim için
 
 - `Security:Jwt:SigningKey` (en az 32 karakter) ve `ConnectionStrings:Northwind`'i ortam değişkeni ya da gizli
   ayarlardan ver; `Seed:DemoUserPassword`'u verme.
 - `Mail:Smtp` ayarlarını doldur (`Mail:PickupDirectory` boş olmalı).
+- `Security:Passkey:ServerDomain` sitenin alan adı, `Origins` https adresleri olmalı. Data Protection anahtarlarını
+  kalıcı ve paylaşılan bir yerde sakla (birden fazla sunucuda bekleyen 2FA girişleri çözülebilsin); passkey
+  challenge'ları için `IMemoryCache` yerine dağıtık önbellek kullan.
 - Birden fazla örnekle çalışırken `Database:InitializeOnStartup=false` yapıp migration'ları dağıtımda uygula.
 
 Northwind verisi Microsoft'a aittir (Ms-PL); bkz. `src/Northwind.Infrastructure/Seeding/NOTICE.md`.
