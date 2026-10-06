@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { LogInIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeftIcon, FingerprintIcon, LogInIcon, ShieldCheckIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field } from "@/components/common/field";
@@ -8,9 +9,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ApiError, errorMessage } from "@/lib/api";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import { staffRoles, useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
+import type { AuthFeatures, TwoFactorPrompt, UserProfile } from "@/lib/types";
+import { passkeyErrorMessage, passkeysSupported } from "@/lib/webauthn";
 import { AuthCard } from "@/pages/auth/auth-card";
 import { TenantSelect } from "@/pages/auth/tenant-select";
 
@@ -22,7 +25,7 @@ const demoAccounts = [
 ];
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginWithPasskey } = useAuth();
   const { tenant: storeTenant, setTenant } = useStore();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -32,17 +35,34 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [twoFactor, setTwoFactor] = useState<TwoFactorPrompt | null>(null);
+
+  const features = useQuery({
+    queryKey: ["auth", "features"],
+    queryFn: () => api<AuthFeatures>("/api/auth/features"),
+    staleTime: Infinity,
+  });
+  const canUsePasskey = !!features.data?.passkeys && passkeysSupported();
+
+  function finish(user: UserProfile) {
+    setTenant(tenant);
+    toast.success(`Hoş geldin ${user.firstName}!`);
+    const returnUrl = params.get("returnUrl");
+    navigate(returnUrl ?? (user.roles.some((r) => staffRoles.includes(r)) ? "/admin" : "/"));
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setPending(true);
     try {
-      const user = await login({ tenant, email, password });
-      setTenant(tenant);
-      toast.success(`Hoş geldin ${user.firstName}!`);
-      const returnUrl = params.get("returnUrl");
-      navigate(returnUrl ?? (user.roles.some((r) => staffRoles.includes(r)) ? "/admin" : "/"));
+      const outcome = await login({ tenant, email, password });
+      if (outcome.twoFactor) {
+        setPassword("");
+        setTwoFactor(outcome.twoFactor);
+        return;
+      }
+      finish(outcome.user);
     } catch (err) {
       if (err instanceof ApiError && err.code === "email_not_confirmed") {
         navigate(`/verify-email?tenant=${encodeURIComponent(tenant)}&email=${encodeURIComponent(email)}`);
@@ -53,6 +73,31 @@ export function LoginPage() {
     } finally {
       setPending(false);
     }
+  }
+
+  async function signInWithPasskey() {
+    setError(null);
+    setPending(true);
+    try {
+      finish(await loginWithPasskey(tenant));
+    } catch (err) {
+      setError(passkeyErrorMessage(err) ?? errorMessage(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (twoFactor) {
+    return (
+      <TwoFactorStep
+        prompt={twoFactor}
+        onSuccess={finish}
+        onCancel={() => {
+          setTwoFactor(null);
+          setError(null);
+        }}
+      />
+    );
   }
 
   return (
@@ -110,12 +155,126 @@ export function LoginPage() {
         <Button type="submit" disabled={pending}>
           <LogInIcon /> Giriş yap
         </Button>
+        {canUsePasskey && (
+          <>
+            <div className="text-muted-foreground flex items-center gap-3 text-xs">
+              <span className="bg-border h-px flex-1" />
+              veya
+              <span className="bg-border h-px flex-1" />
+            </div>
+            <Button type="button" variant="outline" disabled={pending} onClick={signInWithPasskey}>
+              <FingerprintIcon /> Passkey ile giriş yap
+            </Button>
+          </>
+        )}
         <p className="text-muted-foreground text-center text-sm">
           Hesabın yok mu?{" "}
           <Link to="/register" className="text-primary hover:underline">
             Kayıt ol
           </Link>
         </p>
+      </form>
+    </AuthCard>
+  );
+}
+
+/** İkinci adım: authenticator uygulamasındaki ya da e-postaya gelen 6 haneli kod. */
+function TwoFactorStep({ prompt, onSuccess, onCancel }: { prompt: TwoFactorPrompt; onSuccess: (user: UserProfile) => void; onCancel: () => void }) {
+  const { completeTwoFactor, resendTwoFactorCode } = useAuth();
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const byEmail = prompt.method === "Email";
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setPending(true);
+    try {
+      onSuccess(await completeTwoFactor(code));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // Bekleyen giriş geçersiz (süre doldu ya da hesap kilitlendi): baştan giriş.
+        toast.error(errorMessage(err));
+        onCancel();
+        return;
+      }
+      setCode("");
+      setError(errorMessage(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function resend() {
+    try {
+      await resendTwoFactorCode();
+      toast.success("Yeni kod gönderildi.");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }
+
+  return (
+    <AuthCard
+      title="İki adımlı doğrulama"
+      description={
+        byEmail ? (
+          <>
+            <strong>{prompt.destination ?? "E-posta adresine"}</strong> gönderilen 6 haneli kodu gir.
+          </>
+        ) : (
+          "Authenticator uygulamandaki (Google Authenticator, Microsoft Authenticator, 1Password ...) 6 haneli kodu gir."
+        )
+      }
+      footer={
+        import.meta.env.DEV &&
+        byEmail && (
+          <Alert>
+            <AlertDescription>
+              Geliştirmede e-postalar klasöre yazılıyorsa kodu{" "}
+              <Link to="/dev/mailbox" target="_blank" className="text-primary underline">
+                geliştirme posta kutusunda
+              </Link>{" "}
+              bulabilirsin.
+            </AlertDescription>
+          </Alert>
+        )
+      }
+    >
+      <form onSubmit={submit} className="grid gap-4">
+        <Field label="Doğrulama kodu" htmlFor="code">
+          <Input
+            id="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={6}
+            required
+            className="text-center font-mono text-2xl tracking-[0.5em]"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          />
+        </Field>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <Button type="submit" disabled={pending || code.length !== 6}>
+          <ShieldCheckIcon /> Doğrula ve giriş yap
+        </Button>
+        <div className="flex justify-between">
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            <ArrowLeftIcon /> Geri
+          </Button>
+          {byEmail && (
+            <Button type="button" variant="link" size="sm" onClick={resend}>
+              Kodu tekrar gönder
+            </Button>
+          )}
+        </div>
       </form>
     </AuthCard>
   );

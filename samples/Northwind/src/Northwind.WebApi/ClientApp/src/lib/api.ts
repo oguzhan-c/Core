@@ -40,7 +40,18 @@ export interface RequestOptions {
 }
 
 // Bu adreslerde 401 "oturum yok" demektir; yenileme denenmez.
-const noRefresh = ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout", "/api/auth/register", "/api/auth/verify-email", "/api/auth/resend-code"];
+const noRefresh = [
+  "/api/auth/login",
+  "/api/auth/login/two-factor",
+  "/api/auth/login/two-factor/resend",
+  "/api/auth/passkey/options",
+  "/api/auth/passkey/login",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+  "/api/auth/register",
+  "/api/auth/verify-email",
+  "/api/auth/resend-code",
+];
 
 let refreshing: Promise<boolean> | null = null;
 

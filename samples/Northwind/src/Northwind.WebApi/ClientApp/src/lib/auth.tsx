@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useMemo, type ReactNode } from 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "@/lib/api";
-import type { Role, UserProfile } from "@/lib/types";
+import type { LoginResponse, Role, TwoFactorPrompt, UserProfile } from "@/lib/types";
+import { getPasskey, type RequestOptionsJson } from "@/lib/webauthn";
 
 export const staffRoles: Role[] = ["Admin", "Sales", "Warehouse"];
 
@@ -12,13 +13,21 @@ export interface LoginRequest {
   password: string;
 }
 
+/** Şifre ile giriş sonucu: ya oturum açıldı ya da ikinci adım (kod) isteniyor. */
+export type LoginOutcome = { user: UserProfile; twoFactor?: undefined } | { user?: undefined; twoFactor: TwoFactorPrompt };
+
 interface AuthContextValue {
   user: UserProfile | null;
   isLoading: boolean;
   isStaff: boolean;
   isCustomer: boolean;
   hasRole: (...roles: Role[]) => boolean;
-  login: (request: LoginRequest) => Promise<UserProfile>;
+  login: (request: LoginRequest) => Promise<LoginOutcome>;
+  /** İki adımlı girişin ikinci adımı (bekleyen giriş sunucunun HttpOnly cookie'sinde). */
+  completeTwoFactor: (code: string) => Promise<UserProfile>;
+  resendTwoFactorCode: () => Promise<void>;
+  /** Şifresiz giriş: cihazdaki passkey ile. */
+  loginWithPasskey: (tenant: string) => Promise<UserProfile>;
   logout: () => Promise<void>;
   /** Doğrulama gibi akışlar giriş yapmış kullanıcıyı döndürdüğünde. */
   setUser: (user: UserProfile | null) => void;
@@ -51,15 +60,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setUser = useCallback((user: UserProfile | null) => queryClient.setQueryData(meQueryKey, user), [queryClient]);
 
-  const login = useCallback(
-    async (request: LoginRequest) => {
-      const user = await api<UserProfile>("/api/auth/login", { method: "POST", body: request });
-      // Başka kullanıcının önbelleğe alınmış verileri görünmesin.
+  // Yeni oturum: başka kullanıcının önbelleğe alınmış verileri görünmesin.
+  const signedIn = useCallback(
+    (user: UserProfile) => {
       queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "auth" && q.queryKey[0] !== "store" });
       setUser(user);
       return user;
     },
     [queryClient, setUser]
+  );
+
+  const login = useCallback(
+    async (request: LoginRequest): Promise<LoginOutcome> => {
+      const response = await api<LoginResponse>("/api/auth/login", { method: "POST", body: request });
+      if (response.twoFactor) return { twoFactor: response.twoFactor };
+      return { user: signedIn(response.user!) };
+    },
+    [signedIn]
+  );
+
+  const completeTwoFactor = useCallback(
+    async (code: string) => signedIn(await api<UserProfile>("/api/auth/login/two-factor", { method: "POST", body: { code } })),
+    [signedIn]
+  );
+
+  const resendTwoFactorCode = useCallback(async () => {
+    await api("/api/auth/login/two-factor/resend", { method: "POST" });
+  }, []);
+
+  const loginWithPasskey = useCallback(
+    async (tenant: string) => {
+      const options = await api<RequestOptionsJson>("/api/auth/passkey/options", { method: "POST" });
+      const credential = await getPasskey(options);
+      return signedIn(await api<UserProfile>("/api/auth/passkey/login", { method: "POST", body: { tenant, credential } }));
+    },
+    [signedIn]
   );
 
   const logout = useCallback(async () => {
@@ -81,10 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isCustomer: hasRole("Customer"),
       hasRole,
       login,
+      completeTwoFactor,
+      resendTwoFactorCode,
+      loginWithPasskey,
       logout,
       setUser,
     };
-  }, [me.data, me.isLoading, login, logout, setUser]);
+  }, [me.data, me.isLoading, login, completeTwoFactor, resendTwoFactorCode, loginWithPasskey, logout, setUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
