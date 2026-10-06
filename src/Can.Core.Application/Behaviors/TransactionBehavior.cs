@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 
@@ -18,9 +19,32 @@ public sealed class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior
         _unitOfWork = unitOfWork;
     }
 
-    public Task<TResponse> Handle(
+    public async Task<TResponse> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
-        CancellationToken cancellationToken) =>
-        _unitOfWork.ExecuteInTransactionAsync(_ => next(), cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _unitOfWork
+                .ExecuteInTransactionAsync(
+                    async _ =>
+                    {
+                        TResponse response = await next().ConfigureAwait(false);
+
+                        // Başarısız Result: hiçbir şey kaydedilmez, transaction geri alınır.
+                        if (response is IResultBase { IsSuccess: false })
+                            throw new FailedResultSignal(response);
+
+                        return response;
+                    },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+        catch (FailedResultSignal signal)
+        {
+            return (TResponse)signal.Response!;
+        }
+    }
 }

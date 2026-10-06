@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using FluentValidation;
 using FluentValidation.Results;
@@ -38,6 +39,14 @@ public sealed class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<
 
         if (failures.Count > 0)
         {
+            // Result döndüren isteklerde hata exception yerine sonuç olarak döner.
+            IEnumerable<Error> resultErrors = failures
+                .DistinctBy(f => (f.PropertyName, f.ErrorMessage))
+                .Select(f => Error.Validation("validation", f.ErrorMessage, f.PropertyName));
+
+            if (ResultTypes.TryCreateFailure(resultErrors, out TResponse failure))
+                return failure;
+
             Dictionary<string, string[]> errors = failures
                 .GroupBy(f => f.PropertyName)
                 .ToDictionary(g => g.Key, g => g.Select(f => f.ErrorMessage).Distinct().ToArray());
