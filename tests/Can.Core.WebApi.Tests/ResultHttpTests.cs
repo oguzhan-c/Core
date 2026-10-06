@@ -113,3 +113,64 @@ public class ResultHttpTests
         }
     }
 }
+
+public class LocalizedProblemTests
+{
+    private static async Task<(WebApplication App, HttpClient Client, string Directory)> CreateAsync()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "can-loc-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(Path.Combine(directory, "en.json"), """{ "order": { "shipped": "Order {id} is already shipped." } }""");
+
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddCanWebApi();
+        Can.Core.Localization.LocalizationServiceCollectionExtensions.AddCanLocalization(builder.Services, o => o.ResourcesPath = directory);
+
+        WebApplication app = builder.Build();
+        app.UseCanRequestLocalization();
+        app.UseCanExceptionHandler();
+        app.MapGet("/failure", () => Result.Fail<int>(Error.Failure("order.shipped", "Kargodaki sipariş iptal edilemez.").WithMetadata("id", 42)).ToHttpResult());
+        app.MapGet("/forbidden", () => Result.Fail<int>(Error.Forbidden()).ToHttpResult());
+
+        await app.StartAsync();
+        return (app, app.GetTestClient(), directory);
+    }
+
+    private static async Task<JsonElement> GetAsync(HttpClient client, string path, string? language)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (language is not null)
+            request.Headers.AcceptLanguage.ParseAdd(language);
+
+        HttpResponseMessage response = await client.SendAsync(request);
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    [Fact]
+    public async Task Problem_is_translated_by_accept_language_and_error_code()
+    {
+        (WebApplication app, HttpClient client, string directory) = await CreateAsync();
+        try
+        {
+            await using (app)
+            {
+                JsonElement en = await GetAsync(client, "/failure", "en-US,en;q=0.9");
+                Assert.Equal("Business rule violation", en.GetProperty("title").GetString());
+                Assert.Equal("Order 42 is already shipped.", en.GetProperty("detail").GetString());
+                Assert.Equal("order.shipped", en.GetProperty("code").GetString());
+
+                JsonElement tr = await GetAsync(client, "/failure", null);
+                Assert.Equal("İş kuralı ihlali", tr.GetProperty("title").GetString());
+                Assert.Equal("Kargodaki sipariş iptal edilemez.", tr.GetProperty("detail").GetString());
+
+                JsonElement forbidden = await GetAsync(client, "/forbidden?culture=en", null);
+                Assert.Equal("You are not allowed to do this.", forbidden.GetProperty("detail").GetString());
+            }
+        }
+        finally
+        {
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+}

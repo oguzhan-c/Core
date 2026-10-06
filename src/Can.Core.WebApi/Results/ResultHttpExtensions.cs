@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Can.Core.Domain.Results;
+using Can.Core.WebApi.Localization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -62,7 +63,14 @@ public static class ResultHttpExtensions
     }
 
     /// <summary>Hataları ProblemDetails yanıtına çevirir.</summary>
-    public static IResult ToProblem(this ImmutableArray<Error> errors) => TypedResults.Problem(CreateProblemDetails(errors));
+    /// <remarks><c>AddCanLocalization</c> çağrıldıysa başlık ve açıklamalar isteğin diline çevrilir (hata kodu → metin).</remarks>
+    public static IResult ToProblem(this ImmutableArray<Error> errors)
+    {
+        if (errors.IsDefaultOrEmpty)
+            errors = [Error.Unexpected()];
+
+        return new ErrorProblemResult(errors, CreateProblemDetails(errors));
+    }
 
     /// <summary>Hatalardan ProblemDetails üretir (kendi yanıtını yazan kod için).</summary>
     public static ProblemDetails CreateProblemDetails(ImmutableArray<Error> errors)

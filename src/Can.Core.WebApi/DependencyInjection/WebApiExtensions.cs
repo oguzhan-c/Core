@@ -1,7 +1,10 @@
+using System.Globalization;
 using Can.Core.Application;
+using Can.Core.Localization;
 using Can.Core.MultiTenancy;
 using Can.Core.WebApi.CurrentUser;
 using Can.Core.WebApi.ExceptionHandling;
+using Can.Core.WebApi.Localization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -42,8 +45,11 @@ public static class WebApiExtensions
         if (!services.Any(d => d.ServiceType == typeof(MultiTenancyOptions)))
             services.AddCanMultiTenancy();
 
-        services.AddProblemDetails();
+        services.AddProblemDetails(o => o.CustomizeProblemDetails = ProblemDetailsLocalizer.Customize);
         services.AddExceptionHandler<CanExceptionHandler>();
+
+        // Problem başlıkları ve ortak hata kodlarının tr/en metinleri (AddCanLocalization çağrılırsa kullanılır).
+        services.AddCanLocalizationResources(typeof(WebApiExtensions).Assembly);
 
         return services;
     }
@@ -53,6 +59,29 @@ public static class WebApiExtensions
     {
         ArgumentNullException.ThrowIfNull(app);
         return app.UseExceptionHandler();
+    }
+
+    /// <summary>
+    /// İsteğin dilini belirler (<c>AddCanLocalization</c> ayarlarındaki kültürlerden): sırasıyla <c>?culture=en</c>,
+    /// <c>.AspNetCore.Culture</c> cookie'si, <c>Accept-Language</c>; hiçbiri yoksa varsayılan kültür. Çeviri yapan her
+    /// şeyden (endpoint'ler, exception handler yanıtı) önce ekle.
+    /// </summary>
+    public static IApplicationBuilder UseCanRequestLocalization(this IApplicationBuilder app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        CanLocalizationOptions options =
+            app.ApplicationServices.GetService<CanLocalizationOptions>() ?? new CanLocalizationOptions();
+
+        CultureInfo[] cultures = options.SupportedCultures.Select(CultureInfo.GetCultureInfo).ToArray();
+        return app.UseRequestLocalization(o =>
+        {
+            o.DefaultRequestCulture = new Microsoft.AspNetCore.Localization.RequestCulture(options.DefaultCulture);
+            o.SupportedCultures = cultures;
+            o.SupportedUICultures = cultures;
+            o.FallBackToParentCultures = true;
+            o.FallBackToParentUICultures = true;
+        });
     }
 
     /// <summary>

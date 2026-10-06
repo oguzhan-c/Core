@@ -17,6 +17,7 @@
     <PackageVersion Include="Fido2" Version="4.2.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Localization.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
     <!-- Hangfire.Core 11.0.1 çekiyor (GHSA-5crp-9r3c-p9vr); güvenli sürüme sabitlenir. -->
