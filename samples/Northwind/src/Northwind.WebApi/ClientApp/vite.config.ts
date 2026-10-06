@@ -30,7 +30,7 @@ export default defineConfig({
         // Kütüphaneler ayrı dosyalarda: uygulama değişince tarayıcı önbelleği korunur.
         manualChunks: {
           react: ["react", "react-dom", "react-router"],
-          query: ["@tanstack/react-query"],
+          state: ["@reduxjs/toolkit", "react-redux"],
           ui: ["radix-ui", "lucide-react", "sonner"],
           charts: ["recharts"],
         },
