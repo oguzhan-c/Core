@@ -15,7 +15,11 @@ IConfiguration config = builder.Configuration;
 
 // ---------------------------------------------------------------- servisler
 
-builder.AddCanSerilog(o => o.ApplicationName = "Northwind");
+builder.AddCanSerilog(o =>
+{
+    o.ApplicationName = "Northwind";
+    o.FilePath = builder.Configuration["Logs:FilePath"];
+});
 
 builder.Services.AddNorthwindInfrastructure(config);
 builder.Services.AddNorthwindApplication(o => config.GetSection("Notifications").Bind(o));

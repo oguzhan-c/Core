@@ -13,6 +13,7 @@ riderModule.iml
 
 # Örnek uygulamanın geliştirmede yazdığı e-postalar
 samples/**/mails/
+samples/**/logs/
 
 # Örnek uygulamanın arayüz derlemesi
 samples/**/ClientApp/node_modules/
