@@ -15,6 +15,7 @@
     <Project Path="src/Can.Core.Caching.Redis/Can.Core.Caching.Redis.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
     <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
+    <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
     <Project Path="src/Can.Core.Logging.Serilog/Can.Core.Logging.Serilog.csproj" />
     <Project Path="src/Can.Core.WebApi/Can.Core.WebApi.csproj" />
   </Folder>

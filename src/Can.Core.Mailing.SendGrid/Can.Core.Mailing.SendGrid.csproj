@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Mailing.SendGrid</RootNamespace>
+    <Description>IEmailSender'ın SendGrid (Web API v3) implementasyonu. SendGrid SDK'sı yerine doğrudan HttpClient kullanır.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Mailing\Can.Core.Mailing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Mailing.Tests" />
+  </ItemGroup>
+
+</Project>
