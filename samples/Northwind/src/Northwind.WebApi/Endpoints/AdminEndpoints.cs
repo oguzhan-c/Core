@@ -1,4 +1,5 @@
 using Can.Core.Mediator;
+using Can.Core.WebApi;
 using MimeKit;
 using Northwind.Application.Features.Admin;
 
@@ -17,25 +18,23 @@ internal static class AdminEndpoints
     {
         RouteGroupBuilder admin = app.MapGroup("/admin").WithTags("Admin").RequireAuthorization();
 
-        admin.MapGet("/dashboard", (ISender sender, CancellationToken ct) => sender.Send(new GetDashboardQuery(), ct));
+        admin.MapGet("/dashboard", (ISender sender, CancellationToken ct) => sender.Send(new GetDashboardQuery(), ct).ToHttpResult());
 
         admin.MapGet("/outbox", ([AsParameters] OutboxParameters p, ISender sender, CancellationToken ct) =>
-                sender.Send(new GetOutboxMessagesQuery(new(p.Index, p.Size), p.Status), ct))
+                sender.Send(new GetOutboxMessagesQuery(new(p.Index, p.Size), p.Status), ct).ToHttpResult())
             .WithSummary("Kalıcı event'lerin (outbox) yayın durumu.");
 
         admin.MapPost("/outbox/{id:guid}/retry", async (Guid id, ISender sender, CancellationToken ct) =>
         {
-            await sender.Send(new RetryOutboxMessageCommand(id), ct);
-            return TypedResults.NoContent();
+            return await sender.Send(new RetryOutboxMessageCommand(id), ct).ToHttpResult();
         });
 
         admin.MapGet("/users", ([AsParameters] UserParameters p, ISender sender, CancellationToken ct) =>
-            sender.Send(new GetUsersQuery(new(p.Index, p.Size), p.Search, p.Role), ct));
+            sender.Send(new GetUsersQuery(new(p.Index, p.Size), p.Search, p.Role), ct).ToHttpResult());
 
         admin.MapPost("/jobs/reorder-report", async (ISender sender, CancellationToken ct) =>
             {
-                await sender.Send(new RunReorderReportCommand(), ct);
-                return TypedResults.Accepted((string?)null);
+                return await sender.Send(new RunReorderReportCommand(), ct).ToHttpResult(_ => TypedResults.Accepted((string?)null));
             })
             .WithSummary("Yeniden sipariş raporunu arka planda hemen çalıştırır.");
     }
