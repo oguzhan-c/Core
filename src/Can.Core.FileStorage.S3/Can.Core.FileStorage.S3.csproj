@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.FileStorage.S3</RootNamespace>
+    <Description>S3 uyumlu depolama (AWS S3, MinIO, Cloudflare R2, Wasabi ...) için IFileStorage. AWS SDK'sı yerine HttpClient + kendi Signature V4 imzalaması.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.FileStorage\Can.Core.FileStorage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.FileStorage.Tests" />
+  </ItemGroup>
+
+</Project>
