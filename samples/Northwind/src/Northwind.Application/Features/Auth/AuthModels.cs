@@ -2,6 +2,7 @@ using Can.Core.Domain.Results;
 using Can.Core.MultiTenancy;
 using Can.Core.Security.Entities;
 using Can.Core.Security.Tokens;
+using Microsoft.EntityFrameworkCore;
 using Northwind.Domain.Identity;
 
 namespace Northwind.Application.Features.Auth;
@@ -15,14 +16,37 @@ public sealed record UserProfileDto(
     Guid TenantId,
     string? Tenant,
     string? TenantName,
-    IReadOnlyList<string> Roles)
+    IReadOnlyList<string> Roles,
+    IReadOnlyList<string> Permissions)
 {
+    /// <remarks>Roller ve yetkiler yüklenmiş olmalı (<see cref="AppUserQueryExtensions.WithRolesAndPermissions"/>).</remarks>
     public static UserProfileDto From(AppUser user, TenantInfo? tenant) =>
-        new(user.Id, user.Email, user.FirstName, user.LastName, user.EmailConfirmed, user.TenantId, tenant?.Identifier, tenant?.Name, RolesOf(user));
+        new(
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName,
+            user.EmailConfirmed,
+            user.TenantId,
+            tenant?.Identifier,
+            tenant?.Name,
+            RolesOf(user),
+            user.GetPermissionNames()
+        );
 
     /// <remarks><c>UserRoles.Role</c> yüklenmiş olmalı.</remarks>
     public static string[] RolesOf(AppUser user) =>
         user.UserRoles.Where(r => r.Role is not null).Select(r => r.Role!.Name).Order(StringComparer.Ordinal).ToArray();
+}
+
+public static class AppUserQueryExtensions
+{
+    /// <summary>Token ve profil için gereken roller + yetkiler (rollerin ve doğrudan verilenlerin).</summary>
+    public static IQueryable<AppUser> WithRolesAndPermissions(this IQueryable<AppUser> query) =>
+        query
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role!).ThenInclude(r => r.OperationClaims).ThenInclude(rc => rc.OperationClaim)
+            .Include(u => u.OperationClaims).ThenInclude(uc => uc.OperationClaim)
+            .AsSplitQuery();
 }
 
 /// <summary>

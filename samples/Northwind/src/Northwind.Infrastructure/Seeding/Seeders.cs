@@ -28,6 +28,9 @@ internal sealed class ReferenceDataSeeder : IDataSeeder
         foreach (string role in Roles.All.Except(existingRoles, StringComparer.Ordinal))
             _db.Roles.Add(new Role<Guid>(Guid.CreateVersion7(), role));
 
+        await _db.SaveChangesAsync(cancellationToken);
+        await SeedPermissionsAsync(cancellationToken);
+
         if (!await _db.Regions.AnyAsync(cancellationToken))
         {
             NorthwindSqlReader sql = NorthwindSqlReader.Load();
@@ -40,6 +43,28 @@ internal sealed class ReferenceDataSeeder : IDataSeeder
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Yetkileri ekler ve rollere <see cref="Permissions.RoleGrants"/>'teki yetkileri verir (eksik olanları).</summary>
+    private async Task SeedPermissionsAsync(CancellationToken cancellationToken)
+    {
+        Dictionary<string, OperationClaim<Guid>> claims = await _db.OperationClaims.ToDictionaryAsync(c => c.Name, StringComparer.Ordinal, cancellationToken);
+        foreach ((string name, string description) in Permissions.All.Where(p => !claims.ContainsKey(p.Name)))
+        {
+            var claim = new OperationClaim<Guid>(Guid.CreateVersion7(), name, description);
+            _db.OperationClaims.Add(claim);
+            claims[name] = claim;
+        }
+
+        List<Role<Guid>> roles = await _db.Roles.Include(r => r.OperationClaims).ToListAsync(cancellationToken);
+        foreach (Role<Guid> role in roles)
+        {
+            if (Permissions.RoleGrants.TryGetValue(role.Name, out string[]? granted))
+            {
+                foreach (string name in granted)
+                    role.GrantOperationClaim(claims[name]);
+            }
+        }
     }
 }
 

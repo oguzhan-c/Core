@@ -78,3 +78,30 @@ public static class Roles
     /// <summary>Yönetim panelini kullanabilen roller (Admin her zaman geçer).</summary>
     public static readonly IReadOnlyCollection<string> Staff = [Sales, Warehouse];
 }
+
+/// <summary>
+/// İnce taneli yetkiler (operation claim). Roller bu yetkileri <see cref="RoleGrants"/> ile alır; bir kullanıcıya
+/// rolünden bağımsız da verilebilir. Admin rolü her şeyi geçer.
+/// </summary>
+public static class Permissions
+{
+    public const string ProductsStock = "products.stock";
+    public const string OrdersCreate = "orders.create";
+    public const string OrdersShip = "orders.ship";
+    public const string OrdersCancel = "orders.cancel";
+
+    public static readonly IReadOnlyList<(string Name, string Description)> All =
+    [
+        (ProductsStock, "Ürün stoğu ekleme"),
+        (OrdersCreate, "Sipariş oluşturma"),
+        (OrdersShip, "Siparişi kargoya verme"),
+        (OrdersCancel, "Sipariş iptali"),
+    ];
+
+    /// <summary>Seed'de rollere verilen yetkiler.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> RoleGrants = new Dictionary<string, string[]>
+    {
+        [Roles.Sales] = [OrdersCreate, OrdersCancel],
+        [Roles.Warehouse] = [ProductsStock, OrdersShip],
+    };
+}

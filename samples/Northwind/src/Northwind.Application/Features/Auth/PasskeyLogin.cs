@@ -73,7 +73,7 @@ public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCom
         // Kullanıcı sorgusu tenant filtresinden geçer: passkey başka mağazanın kullanıcısına aitse bulunmaz.
         AppUser? user = await _users.GetByIdAsync(
             passkey.UserId,
-            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            include: q => q.WithRolesAndPermissions(),
             cancellationToken: cancellationToken
         );
         if (user is null)

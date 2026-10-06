@@ -102,6 +102,7 @@ Can.Core'dan kullanılanlar ve starter'daki örnekleri:
 | Dinamik sorgu | `POST /api/{products,customers,orders}/search`; panelde iç içe VE/VEYA gruplu "Filtre laboratuvarı" |
 | Mapper | `ProjectTo<SupplierDto>` adresi düzleştirerek SQL'e çevirir |
 | Arka plan işi | `ReorderReportJob`: her mağaza için günlük rapor; panelden `IBackgroundJobQueue` ile hemen çalıştırılabilir |
+| Yetkiler | Roller + ince taneli yetkiler: `orders.create`, `orders.cancel` (Sales), `orders.ship`, `products.stock` (Warehouse). Kargo/iptal/stok komutları ve panel düğmeleri yetkiye göre |
 | Hangfire | `Hangfire:Enabled=true` ise işler PostgreSQL'de (`hangfire` şeması) kalıcı kuyrukta; rapor cron ile (`Hangfire:ReorderReportCron`, UTC) her mağaza için ayrı iş olarak çalışır. Kapalıysa bellek içi kuyruk |
 | Önbellek | HybridCache; `Redis:ConnectionString` doluysa (ör. `localhost:6379`) Redis ikinci katman olur |
 | E-posta | `Mail:Provider`: `Pickup` (.eml klasörü), `Smtp` (MailKit) ya da `SendGrid` |

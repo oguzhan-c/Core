@@ -38,7 +38,7 @@ public sealed record ChangeProductPriceCommand(Guid Id, decimal UnitPrice) : IRe
 /// <summary>Depoya gelen ürünü stoğa ekler.</summary>
 public sealed record RestockProductCommand(Guid Id, int Quantity) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
-    public IReadOnlyCollection<string> Roles => [AppRoles.Warehouse];
+    public IReadOnlyCollection<string> Permissions => [Northwind.Domain.Identity.Permissions.ProductsStock];
 }
 
 /// <summary>Ürünü satıştan kaldırır; <see cref="ProductDiscontinued"/> outbox ile yayınlanır.</summary>

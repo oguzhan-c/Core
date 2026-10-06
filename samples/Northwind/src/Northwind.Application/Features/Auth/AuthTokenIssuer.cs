@@ -26,7 +26,7 @@ public sealed class AuthTokenIssuer
         _timeProvider = timeProvider;
     }
 
-    /// <remarks><paramref name="user"/>'ın rolleri (<c>UserRoles.Role</c>) yüklenmiş ve tenant bağlamı ayarlanmış olmalı.</remarks>
+    /// <remarks><paramref name="user"/>'ın rolleri ve yetkileri (<c>WithRolesAndPermissions</c>) yüklenmiş ve tenant bağlamı ayarlanmış olmalı.</remarks>
     public async Task<AuthResult> IssueAsync(AppUser user, string? ipAddress, CancellationToken cancellationToken)
     {
         UserProfileDto profile = UserProfileDto.From(user, _tenantContext.Tenant);
@@ -37,7 +37,8 @@ public sealed class AuthTokenIssuer
                 UserName: $"{user.FirstName} {user.LastName}",
                 Email: user.Email,
                 Roles: profile.Roles,
-                TenantId: user.TenantId.ToString()
+                TenantId: user.TenantId.ToString(),
+                Permissions: profile.Permissions
             )
         );
 

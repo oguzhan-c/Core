@@ -123,7 +123,7 @@ internal static class TwoFactorChallenges
 
         AppUser? user = await users.GetByIdAsync(
             challenge.UserId,
-            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            include: q => q.WithRolesAndPermissions(),
             cancellationToken: cancellationToken
         );
 
