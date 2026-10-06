@@ -9,6 +9,7 @@ internal static class EndpointRegistration
 
         api.MapGet("/health", () => TypedResults.Ok(new { status = "ok" })).ExcludeFromDescription();
         api.MapAuthEndpoints();
+        api.MapAccountEndpoints();
         api.MapStoreEndpoints();
         api.MapCatalogEndpoints();
         api.MapCustomerEndpoints();

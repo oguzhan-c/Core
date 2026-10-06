@@ -3,11 +3,13 @@ using Can.Core.BackgroundJobs;
 using Can.Core.Logging.Serilog;
 using Can.Core.Mailing.MailKit;
 using Can.Core.Security.DependencyInjection;
+using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
 using Northwind.Application;
 using Northwind.Application.Features.Products;
 using Northwind.Infrastructure;
 using Northwind.WebApi.Endpoints;
+using Northwind.WebApi.Security;
 using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -28,10 +30,23 @@ builder.Services.AddCanSecurity(o =>
 {
     config.GetSection("Security:Jwt").Bind(o.Jwt);
     o.VerificationCodeKey = config["Security:VerificationCodeKey"]; // e-posta doğrulama kodları
+
+    // Passkey (WebAuthn): bölüm yoksa passkey endpoint'leri hiç açılmaz.
+    if (config.GetSection("Security:Passkey").Exists())
+    {
+        o.Passkey = new PasskeyOptions();
+        config.GetSection("Security:Passkey").Bind(o.Passkey);
+    }
 });
 builder.Services.AddCanWebApi();
 builder.Services.AddCanJwtAuthentication(o => config.GetSection("Security:Cookies").Bind(o));
 builder.Services.AddAuthorization();
+
+// İki adımlı girişte bekleyen giriş şifreli cookie'de; passkey challenge'ları sunucu önbelleğinde.
+builder.Services.AddDataProtection();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<TwoFactorCookie>();
+builder.Services.AddSingleton<PasskeyCeremonyStore>();
 
 // Geliştirmede e-postalar klasöre .eml olarak yazılır; diğer ortamlarda SMTP.
 if (config["Mail:PickupDirectory"] is { Length: > 0 } pickupDirectory)
