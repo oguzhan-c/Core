@@ -53,6 +53,8 @@ WebApplication app = builder.Build();
 if (config.GetValue("Database:InitializeOnStartup", true))
     await app.Services.InitializeNorthwindDatabaseAsync();
 
+// İstek özeti en dışta: hata işleyicinin verdiği gerçek durum kodunu (401, 404 ...) loglar.
+app.UseCanRequestLogging();
 app.UseCanExceptionHandler();
 
 // React uygulaması (ClientApp → npm run build → wwwroot).
@@ -65,7 +67,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseCanTenantResolution();
-app.UseCanRequestLogging();
+app.UseCanLogEnrichment(); // loglara UserId / TenantId
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
