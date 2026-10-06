@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Can.Core.Mailing.SendGrid\Can.Core.Mailing.SendGrid.csproj" />
     <ProjectReference Include="..\..\src\Can.Core.Mailing.MailKit\Can.Core.Mailing.MailKit.csproj" />
   </ItemGroup>
 
