@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
@@ -17,7 +18,7 @@ public sealed record TopCustomerDto(Guid CustomerId, string CompanyName, string?
 
 /// <summary>Kategorilere göre satış (iptal edilenler hariç). 5 dakika önbelleğe alınır.</summary>
 public sealed record GetSalesByCategoryQuery(DateOnly? From = null, DateOnly? To = null)
-    : IRequest<IReadOnlyList<SalesByCategoryDto>>, ISecuredRequest, ICachableRequest
+    : IRequest<Result<IReadOnlyList<SalesByCategoryDto>>>, ISecuredRequest, ICachableRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
     public string CacheKey => $"reports:sales-by-category:{From}:{To}";
@@ -27,7 +28,7 @@ public sealed record GetSalesByCategoryQuery(DateOnly? From = null, DateOnly? To
 
 /// <summary>En çok ciro yapılan müşteriler (kargo ücreti hariç).</summary>
 public sealed record GetTopCustomersQuery(int Count = 10, DateOnly? From = null, DateOnly? To = null)
-    : IRequest<IReadOnlyList<TopCustomerDto>>, ISecuredRequest, ICachableRequest
+    : IRequest<Result<IReadOnlyList<TopCustomerDto>>>, ISecuredRequest, ICachableRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
     public string CacheKey => $"reports:top-customers:{Count}:{From}:{To}";
@@ -41,8 +42,8 @@ public sealed class GetTopCustomersQueryValidator : AbstractValidator<GetTopCust
 }
 
 public sealed class ReportQueryHandlers
-    : IRequestHandler<GetSalesByCategoryQuery, IReadOnlyList<SalesByCategoryDto>>,
-        IRequestHandler<GetTopCustomersQuery, IReadOnlyList<TopCustomerDto>>
+    : IRequestHandler<GetSalesByCategoryQuery, Result<IReadOnlyList<SalesByCategoryDto>>>,
+        IRequestHandler<GetTopCustomersQuery, Result<IReadOnlyList<TopCustomerDto>>>
 {
     private const string Uncategorized = "(Kategorisiz)";
 
@@ -63,7 +64,7 @@ public sealed class ReportQueryHandlers
         _customers = customers;
     }
 
-    public async Task<IReadOnlyList<SalesByCategoryDto>> Handle(GetSalesByCategoryQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<SalesByCategoryDto>>> Handle(GetSalesByCategoryQuery request, CancellationToken cancellationToken)
     {
         var lines =
             from o in CompletedOrders(request.From, request.To)
@@ -90,13 +91,14 @@ public sealed class ReportQueryHandlers
             })
             .ToListAsync(cancellationToken);
 
-        return rows
-            .Select(r => new SalesByCategoryDto(r.Category, r.Orders, r.Quantity, Math.Round(r.Revenue, 2)))
-            .OrderByDescending(r => r.Revenue)
-            .ToList();
+        return Result.Ok<IReadOnlyList<SalesByCategoryDto>>(
+            rows.Select(r => new SalesByCategoryDto(r.Category, r.Orders, r.Quantity, Math.Round(r.Revenue, 2)))
+                .OrderByDescending(r => r.Revenue)
+                .ToList()
+        );
     }
 
-    public async Task<IReadOnlyList<TopCustomerDto>> Handle(GetTopCustomersQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<TopCustomerDto>>> Handle(GetTopCustomersQuery request, CancellationToken cancellationToken)
     {
         var totals = await (
                 from o in CompletedOrders(request.From, request.To)
@@ -121,13 +123,15 @@ public sealed class ReportQueryHandlers
             .Select(c => new { c.Id, c.CompanyName, Country = c.Address == null ? null : c.Address.Country })
             .ToDictionaryAsync(c => c.Id, cancellationToken);
 
-        return totals
-            .Select(t =>
-            {
-                var customer = customers.GetValueOrDefault(t.CustomerId);
-                return new TopCustomerDto(t.CustomerId, customer?.CompanyName ?? "?", customer?.Country, t.Orders, Math.Round(t.Revenue, 2));
-            })
-            .ToList();
+        return Result.Ok<IReadOnlyList<TopCustomerDto>>(
+            totals
+                .Select(t =>
+                {
+                    var customer = customers.GetValueOrDefault(t.CustomerId);
+                    return new TopCustomerDto(t.CustomerId, customer?.CompanyName ?? "?", customer?.Country, t.Orders, Math.Round(t.Revenue, 2));
+                })
+                .ToList()
+        );
     }
 
     private IQueryable<Order> CompletedOrders(DateOnly? from, DateOnly? to)

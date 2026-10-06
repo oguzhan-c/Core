@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Persistence.Seeding;
 using Can.Core.Security.Entities;
 using Can.Core.Security.Hashing;
@@ -83,7 +84,7 @@ internal sealed partial class DemoUserSeeder : IDataSeeder
 
         foreach ((string name, string firstName, string role) in users)
         {
-            AppUser user = AppUser.Create($"{name}@{tenant.Identifier}.local", firstName, "Demo", passwordHash);
+            AppUser user = AppUser.Create($"{name}@{tenant.Identifier}.local", firstName, "Demo", passwordHash).ThrowIfFailure();
             user.AddRole(roles[role]);
             _db.Users.Add(user);
         }
@@ -130,10 +131,10 @@ internal sealed class DemoCustomerSeeder : IDataSeeder
             return;
 
         Role<Guid> role = await _db.Roles.FirstAsync(r => r.Name == Roles.Customer, cancellationToken);
-        AppUser user = AppUser.Create($"customer@{tenant.Identifier}.local", "Maria", "Anders", _passwordHasher.Hash(_options.DemoUserPassword));
+        AppUser user = AppUser.Create($"customer@{tenant.Identifier}.local", "Maria", "Anders", _passwordHasher.Hash(_options.DemoUserPassword)).ThrowIfFailure();
         user.AddRole(role);
         _db.Users.Add(user);
-        customer.LinkUser(user.Id);
+        customer.LinkUser(user.Id).ThrowIfFailure();
 
         await _db.SaveChangesAsync(cancellationToken);
     }

@@ -1,5 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mapping;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Dynamic;
@@ -61,12 +61,12 @@ public sealed record GetOrderListQuery(
     Guid? CustomerId = null,
     OrderStatus? Status = null,
     DateOnly? From = null,
-    DateOnly? To = null) : IRequest<IPaginate<OrderListItemDto>>, ISecuredRequest
+    DateOnly? To = null) : IRequest<Result<IPaginate<OrderListItemDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
-public sealed record GetOrderByIdQuery(Guid Id) : IRequest<OrderDto>, ISecuredRequest
+public sealed record GetOrderByIdQuery(Guid Id) : IRequest<Result<OrderDto>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -75,7 +75,7 @@ public sealed record GetOrderByIdQuery(Guid Id) : IRequest<OrderDto>, ISecuredRe
 /// Dinamik filtre/sıralama ile sipariş arama, ör. <c>freight gt 100</c>, <c>shipAddress.country in Germany,France</c>,
 /// <c>status eq Shipped</c>, <c>orderedAt between 1997-01-01,1997-12-31</c>.
 /// </summary>
-public sealed record SearchOrdersQuery(DynamicQuery Query, PageRequest Page) : IRequest<IPaginate<OrderListItemDto>>, ISecuredRequest
+public sealed record SearchOrdersQuery(DynamicQuery Query, PageRequest Page) : IRequest<Result<IPaginate<OrderListItemDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -99,9 +99,9 @@ public sealed class GetOrderListQueryValidator : AbstractValidator<GetOrderListQ
 }
 
 public sealed class OrderQueryHandlers
-    : IRequestHandler<GetOrderListQuery, IPaginate<OrderListItemDto>>,
-        IRequestHandler<GetOrderByIdQuery, OrderDto>,
-        IRequestHandler<SearchOrdersQuery, IPaginate<OrderListItemDto>>
+    : IRequestHandler<GetOrderListQuery, Result<IPaginate<OrderListItemDto>>>,
+        IRequestHandler<GetOrderByIdQuery, Result<OrderDto>>,
+        IRequestHandler<SearchOrdersQuery, Result<IPaginate<OrderListItemDto>>>
 {
     private readonly IRepository<Order, Guid> _orders;
     private readonly IRepository<Customer, Guid> _customers;
@@ -114,7 +114,7 @@ public sealed class OrderQueryHandlers
         _details = details;
     }
 
-    public Task<IPaginate<OrderListItemDto>> Handle(GetOrderListQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<OrderListItemDto>>> Handle(GetOrderListQuery request, CancellationToken cancellationToken)
     {
         IQueryable<Order> query = _orders.Query(enableTracking: false);
 
@@ -136,13 +136,18 @@ public sealed class OrderQueryHandlers
             query = query.Where(o => o.OrderedAt < toTime);
         }
 
-        return ToListItems(query.OrderByDescending(o => o.Number))
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+        return Result.Ok(
+            await ToListItems(query.OrderByDescending(o => o.Number))
+                .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
+        );
     }
 
-    public Task<IPaginate<OrderListItemDto>> Handle(SearchOrdersQuery request, CancellationToken cancellationToken) =>
-        ToListItems(DynamicSearch.Apply(_orders.Query(enableTracking: false), request.Query, q => q.OrderByDescending(o => o.Number)))
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+    public Task<Result<IPaginate<OrderListItemDto>>> Handle(SearchOrdersQuery request, CancellationToken cancellationToken) =>
+        DynamicSearch
+            .Apply(_orders.Query(enableTracking: false), request.Query, q => q.OrderByDescending(o => o.Number))
+            .MapAsync(query =>
+                ToListItems(query).ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
+            );
 
     /// <summary>Sıralanmış sipariş sorgusunu müşteri adı ve toplamla liste öğesine çevirir (tek SQL sorgusu).</summary>
     private IQueryable<OrderListItemDto> ToListItems(IQueryable<Order> orders)
@@ -161,7 +166,7 @@ public sealed class OrderQueryHandlers
         ));
     }
 
-    public Task<OrderDto> Handle(GetOrderByIdQuery request, CancellationToken cancellationToken) =>
+    public Task<Result<OrderDto>> Handle(GetOrderByIdQuery request, CancellationToken cancellationToken) =>
         _details.GetAsync(request.Id, customerId: null, cancellationToken);
 }
 
@@ -191,11 +196,11 @@ public sealed class OrderDetails
     /// <param name="id">Sipariş.</param>
     /// <param name="customerId">Doluysa sipariş bu müşteriye ait olmalı (müşteri yalnızca kendi siparişini görür).</param>
     /// <param name="cancellationToken">İptal belirteci.</param>
-    public async Task<OrderDto> GetAsync(Guid id, Guid? customerId, CancellationToken cancellationToken)
+    public async Task<Result<OrderDto>> GetAsync(Guid id, Guid? customerId, CancellationToken cancellationToken)
     {
         Order? order = await _orders.GetByIdAsync(id, include: q => q.Include(o => o.Lines), enableTracking: false, cancellationToken: cancellationToken);
         if (order is null || (customerId is { } c && order.CustomerId != c))
-            throw NotFoundException.For<Order>(id);
+            return OrderErrors.NotFound(id);
 
         string customerName = await _customers
             .Query(withDeleted: true, enableTracking: false)

@@ -1,6 +1,7 @@
-using Can.Core.Application.Exceptions;
 using Can.Core.Application.Rules;
+using Can.Core.Domain.Results;
 using Can.Core.Persistence.Repositories;
+using Northwind.Application.Features.Categories;
 using Northwind.Domain.Catalog;
 
 namespace Northwind.Application.Features.Products;
@@ -18,22 +19,25 @@ public sealed class ProductBusinessRules : BaseBusinessRules
         _suppliers = suppliers;
     }
 
-    public async Task<Product> MustExistAsync(Guid id, CancellationToken cancellationToken) =>
-        await _products.GetByIdAsync(id, cancellationToken: cancellationToken) ?? throw NotFoundException.For<Product>(id);
+    public Task<Result<Product>> MustExistAsync(Guid id, CancellationToken cancellationToken) =>
+        _products.GetByIdAsync(id, cancellationToken: cancellationToken).ToResult(ProductErrors.NotFound(id));
 
-    public async Task NameMustBeUniqueAsync(string name, Guid? exceptId, CancellationToken cancellationToken)
+    public async Task<Result<Success>> NameMustBeUniqueAsync(string name, Guid? exceptId, CancellationToken cancellationToken)
     {
         string trimmed = name.Trim();
-        if (await _products.AnyAsync(p => p.Name == trimmed && p.Id != exceptId, cancellationToken: cancellationToken))
-            throw new ConflictException($"'{trimmed}' adında bir ürün zaten var.");
+        return await _products.AnyAsync(p => p.Name == trimmed && p.Id != exceptId, cancellationToken: cancellationToken)
+            ? Error.Conflict("product.duplicate_name", $"'{trimmed}' adında bir ürün zaten var.")
+            : Result.Success;
     }
 
-    public async Task ReferencesMustExistAsync(Guid? categoryId, Guid? supplierId, CancellationToken cancellationToken)
+    public async Task<Result<Success>> ReferencesMustExistAsync(Guid? categoryId, Guid? supplierId, CancellationToken cancellationToken)
     {
         if (categoryId is { } c && !await _categories.AnyAsync(x => x.Id == c, cancellationToken: cancellationToken))
-            throw NotFoundException.For<Category>(c);
+            return CategoryErrors.NotFound(c);
 
         if (supplierId is { } s && !await _suppliers.AnyAsync(x => x.Id == s, cancellationToken: cancellationToken))
-            throw NotFoundException.For<Supplier>(s);
+            return Error.NotFound("supplier.not_found", $"'{s}' tedarikçisi bulunamadı.");
+
+        return Result.Success;
     }
 }

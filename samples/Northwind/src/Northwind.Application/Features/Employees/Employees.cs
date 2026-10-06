@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
@@ -19,12 +20,12 @@ public sealed record EmployeeDto(
     string? ManagerName,
     IReadOnlyList<string> Territories);
 
-public sealed record GetEmployeeListQuery : IRequest<IReadOnlyList<EmployeeDto>>, ISecuredRequest
+public sealed record GetEmployeeListQuery : IRequest<Result<IReadOnlyList<EmployeeDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
-public sealed class GetEmployeeListQueryHandler : IRequestHandler<GetEmployeeListQuery, IReadOnlyList<EmployeeDto>>
+public sealed class GetEmployeeListQueryHandler : IRequestHandler<GetEmployeeListQuery, Result<IReadOnlyList<EmployeeDto>>>
 {
     private readonly IRepository<Employee, Guid> _employees;
     private readonly IRepository<Territory, string> _territories;
@@ -35,12 +36,12 @@ public sealed class GetEmployeeListQueryHandler : IRequestHandler<GetEmployeeLis
         _territories = territories;
     }
 
-    public async Task<IReadOnlyList<EmployeeDto>> Handle(GetEmployeeListQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<EmployeeDto>>> Handle(GetEmployeeListQuery request, CancellationToken cancellationToken)
     {
         IQueryable<Employee> employees = _employees.Query(enableTracking: false);
         IQueryable<Territory> territories = _territories.Query(enableTracking: false);
 
-        return await employees
+        List<EmployeeDto> list = await employees
             .OrderBy(e => e.LastName)
             .ThenBy(e => e.FirstName)
             .Select(e => new EmployeeDto(
@@ -60,5 +61,7 @@ public sealed class GetEmployeeListQueryHandler : IRequestHandler<GetEmployeeLis
                     .ToList()
             ))
             .ToListAsync(cancellationToken);
+
+        return Result.Ok<IReadOnlyList<EmployeeDto>>(list);
     }
 }

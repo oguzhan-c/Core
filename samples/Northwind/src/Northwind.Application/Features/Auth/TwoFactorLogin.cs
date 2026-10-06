@@ -1,6 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using Can.Core.Security.Entities;
@@ -19,7 +18,7 @@ namespace Northwind.Application.Features.Auth;
 /// <see cref="Challenge"/> sunucunun şifreleyip cookie'de sakladığı bilgidir; istemci değiştiremez.
 /// </summary>
 public sealed record CompleteTwoFactorLoginCommand(TwoFactorChallenge Challenge, string Code, string? IpAddress = null)
-    : IRequest<AuthResult>, ILoggableRequest;
+    : IRequest<Result<AuthResult>>, ILoggableRequest;
 
 public sealed class CompleteTwoFactorLoginCommandValidator : AbstractValidator<CompleteTwoFactorLoginCommand>
 {
@@ -29,7 +28,7 @@ public sealed class CompleteTwoFactorLoginCommandValidator : AbstractValidator<C
     }
 }
 
-public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<CompleteTwoFactorLoginCommand, AuthResult>
+public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<CompleteTwoFactorLoginCommand, Result<AuthResult>>
 {
     private readonly StoreTenant _storeTenant;
     private readonly IRepository<AppUser, Guid> _users;
@@ -54,20 +53,23 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
         _timeProvider = timeProvider;
     }
 
-    public async Task<AuthResult> Handle(CompleteTwoFactorLoginCommand request, CancellationToken cancellationToken)
+    public async Task<Result<AuthResult>> Handle(CompleteTwoFactorLoginCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await TwoFactorChallenges.ResolveUserAsync(_storeTenant, _users, request.Challenge, cancellationToken);
+        Result<AppUser> resolved = await TwoFactorChallenges.ResolveUserAsync(_storeTenant, _users, request.Challenge, cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Errors;
 
+        AppUser user = resolved.Value;
         DateTimeOffset now = _timeProvider.GetUtcNow();
         if (user.IsLockedOut(now))
-            throw new UnauthorizedException("Çok fazla hatalı deneme yapıldı; hesap geçici olarak kilitlendi.");
+            return AuthErrors.LockedOut;
 
         if (!await _verifier.VerifyAsync(user, request.Code, cancellationToken))
         {
             // Kaba kuvvete karşı: hatalı kodlar şifre hataları gibi sayılır ve hesabı kilitler.
             user.RegisterFailedAccess(now);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            throw new BusinessException("Kod hatalı ya da süresi dolmuş.") { Code = AuthErrorCodes.InvalidTwoFactorCode };
+            return user.IsLockedOut(now) ? AuthErrors.LockedOut : AuthErrors.InvalidTwoFactorCode;
         }
 
         user.ResetAccessFailed();
@@ -78,9 +80,9 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
 }
 
 /// <summary>E-posta ile ikinci adımda yeni kod gönderir.</summary>
-public sealed record ResendTwoFactorCodeCommand(TwoFactorChallenge Challenge) : IRequest, ITransactionalRequest;
+public sealed record ResendTwoFactorCodeCommand(TwoFactorChallenge Challenge) : IRequest<Result<Success>>, ITransactionalRequest;
 
-public sealed class ResendTwoFactorCodeCommandHandler : IRequestHandler<ResendTwoFactorCodeCommand>
+public sealed class ResendTwoFactorCodeCommandHandler : IRequestHandler<ResendTwoFactorCodeCommand, Result<Success>>
 {
     private readonly StoreTenant _storeTenant;
     private readonly IRepository<AppUser, Guid> _users;
@@ -93,27 +95,31 @@ public sealed class ResendTwoFactorCodeCommandHandler : IRequestHandler<ResendTw
         _emailVerification = emailVerification;
     }
 
-    public async Task Handle(ResendTwoFactorCodeCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(ResendTwoFactorCodeCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await TwoFactorChallenges.ResolveUserAsync(_storeTenant, _users, request.Challenge, cancellationToken);
+        Result<AppUser> user = await TwoFactorChallenges.ResolveUserAsync(_storeTenant, _users, request.Challenge, cancellationToken);
+        if (user.IsFailure)
+            return user.Errors;
 
-        if (user.AuthenticatorType != AuthenticatorType.Email)
-            throw new BusinessException("Bu hesap kodları authenticator uygulamasından alıyor.");
+        if (user.Value.AuthenticatorType != AuthenticatorType.Email)
+            return Error.Failure("two_factor_not_email", "Bu hesap kodları authenticator uygulamasından alıyor.");
 
-        await _emailVerification.SendCodeAsync(user, signIn: true, cancellationToken);
+        await _emailVerification.SendCodeAsync(user.Value, signIn: true, cancellationToken);
+        return Result.Success;
     }
 }
 
 internal static class TwoFactorChallenges
 {
     /// <summary>Bekleyen girişin kullanıcısını yükler; şifre/2FA ayarı o arada değiştiyse geçersiz sayar.</summary>
-    public static async Task<AppUser> ResolveUserAsync(
+    public static async Task<Result<AppUser>> ResolveUserAsync(
         StoreTenant storeTenant,
         IRepository<AppUser, Guid> users,
         TwoFactorChallenge challenge,
         CancellationToken cancellationToken)
     {
-        await storeTenant.UseAsync(challenge.Tenant, cancellationToken);
+        if ((await storeTenant.UseAsync(challenge.Tenant, cancellationToken)).IsFailure)
+            return AuthErrors.TwoFactorExpired;
 
         AppUser? user = await users.GetByIdAsync(
             challenge.UserId,
@@ -122,7 +128,7 @@ internal static class TwoFactorChallenges
         );
 
         if (user is null || user.SecurityStamp != challenge.SecurityStamp || user.AuthenticatorType != challenge.Method)
-            throw new UnauthorizedException("Doğrulama süresi doldu; tekrar giriş yap.") { Code = AuthErrorCodes.TwoFactorExpired };
+            return AuthErrors.TwoFactorExpired;
 
         return user;
     }

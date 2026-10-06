@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.MultiTenancy;
 using Can.Core.Security.Entities;
 using Can.Core.Security.Tokens;
@@ -54,6 +55,33 @@ public static class AuthErrorCodes
     public const string InvalidTwoFactorCode = "invalid_two_factor_code";
     public const string TwoFactorExpired = "two_factor_expired";
     public const string PasskeyFailed = "passkey_failed";
+}
+
+/// <summary>Kimlik doğrulama hataları. Kodlar istemciyle sözleşmedir (ProblemDetails <c>code</c>).</summary>
+public static class AuthErrors
+{
+    public static readonly Error InvalidCredentials =
+        Error.Unauthorized("invalid_credentials", "Mağaza, e-posta ya da şifre hatalı.");
+
+    public static readonly Error LockedOut =
+        Error.Unauthorized("locked_out", "Çok fazla hatalı deneme yapıldı; hesap geçici olarak kilitlendi.");
+
+    public static readonly Error EmailNotConfirmed =
+        Error.Forbidden(AuthErrorCodes.EmailNotConfirmed, "E-posta adresin henüz doğrulanmadı. Gönderdiğimiz kodu gir.");
+
+    public static readonly Error InvalidVerificationCode =
+        Error.Failure(AuthErrorCodes.InvalidVerificationCode, "Kod hatalı ya da süresi dolmuş; yeni kod iste.");
+
+    public static readonly Error InvalidTwoFactorCode = Error.Failure(AuthErrorCodes.InvalidTwoFactorCode, "Kod hatalı ya da süresi dolmuş.");
+
+    public static readonly Error TwoFactorExpired = Error.Unauthorized(AuthErrorCodes.TwoFactorExpired, "Doğrulama süresi doldu; tekrar giriş yap.");
+
+    public static readonly Error PasskeyFailed =
+        Error.Unauthorized(AuthErrorCodes.PasskeyFailed, "Passkey doğrulanamadı ya da bu mağazadaki bir hesaba ait değil.");
+
+    public static readonly Error SessionExpired = Error.Unauthorized("session_expired", "Oturumun süresi doldu; tekrar giriş yap.");
+
+    public static readonly Error EmailTaken = Error.Conflict("email_taken", "Bu e-posta adresiyle kayıtlı bir hesap var.");
 }
 
 internal static class EmailMask

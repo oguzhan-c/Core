@@ -1,7 +1,6 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
 using Can.Core.Application.Rules;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mapping;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Dynamic;
@@ -10,6 +9,7 @@ using Can.Core.Persistence.Repositories;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Northwind.Application.Common;
+using Northwind.Domain.Common;
 using Northwind.Domain.Customers;
 using Northwind.Domain.Orders;
 using AppRoles = Northwind.Domain.Identity.Roles;
@@ -54,22 +54,26 @@ public sealed class CustomerBusinessRules : BaseBusinessRules
         _orders = orders;
     }
 
-    public async Task<Customer> MustExistAsync(Guid id, CancellationToken cancellationToken) =>
-        await _customers.GetByIdAsync(id, cancellationToken: cancellationToken) ?? throw NotFoundException.For<Customer>(id);
+    public Task<Result<Customer>> MustExistAsync(Guid id, CancellationToken cancellationToken) =>
+        _customers.GetByIdAsync(id, cancellationToken: cancellationToken).ToResult(CustomerErrors.NotFound(id));
 
     /// <summary>Silinmiş müşterilerin kodları da tekrar kullanılamaz (geçmiş siparişlerde görünür).</summary>
-    public async Task CodeMustBeUniqueAsync(string code, CancellationToken cancellationToken)
+    public async Task<Result<Success>> CodeMustBeUniqueAsync(string code, CancellationToken cancellationToken)
     {
-        string normalized = Customer.NormalizeCode(code);
-        if (await _customers.AnyAsync(c => c.Code == normalized, withDeleted: true, cancellationToken: cancellationToken))
-            throw new ConflictException($"'{normalized}' kodlu bir müşteri zaten var.");
+        Result<string> normalized = Customer.NormalizeCode(code);
+        if (normalized.IsFailure)
+            return normalized.Errors;
+
+        string value = normalized.Value;
+        return await _customers.AnyAsync(c => c.Code == value, withDeleted: true, cancellationToken: cancellationToken)
+            ? Error.Conflict("customer.duplicate_code", $"'{value}' kodlu bir müşteri zaten var.")
+            : Result.Success;
     }
 
-    public async Task MustHaveNoOpenOrdersAsync(Guid customerId, CancellationToken cancellationToken)
-    {
-        if (await _orders.AnyAsync(o => o.CustomerId == customerId && o.Status == OrderStatus.Placed, cancellationToken: cancellationToken))
-            throw new BusinessException("Açık siparişi olan müşteri silinemez.");
-    }
+    public async Task<Result<Success>> MustHaveNoOpenOrdersAsync(Guid customerId, CancellationToken cancellationToken) =>
+        await _orders.AnyAsync(o => o.CustomerId == customerId && o.Status == OrderStatus.Placed, cancellationToken: cancellationToken)
+            ? Error.Failure("customer.has_open_orders", "Açık siparişi olan müşteri silinemez.")
+            : Result.Success;
 }
 
 // ---------------------------------------------------------------- command'lar
@@ -81,7 +85,7 @@ public sealed record CreateCustomerCommand(
     string? ContactTitle,
     AddressDto? Address,
     string? Phone,
-    string? Fax) : IRequest<Guid>, ISecuredRequest, ITransactionalRequest
+    string? Fax) : IRequest<Result<Guid>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
 }
@@ -93,12 +97,12 @@ public sealed record UpdateCustomerCommand(
     string? ContactTitle,
     AddressDto? Address,
     string? Phone,
-    string? Fax) : IRequest, ISecuredRequest, ITransactionalRequest
+    string? Fax) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
 }
 
-public sealed record DeleteCustomerCommand(Guid Id) : IRequest, ISecuredRequest, ITransactionalRequest
+public sealed record DeleteCustomerCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
@@ -132,9 +136,9 @@ public sealed class UpdateCustomerCommandValidator : AbstractValidator<UpdateCus
 }
 
 public sealed class CustomerCommandHandlers
-    : IRequestHandler<CreateCustomerCommand, Guid>,
-        IRequestHandler<UpdateCustomerCommand>,
-        IRequestHandler<DeleteCustomerCommand>
+    : IRequestHandler<CreateCustomerCommand, Result<Guid>>,
+        IRequestHandler<UpdateCustomerCommand, Result<Success>>,
+        IRequestHandler<DeleteCustomerCommand, Result<Success>>
 {
     private readonly IRepository<Customer, Guid> _customers;
     private readonly CustomerBusinessRules _rules;
@@ -145,47 +149,58 @@ public sealed class CustomerCommandHandlers
         _rules = rules;
     }
 
-    public async Task<Guid> Handle(CreateCustomerCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Guid>> Handle(CreateCustomerCommand request, CancellationToken cancellationToken)
     {
-        await _rules.CodeMustBeUniqueAsync(request.Code, cancellationToken);
+        Result<Address?> address = AddressDto.ToOptionalAddress(request.Address);
+        Result<Success> unique = await _rules.CodeMustBeUniqueAsync(request.Code, cancellationToken);
 
-        Customer customer = Customer.Create(
-            request.Code,
-            request.CompanyName,
-            request.ContactName,
-            request.ContactTitle,
-            request.Address?.ToAddress(),
-            request.Phone,
-            request.Fax
-        );
+        Result<Success> checks = Result.Combine(address, unique);
+        if (checks.IsFailure)
+            return checks.Errors;
 
-        await _customers.AddAsync(customer, cancellationToken);
-        return customer.Id;
+        return await Customer
+            .Create(request.Code, request.CompanyName, request.ContactName, request.ContactTitle, address.Value, request.Phone, request.Fax)
+            .TapAsync(customer => _customers.AddAsync(customer, cancellationToken))
+            .Map(customer => customer.Id);
     }
 
-    public async Task Handle(UpdateCustomerCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(UpdateCustomerCommand request, CancellationToken cancellationToken)
     {
-        Customer customer = await _rules.MustExistAsync(request.Id, cancellationToken);
-        customer.Update(request.CompanyName, request.ContactName, request.ContactTitle, request.Address?.ToAddress(), request.Phone, request.Fax);
+        Result<Address?> address = AddressDto.ToOptionalAddress(request.Address);
+        if (address.IsFailure)
+            return address.Errors;
+
+        return await _rules
+            .MustExistAsync(request.Id, cancellationToken)
+            .Then(customer =>
+                customer.Update(request.CompanyName, request.ContactName, request.ContactTitle, address.Value, request.Phone, request.Fax)
+            );
     }
 
-    public async Task Handle(DeleteCustomerCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(DeleteCustomerCommand request, CancellationToken cancellationToken)
     {
-        Customer customer = await _rules.MustExistAsync(request.Id, cancellationToken);
-        await _rules.MustHaveNoOpenOrdersAsync(request.Id, cancellationToken);
-        _customers.Delete(customer);
+        Result<Customer> customer = await _rules.MustExistAsync(request.Id, cancellationToken);
+        if (customer.IsFailure)
+            return customer.Errors;
+
+        Result<Success> noOpenOrders = await _rules.MustHaveNoOpenOrdersAsync(request.Id, cancellationToken);
+        if (noOpenOrders.IsFailure)
+            return noOpenOrders;
+
+        _customers.Delete(customer.Value);
+        return Result.Success;
     }
 }
 
 // ---------------------------------------------------------------- query'ler
 
 public sealed record GetCustomerListQuery(PageRequest Page, string? Search = null, string? Country = null)
-    : IRequest<IPaginate<CustomerListItemDto>>, ISecuredRequest
+    : IRequest<Result<IPaginate<CustomerListItemDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
-public sealed record GetCustomerByIdQuery(Guid Id) : IRequest<CustomerDto>, ISecuredRequest
+public sealed record GetCustomerByIdQuery(Guid Id) : IRequest<Result<CustomerDto>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -193,7 +208,7 @@ public sealed record GetCustomerByIdQuery(Guid Id) : IRequest<CustomerDto>, ISec
 /// <summary>
 /// Dinamik filtre/sıralama ile müşteri arama. İç içe alanlar noktayla: <c>address.country</c>.
 /// </summary>
-public sealed record SearchCustomersQuery(DynamicQuery Query, PageRequest Page) : IRequest<IPaginate<CustomerListItemDto>>, ISecuredRequest
+public sealed record SearchCustomersQuery(DynamicQuery Query, PageRequest Page) : IRequest<Result<IPaginate<CustomerListItemDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -217,9 +232,9 @@ public sealed class GetCustomerListQueryValidator : AbstractValidator<GetCustome
 }
 
 public sealed class CustomerQueryHandlers
-    : IRequestHandler<GetCustomerListQuery, IPaginate<CustomerListItemDto>>,
-        IRequestHandler<GetCustomerByIdQuery, CustomerDto>,
-        IRequestHandler<SearchCustomersQuery, IPaginate<CustomerListItemDto>>
+    : IRequestHandler<GetCustomerListQuery, Result<IPaginate<CustomerListItemDto>>>,
+        IRequestHandler<GetCustomerByIdQuery, Result<CustomerDto>>,
+        IRequestHandler<SearchCustomersQuery, Result<IPaginate<CustomerListItemDto>>>
 {
     private readonly IRepository<Customer, Guid> _customers;
     private readonly IMapper _mapper;
@@ -230,7 +245,7 @@ public sealed class CustomerQueryHandlers
         _mapper = mapper;
     }
 
-    public Task<IPaginate<CustomerListItemDto>> Handle(GetCustomerListQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<CustomerListItemDto>>> Handle(GetCustomerListQuery request, CancellationToken cancellationToken)
     {
         IQueryable<Customer> query = _customers.Query(enableTracking: false);
 
@@ -250,24 +265,24 @@ public sealed class CustomerQueryHandlers
             query = query.Where(c => c.Address != null && c.Address.Country == country);
         }
 
-        return query
-            .OrderBy(c => c.CompanyName)
-            .ProjectTo<CustomerListItemDto>(_mapper)
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+        return Result.Ok(
+            await query
+                .OrderBy(c => c.CompanyName)
+                .ProjectTo<CustomerListItemDto>(_mapper)
+                .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
+        );
     }
 
-    public Task<IPaginate<CustomerListItemDto>> Handle(SearchCustomersQuery request, CancellationToken cancellationToken) =>
+    public Task<Result<IPaginate<CustomerListItemDto>>> Handle(SearchCustomersQuery request, CancellationToken cancellationToken) =>
         DynamicSearch
             .Apply(_customers.Query(enableTracking: false), request.Query, q => q.OrderBy(c => c.CompanyName))
-            .ProjectTo<CustomerListItemDto>(_mapper)
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+            .MapAsync(query =>
+                query.ProjectTo<CustomerListItemDto>(_mapper).ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
+            );
 
-    public async Task<CustomerDto> Handle(GetCustomerByIdQuery request, CancellationToken cancellationToken)
-    {
-        Customer customer =
-            await _customers.GetByIdAsync(request.Id, enableTracking: false, cancellationToken: cancellationToken)
-            ?? throw NotFoundException.For<Customer>(request.Id);
-
-        return _mapper.Map<Customer, CustomerDto>(customer)!;
-    }
+    public Task<Result<CustomerDto>> Handle(GetCustomerByIdQuery request, CancellationToken cancellationToken) =>
+        _customers
+            .GetByIdAsync(request.Id, enableTracking: false, cancellationToken: cancellationToken)
+            .ToResult(CustomerErrors.NotFound(request.Id))
+            .Map(customer => _mapper.Map<Customer, CustomerDto>(customer)!);
 }

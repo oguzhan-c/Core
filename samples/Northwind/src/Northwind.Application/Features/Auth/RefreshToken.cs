@@ -1,4 +1,4 @@
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Repositories;
@@ -14,12 +14,10 @@ namespace Northwind.Application.Features.Auth;
 /// Refresh token ile yeni token çifti alır (rotasyon). İptal edilmiş bir token tekrar kullanılırsa token çalınmış
 /// sayılır ve kullanıcının tüm oturumları kapatılır.
 /// </summary>
-public sealed record RefreshTokenCommand(string RefreshToken, string? IpAddress = null) : IRequest<AuthResult>;
+public sealed record RefreshTokenCommand(string RefreshToken, string? IpAddress = null) : IRequest<Result<AuthResult>>;
 
-public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, AuthResult>
+public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, Result<AuthResult>>
 {
-    private const string InvalidToken = "Oturumun süresi doldu; tekrar giriş yap.";
-
     private readonly ITokenService _tokens;
     private readonly IRepository<RefreshToken<Guid>, Guid> _refreshTokens;
     private readonly IIdentityStore _identityStore;
@@ -49,31 +47,31 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
         _timeProvider = timeProvider;
     }
 
-    public async Task<AuthResult> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
+    public async Task<Result<AuthResult>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
-        RefreshToken<Guid> token =
-            await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken)
-            ?? throw new UnauthorizedException(InvalidToken);
+        RefreshToken<Guid>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
+        if (token is null)
+            return AuthErrors.SessionExpired;
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
         if (token.IsRevoked)
         {
             await RevokeAllAsync(token.UserId, now, request.IpAddress, cancellationToken);
-            throw new UnauthorizedException(InvalidToken);
+            return AuthErrors.SessionExpired;
         }
 
         if (token.IsExpired(now))
-            throw new UnauthorizedException(InvalidToken);
+            return AuthErrors.SessionExpired;
 
-        AppUser user =
-            await _identityStore.FindUserInAnyTenantAsync(token.UserId, cancellationToken)
-            ?? throw new UnauthorizedException(InvalidToken);
+        AppUser? user = await _identityStore.FindUserInAnyTenantAsync(token.UserId, cancellationToken);
+        if (user is null)
+            return AuthErrors.SessionExpired;
 
         TenantInfo? tenant = await _tenantStore.FindAsync(user.TenantId.ToString(), cancellationToken);
         if (tenant is not { IsActive: true } || user.IsLockedOut(now))
-            throw new UnauthorizedException(InvalidToken);
+            return AuthErrors.SessionExpired;
 
         _tenantContext.Set(tenant);
 
@@ -99,9 +97,9 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
 }
 
 /// <summary>Çıkış: refresh token iptal edilir (cookie'leri WebApi siler).</summary>
-public sealed record LogoutCommand(string? RefreshToken, string? IpAddress = null) : IRequest;
+public sealed record LogoutCommand(string? RefreshToken, string? IpAddress = null) : IRequest<Result<Success>>;
 
-public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand>
+public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result<Success>>
 {
     private readonly ITokenService _tokens;
     private readonly IRepository<RefreshToken<Guid>, Guid> _refreshTokens;
@@ -116,17 +114,18 @@ public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand>
         _timeProvider = timeProvider;
     }
 
-    public async Task Handle(LogoutCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(LogoutCommand request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(request.RefreshToken))
-            return;
+            return Result.Success;
 
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
         RefreshToken<Guid>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
         if (token is null || token.IsRevoked)
-            return;
+            return Result.Success;
 
         token.Revoke(_timeProvider.GetUtcNow(), request.IpAddress, "Çıkış yapıldı");
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result.Success;
     }
 }

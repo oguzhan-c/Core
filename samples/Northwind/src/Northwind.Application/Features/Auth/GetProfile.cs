@@ -1,5 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Repositories;
@@ -9,9 +9,9 @@ using Northwind.Domain.Identity;
 namespace Northwind.Application.Features.Auth;
 
 /// <summary>Giriş yapmış kullanıcının profili (<c>GET /auth/me</c>).</summary>
-public sealed record GetProfileQuery : IRequest<UserProfileDto>, ISecuredRequest;
+public sealed record GetProfileQuery : IRequest<Result<UserProfileDto>>, ISecuredRequest;
 
-public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, UserProfileDto>
+public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, Result<UserProfileDto>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -24,19 +24,18 @@ public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, Us
         _tenantContext = tenantContext;
     }
 
-    public async Task<UserProfileDto> Handle(GetProfileQuery request, CancellationToken cancellationToken)
+    public async Task<Result<UserProfileDto>> Handle(GetProfileQuery request, CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(_currentUser.Id, out Guid userId))
-            throw new UnauthorizedException();
+            return Error.Unauthorized();
 
-        AppUser user =
-            await _users.GetByIdAsync(
-                userId,
-                include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
-                enableTracking: false,
-                cancellationToken: cancellationToken
-            ) ?? throw new UnauthorizedException();
+        AppUser? user = await _users.GetByIdAsync(
+            userId,
+            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            enableTracking: false,
+            cancellationToken: cancellationToken
+        );
 
-        return UserProfileDto.From(user, _tenantContext.Tenant);
+        return user is null ? Error.Unauthorized() : UserProfileDto.From(user, _tenantContext.Tenant);
     }
 }

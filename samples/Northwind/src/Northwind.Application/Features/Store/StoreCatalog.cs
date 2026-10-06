@@ -1,4 +1,4 @@
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Paging;
@@ -34,18 +34,18 @@ public enum StoreProductSort
     PriceDesc,
 }
 
-public sealed record GetStoreTenantsQuery : IRequest<IReadOnlyList<StoreTenantDto>>;
+public sealed record GetStoreTenantsQuery : IRequest<Result<IReadOnlyList<StoreTenantDto>>>;
 
-public sealed record GetStoreCategoriesQuery(string Tenant) : IRequest<IReadOnlyList<StoreCategoryDto>>;
+public sealed record GetStoreCategoriesQuery(string Tenant) : IRequest<Result<IReadOnlyList<StoreCategoryDto>>>;
 
 public sealed record GetStoreProductsQuery(
     string Tenant,
     PageRequest Page,
     Guid? CategoryId = null,
     string? Search = null,
-    StoreProductSort Sort = StoreProductSort.Name) : IRequest<IPaginate<StoreProductDto>>;
+    StoreProductSort Sort = StoreProductSort.Name) : IRequest<Result<IPaginate<StoreProductDto>>>;
 
-public sealed record GetStoreProductQuery(string Tenant, Guid Id) : IRequest<StoreProductDto>;
+public sealed record GetStoreProductQuery(string Tenant, Guid Id) : IRequest<Result<StoreProductDto>>;
 
 public sealed class GetStoreProductsQueryValidator : AbstractValidator<GetStoreProductsQuery>
 {
@@ -58,10 +58,10 @@ public sealed class GetStoreProductsQueryValidator : AbstractValidator<GetStoreP
 }
 
 public sealed class StoreCatalogHandlers
-    : IRequestHandler<GetStoreTenantsQuery, IReadOnlyList<StoreTenantDto>>,
-        IRequestHandler<GetStoreCategoriesQuery, IReadOnlyList<StoreCategoryDto>>,
-        IRequestHandler<GetStoreProductsQuery, IPaginate<StoreProductDto>>,
-        IRequestHandler<GetStoreProductQuery, StoreProductDto>
+    : IRequestHandler<GetStoreTenantsQuery, Result<IReadOnlyList<StoreTenantDto>>>,
+        IRequestHandler<GetStoreCategoriesQuery, Result<IReadOnlyList<StoreCategoryDto>>>,
+        IRequestHandler<GetStoreProductsQuery, Result<IPaginate<StoreProductDto>>>,
+        IRequestHandler<GetStoreProductQuery, Result<StoreProductDto>>
 {
     private readonly ITenantStore _tenantStore;
     private readonly StoreTenant _storeTenant;
@@ -83,27 +83,37 @@ public sealed class StoreCatalogHandlers
         _suppliers = suppliers;
     }
 
-    public async Task<IReadOnlyList<StoreTenantDto>> Handle(GetStoreTenantsQuery request, CancellationToken cancellationToken) =>
-        (await _tenantStore.GetAllAsync(cancellationToken))
-            .Where(t => t.IsActive)
-            .Select(t => new StoreTenantDto(t.Identifier, string.IsNullOrEmpty(t.Name) ? t.Identifier : t.Name))
-            .ToList();
+    public async Task<Result<IReadOnlyList<StoreTenantDto>>> Handle(GetStoreTenantsQuery request, CancellationToken cancellationToken) =>
+        Result.Ok<IReadOnlyList<StoreTenantDto>>(
+            (await _tenantStore.GetAllAsync(cancellationToken))
+                .Where(t => t.IsActive)
+                .Select(t => new StoreTenantDto(t.Identifier, string.IsNullOrEmpty(t.Name) ? t.Identifier : t.Name))
+                .ToList()
+        );
 
-    public async Task<IReadOnlyList<StoreCategoryDto>> Handle(GetStoreCategoriesQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<StoreCategoryDto>>> Handle(GetStoreCategoriesQuery request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        Result<Can.Core.MultiTenancy.TenantInfo> store = await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        if (store.IsFailure)
+            return store.Errors;
+
         IQueryable<Product> products = OnSale();
 
-        return await _categories
+        List<StoreCategoryDto> categories = await _categories
             .Query(enableTracking: false)
             .OrderBy(c => c.Name)
             .Select(c => new StoreCategoryDto(c.Id, c.Name, c.Description, products.Count(p => p.CategoryId == c.Id)))
             .ToListAsync(cancellationToken);
+
+        return Result.Ok<IReadOnlyList<StoreCategoryDto>>(categories);
     }
 
-    public async Task<IPaginate<StoreProductDto>> Handle(GetStoreProductsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<StoreProductDto>>> Handle(GetStoreProductsQuery request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        Result<Can.Core.MultiTenancy.TenantInfo> store = await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        if (store.IsFailure)
+            return store.Errors;
+
         IQueryable<Product> query = OnSale();
 
         if (request.CategoryId is { } categoryId)
@@ -122,15 +132,16 @@ public sealed class StoreCatalogHandlers
             _ => query.OrderBy(p => p.Name),
         };
 
-        return await Project(query).ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+        return Result.Ok(await Project(query).ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken));
     }
 
-    public async Task<StoreProductDto> Handle(GetStoreProductQuery request, CancellationToken cancellationToken)
+    public async Task<Result<StoreProductDto>> Handle(GetStoreProductQuery request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        Result<Can.Core.MultiTenancy.TenantInfo> store = await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        if (store.IsFailure)
+            return store.Errors;
 
-        return await Project(OnSale().Where(p => p.Id == request.Id)).FirstOrDefaultAsync(cancellationToken)
-            ?? throw NotFoundException.For<Product>(request.Id);
+        return await Project(OnSale().Where(p => p.Id == request.Id)).FirstOrDefaultAsync(cancellationToken).ToResult(ProductErrors.NotFound(request.Id));
     }
 
     private IQueryable<Product> OnSale() => _products.Query(enableTracking: false).Where(p => !p.IsDiscontinued);

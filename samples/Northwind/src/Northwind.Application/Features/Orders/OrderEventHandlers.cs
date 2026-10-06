@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Mailing;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
@@ -36,7 +37,7 @@ public sealed class ReleaseStockWhenOrderCancelled : INotificationHandler<OrderC
         foreach (OrderedQuantity line in notification.Lines)
         {
             if (products.TryGetValue(line.ProductId, out Product? product))
-                product.ReleaseStock(line.Quantity);
+                product.ReleaseStock(line.Quantity).ThrowIfFailure(); // satır miktarı her zaman pozitif
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
