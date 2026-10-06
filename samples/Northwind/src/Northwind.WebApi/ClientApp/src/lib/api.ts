@@ -9,24 +9,29 @@ export interface ProblemDetails {
   status?: number;
   code?: string;
   errors?: Record<string, string[]>;
+  /** Birden fazla iş hatası olduğunda hepsi (ör. sepetteki birkaç ürünün stoğu yetmedi). */
+  details?: { code: string; description: string }[];
 }
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly errors?: Record<string, string[]>;
+  readonly details?: { code: string; description: string }[];
 
   constructor(status: number, problem: ProblemDetails) {
     super(problem.detail || problem.title || `İstek başarısız (${status})`);
     this.status = status;
     this.code = problem.code;
     this.errors = problem.errors;
+    this.details = problem.details;
   }
 
-  /** Alan hatalarını tek metinde toplar (doğrulama hataları için). */
+  /** Alan hatalarını (doğrulama) ya da birden fazla iş hatasını tek metinde toplar. */
   get description(): string {
-    if (!this.errors) return this.message;
-    return Object.values(this.errors).flat().join(" ");
+    if (this.errors) return Object.values(this.errors).flat().join(" ");
+    if (this.details?.length) return this.details.map((d) => d.description).join(" ");
+    return this.message;
   }
 }
 

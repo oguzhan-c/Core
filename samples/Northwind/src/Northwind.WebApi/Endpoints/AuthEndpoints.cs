@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Can.Core.Application.Exceptions;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Security.Passkeys;
+using Can.Core.WebApi;
 using Can.Core.WebApi.DependencyInjection;
 using Fido2NetLib;
 using Northwind.Application.Features.Auth;
@@ -40,50 +40,51 @@ internal static class AuthEndpoints
 
         group.MapPost("/login", async (LoginRequest body, ISender sender, IAuthCookieService cookies, TwoFactorCookie twoFactor, HttpContext http, CancellationToken ct) =>
             {
-                LoginResult result = await sender.Send(new LoginCommand(body.Tenant, body.Email, body.Password, ClientIp(http)), ct);
+                Result<LoginResult> result = await sender.Send(new LoginCommand(body.Tenant, body.Email, body.Password, ClientIp(http)), ct);
 
-                if (result.Challenge is { } challenge)
+                return result.ToHttpResult(login =>
                 {
-                    // Oturum henüz açılmadı: bekleyen giriş şifreli HttpOnly cookie'de, istemciye yalnızca yöntem bilgisi.
-                    twoFactor.Write(http.Response, challenge);
-                    return TypedResults.Ok(new LoginResponse(null, result.Prompt));
-                }
+                    if (login.Challenge is { } challenge)
+                    {
+                        // Oturum henüz açılmadı: bekleyen giriş şifreli HttpOnly cookie'de, istemciye yalnızca yöntem bilgisi.
+                        twoFactor.Write(http.Response, challenge);
+                        return TypedResults.Ok(new LoginResponse(null, login.Prompt));
+                    }
 
-                AuthResult session = result.Session!;
-                twoFactor.Clear(http.Response);
-                cookies.SetTokens(http.Response, session.AccessToken, session.RefreshToken);
-                return TypedResults.Ok(new LoginResponse(session.User, null));
+                    AuthResult session = login.Session!;
+                    twoFactor.Clear(http.Response);
+                    cookies.SetTokens(http.Response, session.AccessToken, session.RefreshToken);
+                    return TypedResults.Ok(new LoginResponse(session.User, null));
+                });
             })
             .AllowAnonymous()
             .WithSummary("Mağaza, e-posta ve şifre ile giriş. İki adımlı doğrulama açıksa ikinci adım istenir; değilse token'lar cookie'ye yazılır.");
 
         group.MapPost("/login/two-factor", async (TwoFactorRequest body, ISender sender, IAuthCookieService cookies, TwoFactorCookie twoFactor, HttpContext http, CancellationToken ct) =>
             {
-                TwoFactorChallenge challenge = twoFactor.Read(http.Request) ?? throw TwoFactorExpired();
+                if (twoFactor.Read(http.Request) is not { } challenge)
+                    return AuthErrors.TwoFactorExpired.ToProblem();
 
-                try
-                {
-                    AuthResult result = await sender.Send(new CompleteTwoFactorLoginCommand(challenge, body.Code, ClientIp(http)), ct);
+                Result<AuthResult> result = await sender.Send(new CompleteTwoFactorLoginCommand(challenge, body.Code, ClientIp(http)), ct);
+
+                // Kilitlenme ya da geçersiz bekleyen giriş: baştan giriş yapılmalı.
+                if (result.IsFailure && result.FirstError.Type == ErrorType.Unauthorized)
                     twoFactor.Clear(http.Response);
-                    cookies.SetTokens(http.Response, result.AccessToken, result.RefreshToken);
-                    return TypedResults.Ok(result.User);
-                }
-                catch (UnauthorizedException)
+
+                return result.ToHttpResult(session =>
                 {
-                    // Kilitlenme ya da geçersiz bekleyen giriş: baştan giriş yapılmalı.
                     twoFactor.Clear(http.Response);
-                    throw;
-                }
+                    cookies.SetTokens(http.Response, session.AccessToken, session.RefreshToken);
+                    return TypedResults.Ok(session.User);
+                });
             })
             .AllowAnonymous()
             .WithSummary("İki adımlı girişin ikinci adımı: authenticator uygulamasındaki ya da e-postaya gelen kod.");
 
         group.MapPost("/login/two-factor/resend", async (ISender sender, TwoFactorCookie twoFactor, HttpContext http, CancellationToken ct) =>
-            {
-                TwoFactorChallenge challenge = twoFactor.Read(http.Request) ?? throw TwoFactorExpired();
-                await sender.Send(new ResendTwoFactorCodeCommand(challenge), ct);
-                return TypedResults.NoContent();
-            })
+                twoFactor.Read(http.Request) is { } challenge
+                    ? await sender.Send(new ResendTwoFactorCodeCommand(challenge), ct).ToHttpResult()
+                    : AuthErrors.TwoFactorExpired.ToProblem())
             .AllowAnonymous()
             .WithSummary("İkinci adım e-posta ile yapılıyorsa yeni kod gönderir.");
 
@@ -107,66 +108,65 @@ internal static class AuthEndpoints
 
             group.MapPost("/passkey/login", async (PasskeyLoginRequest body, ISender sender, IAuthCookieService cookies, PasskeyCeremonyStore ceremonies, HttpContext http, CancellationToken ct) =>
                 {
-                    string optionsJson =
-                        ceremonies.Take(http.Request, http.Response, PasskeyCeremonyStore.Login)
-                        ?? throw new UnauthorizedException("Passkey isteğinin süresi doldu; tekrar dene.") { Code = AuthErrorCodes.PasskeyFailed };
+                    if (ceremonies.Take(http.Request, http.Response, PasskeyCeremonyStore.Login) is not { } optionsJson)
+                        return PasskeyExpired.ToProblem();
 
-                    AuthenticatorAssertionRawResponse credential = ReadCredential<AuthenticatorAssertionRawResponse>(body.Credential);
-                    AuthResult result = await sender.Send(
-                        new PasskeyLoginCommand(body.Tenant, credential, AssertionOptions.FromJson(optionsJson), ClientIp(http)),
+                    Result<AuthenticatorAssertionRawResponse> credential = ReadCredential<AuthenticatorAssertionRawResponse>(body.Credential);
+                    if (credential.IsFailure)
+                        return credential.Errors.ToProblem();
+
+                    Result<AuthResult> result = await sender.Send(
+                        new PasskeyLoginCommand(body.Tenant, credential.Value, AssertionOptions.FromJson(optionsJson), ClientIp(http)),
                         ct
                     );
 
-                    cookies.SetTokens(http.Response, result.AccessToken, result.RefreshToken);
-                    return TypedResults.Ok(result.User);
+                    return result.ToHttpResult(session =>
+                    {
+                        cookies.SetTokens(http.Response, session.AccessToken, session.RefreshToken);
+                        return TypedResults.Ok(session.User);
+                    });
                 })
                 .AllowAnonymous()
                 .WithSummary("Passkey ile girişin ikinci adımı: cihazın imzası doğrulanır, token'lar cookie'ye yazılır.");
         }
 
-        group.MapPost("/register", async (RegisterRequest body, ISender sender, CancellationToken ct) =>
-                TypedResults.Ok(
-                    await sender.Send(
-                        new RegisterCommand(body.Tenant, body.Email, body.Password, body.FirstName, body.LastName, body.CompanyName, body.Phone),
-                        ct
-                    )
-                ))
+        group.MapPost("/register", (RegisterRequest body, ISender sender, CancellationToken ct) =>
+                sender
+                    .Send(new RegisterCommand(body.Tenant, body.Email, body.Password, body.FirstName, body.LastName, body.CompanyName, body.Phone), ct)
+                    .ToHttpResult())
             .AllowAnonymous()
             .WithSummary("Siteden müşteri kaydı; e-postaya 6 haneli doğrulama kodu gönderilir.");
 
         group.MapPost("/verify-email", async (VerifyEmailRequest body, ISender sender, IAuthCookieService cookies, HttpContext http, CancellationToken ct) =>
-            {
-                AuthResult result = await sender.Send(new VerifyEmailCommand(body.Tenant, body.Email, body.Code, ClientIp(http)), ct);
-                cookies.SetTokens(http.Response, result.AccessToken, result.RefreshToken);
-                return TypedResults.Ok(result.User);
-            })
+                (await sender.Send(new VerifyEmailCommand(body.Tenant, body.Email, body.Code, ClientIp(http)), ct)).ToHttpResult(session =>
+                {
+                    cookies.SetTokens(http.Response, session.AccessToken, session.RefreshToken);
+                    return TypedResults.Ok(session.User);
+                }))
             .AllowAnonymous()
             .WithSummary("E-posta doğrulama; başarılıysa kullanıcı giriş yapmış olur.");
 
-        group.MapPost("/resend-code", async (ResendCodeRequest body, ISender sender, CancellationToken ct) =>
-            {
-                await sender.Send(new ResendVerificationCodeCommand(body.Tenant, body.Email), ct);
-                return TypedResults.NoContent();
-            })
+        group.MapPost("/resend-code", (ResendCodeRequest body, ISender sender, CancellationToken ct) =>
+                sender.Send(new ResendVerificationCodeCommand(body.Tenant, body.Email), ct).ToHttpResult())
             .AllowAnonymous()
             .WithSummary("Yeni doğrulama kodu gönderir.");
 
         group.MapPost("/refresh", async (ISender sender, IAuthCookieService cookies, HttpContext http, CancellationToken ct) =>
             {
-                string refreshToken = cookies.GetRefreshToken(http.Request) ?? throw new UnauthorizedException("Oturum bulunamadı.");
+                if (cookies.GetRefreshToken(http.Request) is not { } refreshToken)
+                    return AuthErrors.SessionExpired.ToProblem();
 
-                try
-                {
-                    AuthResult result = await sender.Send(new RefreshTokenCommand(refreshToken, ClientIp(http)), ct);
-                    cookies.SetTokens(http.Response, result.AccessToken, result.RefreshToken);
-                    return TypedResults.Ok(result.User);
-                }
-                catch (UnauthorizedException)
-                {
-                    // Geçersiz/çalınmış token: tarayıcıdaki cookie'leri de temizle.
+                Result<AuthResult> result = await sender.Send(new RefreshTokenCommand(refreshToken, ClientIp(http)), ct);
+
+                // Geçersiz/çalınmış token: tarayıcıdaki cookie'leri de temizle.
+                if (result.IsFailure)
                     cookies.Clear(http.Response);
-                    throw;
-                }
+
+                return result.ToHttpResult(session =>
+                {
+                    cookies.SetTokens(http.Response, session.AccessToken, session.RefreshToken);
+                    return TypedResults.Ok(session.User);
+                });
             })
             .AllowAnonymous()
             .WithSummary("Refresh token cookie'si ile yeni token çifti (rotasyon).");
@@ -180,32 +180,31 @@ internal static class AuthEndpoints
             .AllowAnonymous()
             .WithSummary("Refresh token'ı iptal eder ve cookie'leri siler.");
 
-        group.MapGet("/me", (ISender sender, CancellationToken ct) => sender.Send(new GetProfileQuery(), ct))
+        group.MapGet("/me", (ISender sender, CancellationToken ct) => sender.Send(new GetProfileQuery(), ct).ToHttpResult())
             .RequireAuthorization()
             .WithSummary("Giriş yapmış kullanıcının profili.");
     }
 
-    private static string? ClientIp(HttpContext http) => http.Connection.RemoteIpAddress?.ToString();
+    private static readonly Error PasskeyExpired = Error.Unauthorized(AuthErrorCodes.PasskeyFailed, "Passkey isteğinin süresi doldu; tekrar dene.");
 
-    private static UnauthorizedException TwoFactorExpired() =>
-        new("Doğrulama süresi doldu; tekrar giriş yap.") { Code = AuthErrorCodes.TwoFactorExpired };
+    private static string? ClientIp(HttpContext http) => http.Connection.RemoteIpAddress?.ToString();
 
     /// <summary>
     /// Tarayıcının WebAuthn yanıtını Fido2 tipine çevirir. Uygulamanın JSON ayarları (enum'lar metin vb.) yerine
     /// Fido2'nin kendi öznitelikleri geçerli olsun diye varsayılan ayarlarla okunur.
     /// </summary>
-    internal static T ReadCredential<T>(JsonElement credential)
+    internal static Result<T> ReadCredential<T>(JsonElement credential)
         where T : class
     {
+        Error invalid = Error.Validation(AuthErrorCodes.PasskeyFailed, "Geçersiz passkey yanıtı.", "credential");
+
         try
         {
-            return JsonSerializer.Deserialize<T>(credential.GetRawText()) ?? throw InvalidCredential();
+            return JsonSerializer.Deserialize<T>(credential.GetRawText()).ToResult(invalid);
         }
         catch (JsonException)
         {
-            throw InvalidCredential();
+            return invalid;
         }
-
-        static BusinessException InvalidCredential() => new("Geçersiz passkey yanıtı.") { Code = AuthErrorCodes.PasskeyFailed };
     }
 }
