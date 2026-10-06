@@ -1,5 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using Can.Core.Security.Entities;
@@ -19,7 +19,7 @@ namespace Northwind.Application.Features.Auth;
 /// </summary>
 /// <param name="Options">Sunucunun ilk adımda ürettiği ve sakladığı seçenekler (challenge tek kullanımlık).</param>
 public sealed record PasskeyLoginCommand(string Tenant, AuthenticatorAssertionRawResponse Response, AssertionOptions Options, string? IpAddress = null)
-    : IRequest<AuthResult>, ILoggableRequest;
+    : IRequest<Result<AuthResult>>, ILoggableRequest;
 
 public sealed class PasskeyLoginCommandValidator : AbstractValidator<PasskeyLoginCommand>
 {
@@ -31,10 +31,8 @@ public sealed class PasskeyLoginCommandValidator : AbstractValidator<PasskeyLogi
     }
 }
 
-public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCommand, AuthResult>
+public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCommand, Result<AuthResult>>
 {
-    private const string Failed = "Passkey doğrulanamadı ya da bu mağazadaki bir hesaba ait değil.";
-
     private readonly StoreTenant _storeTenant;
     private readonly IRepository<AppUser, Guid> _users;
     private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
@@ -61,14 +59,16 @@ public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCom
         _timeProvider = timeProvider;
     }
 
-    public async Task<AuthResult> Handle(PasskeyLoginCommand request, CancellationToken cancellationToken)
+    public async Task<Result<AuthResult>> Handle(PasskeyLoginCommand request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        Result<Can.Core.MultiTenancy.TenantInfo> store = await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        if (store.IsFailure)
+            return store.Errors;
 
         byte[] credentialId = request.Response.RawId;
         UserPasskey<Guid>? passkey = await _passkeys.GetAsync(p => p.CredentialId == credentialId, cancellationToken: cancellationToken);
         if (passkey is null)
-            throw Fail();
+            return AuthErrors.PasskeyFailed;
 
         // Kullanıcı sorgusu tenant filtresinden geçer: passkey başka mağazanın kullanıcısına aitse bulunmaz.
         AppUser? user = await _users.GetByIdAsync(
@@ -77,11 +77,11 @@ public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCom
             cancellationToken: cancellationToken
         );
         if (user is null)
-            throw Fail();
+            return AuthErrors.PasskeyFailed;
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
         if (user.IsLockedOut(now))
-            throw new UnauthorizedException("Çok fazla hatalı deneme yapıldı; hesap geçici olarak kilitlendi.");
+            return AuthErrors.LockedOut;
 
         PasskeyAssertion assertion;
         try
@@ -98,11 +98,11 @@ public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCom
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Fido2VerificationException (imza, challenge, origin, sayaç ...) ya da bozuk yanıt.
-            throw Fail();
+            return AuthErrors.PasskeyFailed;
         }
 
         if (!user.EmailConfirmed)
-            throw new ForbiddenException("E-posta adresin henüz doğrulanmadı.") { Code = AuthErrorCodes.EmailNotConfirmed };
+            return AuthErrors.EmailNotConfirmed;
 
         passkey.RecordUse(assertion.SignCount, now);
         user.ResetAccessFailed();
@@ -111,6 +111,4 @@ public sealed class PasskeyLoginCommandHandler : IRequestHandler<PasskeyLoginCom
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return result;
     }
-
-    private static UnauthorizedException Fail() => new(Failed) { Code = AuthErrorCodes.PasskeyFailed };
 }

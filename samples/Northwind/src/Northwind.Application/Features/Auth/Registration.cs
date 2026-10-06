@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mailing;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
@@ -30,7 +29,7 @@ public sealed record RegisterCommand(
     string FirstName,
     string LastName,
     string CompanyName,
-    string? Phone) : IRequest<RegisterResult>, ITransactionalRequest, ILoggableRequest;
+    string? Phone) : IRequest<Result<RegisterResult>>, ITransactionalRequest, ILoggableRequest;
 
 public sealed record RegisterResult(string Email, DateTimeOffset CodeExpiresAt);
 
@@ -53,7 +52,7 @@ public sealed class RegisterCommandValidator : AbstractValidator<RegisterCommand
     }
 }
 
-public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterResult>
+public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Result<RegisterResult>>
 {
     private readonly StoreTenant _storeTenant;
     private readonly IRepository<AppUser, Guid> _users;
@@ -78,40 +77,47 @@ public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Re
         _emailVerification = emailVerification;
     }
 
-    public async Task<RegisterResult> Handle(RegisterCommand request, CancellationToken cancellationToken)
+    public async Task<Result<RegisterResult>> Handle(RegisterCommand request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        Result<Can.Core.MultiTenancy.TenantInfo> store = await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        if (store.IsFailure)
+            return store.Errors;
 
         string normalizedEmail = request.Email.Trim().ToUpperInvariant();
         if (await _users.AnyAsync(u => u.NormalizedEmail == normalizedEmail, withDeleted: true, cancellationToken: cancellationToken))
-            throw new ConflictException("Bu e-posta adresiyle kayıtlı bir hesap var.");
+            return AuthErrors.EmailTaken;
 
+        // Seed eksikse bu bir kurulum hatasıdır (beklenmeyen): exception olarak kalır.
         Role<Guid> customerRole =
             await _roles.GetAsync(r => r.Name == Roles.Customer, cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("Customer rolü bulunamadı; seed çalıştı mı?");
 
-        AppUser user = AppUser.Register(request.Email, request.FirstName, request.LastName, _passwordHasher.Hash(request.Password));
+        Result<AppUser> registered = AppUser.Register(request.Email, request.FirstName, request.LastName, _passwordHasher.Hash(request.Password));
+        if (registered.IsFailure)
+            return registered.Errors;
+
+        AppUser user = registered.Value;
         user.AddRole(customerRole);
         await _users.AddAsync(user, cancellationToken);
 
-        Customer customer = Customer.Create(
-            await NewCustomerCodeAsync(request.CompanyName, cancellationToken),
-            request.CompanyName,
-            $"{request.FirstName} {request.LastName}",
-            null,
-            null,
-            request.Phone,
-            null
-        );
-        customer.LinkUser(user.Id);
-        await _customers.AddAsync(customer, cancellationToken);
+        Result<string> code = await NewCustomerCodeAsync(request.CompanyName, cancellationToken);
+        if (code.IsFailure)
+            return code.Errors;
+
+        Result<Customer> customer = Customer
+            .Create(code.Value, request.CompanyName, $"{request.FirstName} {request.LastName}", null, null, request.Phone, null)
+            .Then(c => c.LinkUser(user.Id).Map(_ => c));
+        if (customer.IsFailure)
+            return customer.Errors;
+
+        await _customers.AddAsync(customer.Value, cancellationToken);
 
         DateTimeOffset expiresAt = await _emailVerification.SendCodeAsync(user, cancellationToken);
         return new RegisterResult(user.Email, expiresAt);
     }
 
     /// <summary>Firma adından 3 harf + 2 rakam (ör. "ACM07"); mağaza içinde benzersiz.</summary>
-    private async Task<string> NewCustomerCodeAsync(string companyName, CancellationToken cancellationToken)
+    private async Task<Result<string>> NewCustomerCodeAsync(string companyName, CancellationToken cancellationToken)
     {
         string letters = new string(companyName.ToUpperInvariant().Where(c => c is >= 'A' and <= 'Z').Take(3).ToArray()).PadRight(3, 'X');
 
@@ -122,14 +128,14 @@ public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Re
                 return code;
         }
 
-        throw new ConflictException("Müşteri kodu üretilemedi; tekrar dene.");
+        return Error.Conflict("customer.code_exhausted", "Müşteri kodu üretilemedi; tekrar dene.");
     }
 }
 
 // ---------------------------------------------------------------- doğrulama
 
 /// <summary>E-postadaki kodu doğrular; başarılıysa kullanıcı doğrudan giriş yapmış olur.</summary>
-public sealed record VerifyEmailCommand(string Tenant, string Email, string Code, string? IpAddress = null) : IRequest<AuthResult>, ILoggableRequest;
+public sealed record VerifyEmailCommand(string Tenant, string Email, string Code, string? IpAddress = null) : IRequest<Result<AuthResult>>, ILoggableRequest;
 
 public sealed class VerifyEmailCommandValidator : AbstractValidator<VerifyEmailCommand>
 {
@@ -141,7 +147,7 @@ public sealed class VerifyEmailCommandValidator : AbstractValidator<VerifyEmailC
     }
 }
 
-public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailCommand, AuthResult>
+public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailCommand, Result<AuthResult>>
 {
     private readonly StoreTenant _storeTenant;
     private readonly IRepository<AppUser, Guid> _users;
@@ -163,17 +169,19 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<AuthResult> Handle(VerifyEmailCommand request, CancellationToken cancellationToken)
+    public async Task<Result<AuthResult>> Handle(VerifyEmailCommand request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        if ((await _storeTenant.UseAsync(request.Tenant, cancellationToken)).IsFailure)
+            return AuthErrors.InvalidVerificationCode;
 
         string normalizedEmail = request.Email.Trim().ToUpperInvariant();
-        AppUser user =
-            await _users.GetAsync(
-                u => u.NormalizedEmail == normalizedEmail,
-                include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
-                cancellationToken: cancellationToken
-            ) ?? throw InvalidCode();
+        AppUser? user = await _users.GetAsync(
+            u => u.NormalizedEmail == normalizedEmail,
+            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            cancellationToken: cancellationToken
+        );
+        if (user is null)
+            return AuthErrors.InvalidVerificationCode;
 
         if (!user.EmailConfirmed)
         {
@@ -183,7 +191,7 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
             {
                 // Başarısız deneme sayacı kalıcı olsun (kaba kuvvet denemelerine karşı).
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
-                throw InvalidCode();
+                return AuthErrors.InvalidVerificationCode;
             }
 
             user.ConfirmEmail();
@@ -193,15 +201,12 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return result;
     }
-
-    private static BusinessException InvalidCode() =>
-        new("Kod hatalı ya da süresi dolmuş; yeni kod iste.") { Code = AuthErrorCodes.InvalidVerificationCode };
 }
 
 /// <summary>Yeni doğrulama kodu gönderir. Hesabın var olup olmadığını belli etmemek için her zaman başarılı döner.</summary>
-public sealed record ResendVerificationCodeCommand(string Tenant, string Email) : IRequest, ITransactionalRequest;
+public sealed record ResendVerificationCodeCommand(string Tenant, string Email) : IRequest<Result<Success>>, ITransactionalRequest;
 
-public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<ResendVerificationCodeCommand>
+public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<ResendVerificationCodeCommand, Result<Success>>
 {
     private readonly StoreTenant _storeTenant;
     private readonly IRepository<AppUser, Guid> _users;
@@ -214,15 +219,19 @@ public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<Resen
         _emailVerification = emailVerification;
     }
 
-    public async Task Handle(ResendVerificationCodeCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(ResendVerificationCodeCommand request, CancellationToken cancellationToken)
     {
-        await _storeTenant.UseAsync(request.Tenant, cancellationToken);
+        // Hesabın var olup olmadığı belli olmasın: mağaza ya da kullanıcı yoksa da başarılı döner.
+        if ((await _storeTenant.UseAsync(request.Tenant, cancellationToken)).IsFailure)
+            return Result.Success;
 
         string normalizedEmail = request.Email.Trim().ToUpperInvariant();
         AppUser? user = await _users.GetAsync(u => u.NormalizedEmail == normalizedEmail, cancellationToken: cancellationToken);
 
         if (user is { EmailConfirmed: false })
             await _emailVerification.SendCodeAsync(user, cancellationToken);
+
+        return Result.Success;
     }
 }
 

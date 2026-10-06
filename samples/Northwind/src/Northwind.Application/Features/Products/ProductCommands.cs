@@ -1,4 +1,5 @@
 using Can.Core.Application;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using FluentValidation;
@@ -15,38 +16,38 @@ public sealed record CreateProductCommand(
     string? QuantityPerUnit,
     decimal UnitPrice,
     int UnitsInStock,
-    int ReorderLevel) : IRequest<Guid>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+    int ReorderLevel) : IRequest<Result<Guid>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
     public IReadOnlyCollection<string> CacheTagsToRemove => [CategoryCacheTags.Categories];
 }
 
 public sealed record UpdateProductCommand(Guid Id, string Name, Guid? CategoryId, Guid? SupplierId, string? QuantityPerUnit, int ReorderLevel)
-    : IRequest, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+    : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
     public IReadOnlyCollection<string> CacheTagsToRemove => [CategoryCacheTags.Categories];
 }
 
 /// <summary>Fiyat değişikliği; değişiklik geçmişine eski/yeni fiyat yazılır.</summary>
-public sealed record ChangeProductPriceCommand(Guid Id, decimal UnitPrice) : IRequest, ISecuredRequest, ITransactionalRequest
+public sealed record ChangeProductPriceCommand(Guid Id, decimal UnitPrice) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
 
 /// <summary>Depoya gelen ürünü stoğa ekler.</summary>
-public sealed record RestockProductCommand(Guid Id, int Quantity) : IRequest, ISecuredRequest, ITransactionalRequest
+public sealed record RestockProductCommand(Guid Id, int Quantity) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Warehouse];
 }
 
 /// <summary>Ürünü satıştan kaldırır; <see cref="ProductDiscontinued"/> outbox ile yayınlanır.</summary>
-public sealed record DiscontinueProductCommand(Guid Id) : IRequest, ISecuredRequest, ITransactionalRequest
+public sealed record DiscontinueProductCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
 
-public sealed record DeleteProductCommand(Guid Id) : IRequest, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+public sealed record DeleteProductCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
     public IReadOnlyCollection<string> CacheTagsToRemove => [CategoryCacheTags.Categories];
@@ -87,12 +88,12 @@ public sealed class RestockProductCommandValidator : AbstractValidator<RestockPr
 }
 
 public sealed class ProductCommandHandlers
-    : IRequestHandler<CreateProductCommand, Guid>,
-        IRequestHandler<UpdateProductCommand>,
-        IRequestHandler<ChangeProductPriceCommand>,
-        IRequestHandler<RestockProductCommand>,
-        IRequestHandler<DiscontinueProductCommand>,
-        IRequestHandler<DeleteProductCommand>
+    : IRequestHandler<CreateProductCommand, Result<Guid>>,
+        IRequestHandler<UpdateProductCommand, Result<Success>>,
+        IRequestHandler<ChangeProductPriceCommand, Result<Success>>,
+        IRequestHandler<RestockProductCommand, Result<Success>>,
+        IRequestHandler<DiscontinueProductCommand, Result<Success>>,
+        IRequestHandler<DeleteProductCommand, Result<Success>>
 {
     private readonly IRepository<Product, Guid> _products;
     private readonly ProductBusinessRules _rules;
@@ -103,43 +104,64 @@ public sealed class ProductCommandHandlers
         _rules = rules;
     }
 
-    public async Task<Guid> Handle(CreateProductCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Guid>> Handle(CreateProductCommand request, CancellationToken cancellationToken)
     {
-        await _rules.NameMustBeUniqueAsync(request.Name, null, cancellationToken);
-        await _rules.ReferencesMustExistAsync(request.CategoryId, request.SupplierId, cancellationToken);
-
-        Product product = Product.Create(
-            request.Name,
-            request.CategoryId,
-            request.SupplierId,
-            request.QuantityPerUnit,
-            request.UnitPrice,
-            request.UnitsInStock,
-            request.ReorderLevel
+        Result<Success> rules = Result.Combine(
+            await _rules.NameMustBeUniqueAsync(request.Name, null, cancellationToken),
+            await _rules.ReferencesMustExistAsync(request.CategoryId, request.SupplierId, cancellationToken)
         );
+        if (rules.IsFailure)
+            return rules.Errors;
 
-        await _products.AddAsync(product, cancellationToken);
-        return product.Id;
+        return await Product
+            .Create(
+                request.Name,
+                request.CategoryId,
+                request.SupplierId,
+                request.QuantityPerUnit,
+                request.UnitPrice,
+                request.UnitsInStock,
+                request.ReorderLevel
+            )
+            .TapAsync(product => _products.AddAsync(product, cancellationToken))
+            .Map(product => product.Id);
     }
 
-    public async Task Handle(UpdateProductCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(UpdateProductCommand request, CancellationToken cancellationToken)
     {
-        Product product = await _rules.MustExistAsync(request.Id, cancellationToken);
-        await _rules.NameMustBeUniqueAsync(request.Name, request.Id, cancellationToken);
-        await _rules.ReferencesMustExistAsync(request.CategoryId, request.SupplierId, cancellationToken);
+        Result<Product> product = await _rules.MustExistAsync(request.Id, cancellationToken);
+        if (product.IsFailure)
+            return product.Errors;
 
-        product.UpdateDetails(request.Name, request.CategoryId, request.SupplierId, request.QuantityPerUnit, request.ReorderLevel);
+        Result<Success> rules = Result.Combine(
+            await _rules.NameMustBeUniqueAsync(request.Name, request.Id, cancellationToken),
+            await _rules.ReferencesMustExistAsync(request.CategoryId, request.SupplierId, cancellationToken)
+        );
+        if (rules.IsFailure)
+            return rules;
+
+        return product.Value.UpdateDetails(request.Name, request.CategoryId, request.SupplierId, request.QuantityPerUnit, request.ReorderLevel);
     }
 
-    public async Task Handle(ChangeProductPriceCommand request, CancellationToken cancellationToken) =>
-        (await _rules.MustExistAsync(request.Id, cancellationToken)).ChangePrice(request.UnitPrice);
+    public Task<Result<Success>> Handle(ChangeProductPriceCommand request, CancellationToken cancellationToken) =>
+        _rules.MustExistAsync(request.Id, cancellationToken).Then(product => product.ChangePrice(request.UnitPrice));
 
-    public async Task Handle(RestockProductCommand request, CancellationToken cancellationToken) =>
-        (await _rules.MustExistAsync(request.Id, cancellationToken)).Restock(request.Quantity);
+    public Task<Result<Success>> Handle(RestockProductCommand request, CancellationToken cancellationToken) =>
+        _rules.MustExistAsync(request.Id, cancellationToken).Then(product => product.Restock(request.Quantity));
 
-    public async Task Handle(DiscontinueProductCommand request, CancellationToken cancellationToken) =>
-        (await _rules.MustExistAsync(request.Id, cancellationToken)).Discontinue();
+    public Task<Result<Success>> Handle(DiscontinueProductCommand request, CancellationToken cancellationToken) =>
+        _rules.MustExistAsync(request.Id, cancellationToken)
+            .Map(product =>
+            {
+                product.Discontinue();
+                return Result.Success;
+            });
 
-    public async Task Handle(DeleteProductCommand request, CancellationToken cancellationToken) =>
-        _products.Delete(await _rules.MustExistAsync(request.Id, cancellationToken));
+    public Task<Result<Success>> Handle(DeleteProductCommand request, CancellationToken cancellationToken) =>
+        _rules.MustExistAsync(request.Id, cancellationToken)
+            .Map(product =>
+            {
+                _products.Delete(product);
+                return Result.Success;
+            });
 }

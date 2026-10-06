@@ -1,6 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using FluentValidation;
@@ -33,19 +32,19 @@ public sealed record PlaceOrderCommand(
     DateOnly? RequiredDate,
     decimal Freight,
     ShipToDto? ShipTo,
-    IReadOnlyList<PlaceOrderLine> Lines) : IRequest<PlaceOrderResult>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+    IReadOnlyList<PlaceOrderLine> Lines) : IRequest<Result<PlaceOrderResult>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
     public IReadOnlyCollection<string> CacheTagsToRemove => [OrderCacheTags.Reports];
 }
 
-public sealed record ShipOrderCommand(Guid OrderId, Guid ShipperId) : IRequest, ISecuredRequest, ITransactionalRequest
+public sealed record ShipOrderCommand(Guid OrderId, Guid ShipperId) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Warehouse];
 }
 
 /// <summary>Siparişi iptal eder; ürünler <see cref="OrderCancelled"/> handler'ı ile aynı transaction'da stoğa geri konur.</summary>
-public sealed record CancelOrderCommand(Guid OrderId) : IRequest, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+public sealed record CancelOrderCommand(Guid OrderId) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
     public IReadOnlyCollection<string> CacheTagsToRemove => [OrderCacheTags.Reports];
@@ -88,9 +87,9 @@ public sealed class ShipOrderCommandValidator : AbstractValidator<ShipOrderComma
 }
 
 public sealed class OrderCommandHandlers
-    : IRequestHandler<PlaceOrderCommand, PlaceOrderResult>,
-        IRequestHandler<ShipOrderCommand>,
-        IRequestHandler<CancelOrderCommand>
+    : IRequestHandler<PlaceOrderCommand, Result<PlaceOrderResult>>,
+        IRequestHandler<ShipOrderCommand, Result<Success>>,
+        IRequestHandler<CancelOrderCommand, Result<Success>>
 {
     private readonly IRepository<Order, Guid> _orders;
     private readonly IRepository<Customer, Guid> _customers;
@@ -115,46 +114,46 @@ public sealed class OrderCommandHandlers
         _timeProvider = timeProvider;
     }
 
-    public async Task<PlaceOrderResult> Handle(PlaceOrderCommand request, CancellationToken cancellationToken)
+    public async Task<Result<PlaceOrderResult>> Handle(PlaceOrderCommand request, CancellationToken cancellationToken)
     {
-        Customer customer =
-            await _customers.GetByIdAsync(request.CustomerId, enableTracking: false, cancellationToken: cancellationToken)
-            ?? throw NotFoundException.For<Customer>(request.CustomerId);
+        Result<Customer> customer = await _customers
+            .GetByIdAsync(request.CustomerId, enableTracking: false, cancellationToken: cancellationToken)
+            .ToResult(CustomerErrors.NotFound(request.CustomerId));
+        if (customer.IsFailure)
+            return customer.Errors;
 
         if (request.EmployeeId is { } employeeId && !await _employees.AnyAsync(e => e.Id == employeeId, cancellationToken: cancellationToken))
-            throw NotFoundException.For<Employee>(employeeId);
+            return Error.NotFound("employee.not_found", $"'{employeeId}' çalışanı bulunamadı.");
 
-        Order order = await _placer.PlaceAsync(customer, request.EmployeeId, request.RequiredDate, _ => request.Freight, request.ShipTo, request.Lines, cancellationToken);
-        return new PlaceOrderResult(order.Id, order.Number, order.Total);
+        return await _placer
+            .PlaceAsync(customer.Value, request.EmployeeId, request.RequiredDate, _ => request.Freight, request.ShipTo, request.Lines, cancellationToken)
+            .Map(order => new PlaceOrderResult(order.Id, order.Number, order.Total));
     }
 
-    public async Task Handle(ShipOrderCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(ShipOrderCommand request, CancellationToken cancellationToken)
     {
         if (!await _shippers.AnyAsync(s => s.Id == request.ShipperId, cancellationToken: cancellationToken))
-            throw NotFoundException.For<Shipper>(request.ShipperId);
+            return Error.NotFound("shipper.not_found", $"'{request.ShipperId}' kargo firması bulunamadı.");
 
-        Order order = await LoadAsync(request.OrderId, cancellationToken);
-        order.Ship(request.ShipperId, _timeProvider.GetUtcNow());
+        return await LoadAsync(request.OrderId, cancellationToken).Then(order => order.Ship(request.ShipperId, _timeProvider.GetUtcNow()));
     }
 
-    public async Task Handle(CancelOrderCommand request, CancellationToken cancellationToken)
-    {
-        Order order = await LoadAsync(request.OrderId, cancellationToken);
-        order.Cancel();
-    }
+    public Task<Result<Success>> Handle(CancelOrderCommand request, CancellationToken cancellationToken) =>
+        LoadAsync(request.OrderId, cancellationToken).Then(order => order.Cancel());
 
-    private async Task<Order> LoadAsync(Guid id, CancellationToken cancellationToken) =>
-        await _orders.GetByIdAsync(id, include: q => q.Include(o => o.Lines), cancellationToken: cancellationToken)
-        ?? throw NotFoundException.For<Order>(id);
+    private Task<Result<Order>> LoadAsync(Guid id, CancellationToken cancellationToken) =>
+        _orders.GetByIdAsync(id, include: q => q.Include(o => o.Lines), cancellationToken: cancellationToken).ToResult(OrderErrors.NotFound(id));
 }
 
 /// <summary>
 /// Sipariş oluşturma: ürünleri yükler, numara verir, satırları ekler (stok düşer). Personelin ve müşterinin
-/// (site) sipariş akışları bunu ortak kullanır; transaction'ı çağıran command sağlar.
+/// (site) sipariş akışları bunu ortak kullanır; transaction'ı çağıran command sağlar (başarısız sonuçta geri alınır).
 /// </summary>
 public sealed class OrderPlacer
 {
     private const int FirstOrderNumber = 10000;
+
+    public static readonly Error AddressRequired = Error.Validation("address_required", "Teslimat adresi gerekli.", "ShipTo");
 
     private readonly IRepository<Order, Guid> _orders;
     private readonly IRepository<Product, Guid> _products;
@@ -174,7 +173,7 @@ public sealed class OrderPlacer
     /// <param name="shipTo">Teslimat bilgisi; boşsa müşterinin adı ve adresi.</param>
     /// <param name="lines">Satırlar.</param>
     /// <param name="cancellationToken">İptal belirteci.</param>
-    public async Task<Order> PlaceAsync(
+    public async Task<Result<Order>> PlaceAsync(
         Customer customer,
         Guid? employeeId,
         DateOnly? requiredDate,
@@ -183,9 +182,25 @@ public sealed class OrderPlacer
         IReadOnlyList<PlaceOrderLine> lines,
         CancellationToken cancellationToken)
     {
-        (string shipName, Address shipAddress) = shipTo is not null
-            ? (shipTo.Name, shipTo.Address.ToAddress())
-            : (customer.CompanyName, customer.Address ?? throw new BusinessException("Teslimat adresi gerekli.") { Code = "address_required" });
+        string shipName;
+        Address shipAddress;
+
+        if (shipTo is not null)
+        {
+            Result<Address> address = shipTo.Address.ToAddress();
+            if (address.IsFailure)
+                return address.Errors;
+
+            (shipName, shipAddress) = (shipTo.Name, address.Value);
+        }
+        else if (customer.Address is { } customerAddress)
+        {
+            (shipName, shipAddress) = (customer.CompanyName, customerAddress);
+        }
+        else
+        {
+            return AddressRequired;
+        }
 
         Guid[] productIds = lines.Select(l => l.ProductId).Distinct().ToArray();
         Dictionary<Guid, Product> products = await _products
@@ -195,14 +210,14 @@ public sealed class OrderPlacer
 
         Guid? missing = productIds.Where(id => !products.ContainsKey(id)).Select(id => (Guid?)id).FirstOrDefault();
         if (missing is { } missingId)
-            throw NotFoundException.For<Product>(missingId);
+            return ProductErrors.NotFound(missingId);
 
         decimal subtotal = lines.Sum(l => products[l.ProductId].UnitPrice * l.Quantity * (1 - l.Discount));
 
         // Numara çakışması (aynı anda iki sipariş) benzersiz index ile engellenir ve 409 döner.
         int lastNumber = await _orders.Query(withDeleted: true, enableTracking: false).MaxAsync(o => (int?)o.Number, cancellationToken) ?? FirstOrderNumber;
 
-        Order order = Order.Place(
+        Result<Order> placed = Order.Place(
             lastNumber + 1,
             customer.Id,
             employeeId,
@@ -212,9 +227,17 @@ public sealed class OrderPlacer
             freight(subtotal),
             _timeProvider.GetUtcNow()
         );
+        if (placed.IsFailure)
+            return placed;
 
-        foreach (PlaceOrderLine line in lines)
-            order.AddLine(products[line.ProductId], line.Quantity, line.Discount);
+        Order order = placed.Value;
+
+        // Bir satır başarısızsa (stok yok, satıştan kalkmış) tüm hatalar birlikte döner; transaction geri alınır.
+        Result<Success> added = Result.Combine(
+            lines.Select(line => (IResultBase)order.AddLine(products[line.ProductId], line.Quantity, line.Discount)).ToArray()
+        );
+        if (added.IsFailure)
+            return added.Errors;
 
         await _orders.AddAsync(order, cancellationToken);
         return order;

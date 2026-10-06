@@ -1,4 +1,4 @@
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.MultiTenancy;
 
 namespace Northwind.Application.Common;
@@ -19,13 +19,15 @@ public sealed class StoreTenant
     }
 
     /// <summary>Mağazayı bulur ve bu isteğin tenant'ı yapar; yoksa ya da pasifse 404.</summary>
-    public async Task<TenantInfo> UseAsync(string identifier, CancellationToken cancellationToken)
+    public async Task<Result<TenantInfo>> UseAsync(string identifier, CancellationToken cancellationToken)
     {
         TenantInfo? tenant = await _tenantStore.FindAsync(identifier.Trim(), cancellationToken);
         if (tenant is not { IsActive: true })
-            throw new NotFoundException($"'{identifier}' adında bir mağaza bulunamadı.");
+            return NotFound(identifier);
 
         _tenantContext.Set(tenant);
         return tenant;
     }
+
+    public static Error NotFound(string identifier) => Error.NotFound("store.not_found", $"'{identifier}' adında bir mağaza bulunamadı.");
 }

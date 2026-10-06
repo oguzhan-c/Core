@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -61,7 +62,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
         var map = new Dictionary<int, Guid>();
         foreach (NorthwindSqlReader.Row row in sql.Rows("categories"))
         {
-            Category category = Category.Create(row.RequiredText(1), row.Text(2));
+            Category category = Category.Create(row.RequiredText(1), row.Text(2)).ThrowIfFailure();
             _db.Categories.Add(category);
             map[row.Int(0)] = category.Id;
         }
@@ -83,7 +84,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
                 row.Text(9),
                 row.Text(10),
                 row.Text(11)
-            );
+            ).ThrowIfFailure();
             _db.Suppliers.Add(supplier);
             map[row.Int(0)] = supplier.Id;
         }
@@ -96,7 +97,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
         var map = new Dictionary<int, Guid>();
         foreach (NorthwindSqlReader.Row row in sql.Rows("shippers"))
         {
-            Shipper shipper = Shipper.Create(row.RequiredText(1), row.Text(2));
+            Shipper shipper = Shipper.Create(row.RequiredText(1), row.Text(2)).ThrowIfFailure();
             _db.Shippers.Add(shipper);
             map[row.Int(0)] = shipper.Id;
         }
@@ -124,7 +125,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
                 row.Text(12),
                 row.Text(13),
                 row.Text(15)
-            );
+            ).ThrowIfFailure();
 
             employees[row.Int(0)] = employee;
             if (row.NullableInt(16) is { } managerId)
@@ -134,7 +135,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
         }
 
         foreach ((int employeeId, int managerId) in managers)
-            employees[employeeId].ReportTo(employees[managerId]);
+            employees[employeeId].ReportTo(employees[managerId]).ThrowIfFailure();
 
         foreach (NorthwindSqlReader.Row row in sql.Rows("employee_territories"))
             employees[row.Int(0)].AssignTerritory(row.RequiredText(1));
@@ -156,7 +157,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
                 AddressOf(row, 4),
                 row.Text(9),
                 row.Text(10)
-            );
+            ).ThrowIfFailure();
             _db.Customers.Add(customer);
             map[row.RequiredText(0)] = customer.Id;
         }
@@ -181,7 +182,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
                 row.NullableInt(7) ?? 0,
                 row.NullableInt(8) ?? 0,
                 row.Int(9) == 1
-            );
+            ).ThrowIfFailure();
             _db.Products.Add(product);
             map[row.Int(0)] = product;
         }
@@ -243,7 +244,7 @@ internal sealed partial class NorthwindDataSeeder : IDataSeeder
 
         return street is null || city is null || country is null
             ? null
-            : new Address(street, city, row.Text(streetIndex + 2), row.Text(streetIndex + 3), country);
+            : Address.Create(street, city, row.Text(streetIndex + 2), row.Text(streetIndex + 3), country).ThrowIfFailure();
     }
 
     private static DateTimeOffset AtMidnightUtc(DateOnly date) => new(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

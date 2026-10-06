@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
 using Can.Core.BackgroundJobs;
 using Can.Core.Mediator;
@@ -25,7 +26,7 @@ public sealed record UserListItemDto(
     IReadOnlyList<string> Roles);
 
 /// <summary>Mağazanın kullanıcıları (personel ve siteden kayıt olan müşteriler).</summary>
-public sealed record GetUsersQuery(PageRequest Page, string? Search = null, string? Role = null) : IRequest<IPaginate<UserListItemDto>>, ISecuredRequest
+public sealed record GetUsersQuery(PageRequest Page, string? Search = null, string? Role = null) : IRequest<Result<IPaginate<UserListItemDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
@@ -39,13 +40,13 @@ public sealed class GetUsersQueryValidator : AbstractValidator<GetUsersQuery>
     }
 }
 
-public sealed class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, IPaginate<UserListItemDto>>
+public sealed class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, Result<IPaginate<UserListItemDto>>>
 {
     private readonly IRepository<AppUser, Guid> _users;
 
     public GetUsersQueryHandler(IRepository<AppUser, Guid> users) => _users = users;
 
-    public Task<IPaginate<UserListItemDto>> Handle(GetUsersQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<UserListItemDto>>> Handle(GetUsersQuery request, CancellationToken cancellationToken)
     {
         IQueryable<AppUser> query = _users.Query(enableTracking: false);
 
@@ -62,7 +63,7 @@ public sealed class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, IPagin
         if (!string.IsNullOrWhiteSpace(request.Role))
             query = query.Where(u => u.UserRoles.Any(r => r.Role!.Name == request.Role));
 
-        return query
+        return Result.Ok(await query
             .OrderBy(u => u.Email)
             .Select(u => new UserListItemDto(
                 u.Id,
@@ -74,24 +75,27 @@ public sealed class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, IPagin
                 u.CreatedAt,
                 u.UserRoles.Select(r => r.Role!.Name).OrderBy(n => n).ToList()
             ))
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken));
     }
 }
 
 // ---------------------------------------------------------------- arka plan işleri
 
 /// <summary>"Yeniden sipariş" raporunu beklemeden kuyruğa atar; iş arka planda bu mağaza adına çalışır.</summary>
-public sealed record RunReorderReportCommand : IRequest, ISecuredRequest
+public sealed record RunReorderReportCommand : IRequest<Result<Success>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
 
-public sealed class RunReorderReportCommandHandler : IRequestHandler<RunReorderReportCommand>
+public sealed class RunReorderReportCommandHandler : IRequestHandler<RunReorderReportCommand, Result<Success>>
 {
     private readonly IBackgroundJobQueue _queue;
 
     public RunReorderReportCommandHandler(IBackgroundJobQueue queue) => _queue = queue;
 
-    public Task Handle(RunReorderReportCommand request, CancellationToken cancellationToken) =>
-        _queue.EnqueueAsync<ReorderReportJob>(cancellationToken).AsTask();
+    public async Task<Result<Success>> Handle(RunReorderReportCommand request, CancellationToken cancellationToken)
+    {
+        await _queue.EnqueueAsync<ReorderReportJob>(cancellationToken);
+        return Result.Success;
+    }
 }

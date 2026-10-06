@@ -1,5 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Repositories;
@@ -16,7 +16,7 @@ namespace Northwind.Application.Features.Auth;
 /// token'daki tenant kullanılır. Kullanıcı iki adımlı doğrulamayı açtıysa oturum açılmaz, ikinci adım istenir
 /// (<see cref="CompleteTwoFactorLoginCommand"/>).
 /// </summary>
-public sealed record LoginCommand(string Tenant, string Email, string Password, string? IpAddress = null) : IRequest<LoginResult>, ILoggableRequest;
+public sealed record LoginCommand(string Tenant, string Email, string Password, string? IpAddress = null) : IRequest<Result<LoginResult>>, ILoggableRequest;
 
 public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
@@ -28,10 +28,8 @@ public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
     }
 }
 
-public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
+public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, Result<LoginResult>>
 {
-    private const string InvalidCredentials = "Mağaza, e-posta ya da şifre hatalı.";
-
     private readonly ITenantStore _tenantStore;
     private readonly TenantContext _tenantContext;
     private readonly IRepository<AppUser, Guid> _users;
@@ -61,11 +59,11 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, LoginRes
         _timeProvider = timeProvider;
     }
 
-    public async Task<LoginResult> Handle(LoginCommand request, CancellationToken cancellationToken)
+    public async Task<Result<LoginResult>> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
         TenantInfo? tenant = await _tenantStore.FindAsync(request.Tenant.Trim(), cancellationToken);
         if (tenant is not { IsActive: true })
-            throw new UnauthorizedException(InvalidCredentials);
+            return AuthErrors.InvalidCredentials;
 
         // Bu istekteki sorgular ve kayıtlar artık bu mağaza adına çalışır.
         _tenantContext.Set(tenant);
@@ -81,19 +79,19 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, LoginRes
         {
             // Kullanıcı yokken de aynı süreyi harca: yanıt süresinden e-postanın kayıtlı olup olmadığı anlaşılmasın.
             _ = _passwordHasher.Hash(request.Password);
-            throw new UnauthorizedException(InvalidCredentials);
+            return AuthErrors.InvalidCredentials;
         }
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
         if (user.IsLockedOut(now))
-            throw new UnauthorizedException("Çok fazla hatalı deneme yapıldı; hesap geçici olarak kilitlendi.");
+            return AuthErrors.LockedOut;
 
         PasswordVerificationResult verification = _passwordHasher.Verify(request.Password, user.PasswordHash);
         if (verification == PasswordVerificationResult.Failed)
         {
             user.RegisterFailedAccess(now);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            throw new UnauthorizedException(InvalidCredentials);
+            return AuthErrors.InvalidCredentials;
         }
 
         if (verification == PasswordVerificationResult.SuccessRehashNeeded)
@@ -105,7 +103,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, LoginRes
         if (!user.EmailConfirmed)
         {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            throw new ForbiddenException("E-posta adresin henüz doğrulanmadı. Gönderdiğimiz kodu gir.") { Code = AuthErrorCodes.EmailNotConfirmed };
+            return AuthErrors.EmailNotConfirmed;
         }
 
         // İki adımlı doğrulama açıksa oturum henüz açılmaz.

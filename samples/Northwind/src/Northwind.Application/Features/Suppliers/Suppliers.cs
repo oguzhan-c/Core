@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
 using Can.Core.Mapping;
 using Can.Core.Mediator;
@@ -31,7 +32,7 @@ public sealed class SupplierProfile : MappingProfile
     }
 }
 
-public sealed record GetSupplierListQuery(PageRequest Page, string? Country = null) : IRequest<IPaginate<SupplierDto>>, ISecuredRequest
+public sealed record GetSupplierListQuery(PageRequest Page, string? Country = null) : IRequest<Result<IPaginate<SupplierDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -41,7 +42,7 @@ public sealed class GetSupplierListQueryValidator : AbstractValidator<GetSupplie
     public GetSupplierListQueryValidator() => RuleFor(q => q.Page).ValidPage();
 }
 
-public sealed class GetSupplierListQueryHandler : IRequestHandler<GetSupplierListQuery, IPaginate<SupplierDto>>
+public sealed class GetSupplierListQueryHandler : IRequestHandler<GetSupplierListQuery, Result<IPaginate<SupplierDto>>>
 {
     private readonly IRepository<Supplier, Guid> _suppliers;
     private readonly IMapper _mapper;
@@ -52,7 +53,7 @@ public sealed class GetSupplierListQueryHandler : IRequestHandler<GetSupplierLis
         _mapper = mapper;
     }
 
-    public Task<IPaginate<SupplierDto>> Handle(GetSupplierListQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<SupplierDto>>> Handle(GetSupplierListQuery request, CancellationToken cancellationToken)
     {
         IQueryable<Supplier> query = _suppliers.Query(enableTracking: false);
 
@@ -62,9 +63,11 @@ public sealed class GetSupplierListQueryHandler : IRequestHandler<GetSupplierLis
             query = query.Where(s => s.Address != null && s.Address.Country == country);
         }
 
-        return query
-            .OrderBy(s => s.CompanyName)
-            .ProjectTo<SupplierDto>(_mapper)
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+        return Result.Ok(
+            await query
+                .OrderBy(s => s.CompanyName)
+                .ProjectTo<SupplierDto>(_mapper)
+                .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
+        );
     }
 }

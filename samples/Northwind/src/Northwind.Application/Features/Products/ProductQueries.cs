@@ -1,5 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mapping;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Dynamic;
@@ -15,7 +15,7 @@ namespace Northwind.Application.Features.Products;
 
 /// <summary>Ürün listesi: kategori ve arama filtresi, kategori/tedarikçi adlarıyla.</summary>
 public sealed record GetProductListQuery(PageRequest Page, Guid? CategoryId = null, string? Search = null, bool IncludeDiscontinued = false)
-    : IRequest<IPaginate<ProductListItemDto>>, ISecuredRequest
+    : IRequest<Result<IPaginate<ProductListItemDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -24,18 +24,18 @@ public sealed record GetProductListQuery(PageRequest Page, Guid? CategoryId = nu
 /// İstemcinin gönderdiği dinamik filtre ve sıralama ile arama, ör.
 /// <c>{"filter":{"field":"unitPrice","operator":"gt","value":"20"},"sort":[{"field":"name","dir":"asc"}]}</c>.
 /// </summary>
-public sealed record SearchProductsQuery(DynamicQuery Query, PageRequest Page) : IRequest<IPaginate<ProductDto>>, ISecuredRequest
+public sealed record SearchProductsQuery(DynamicQuery Query, PageRequest Page) : IRequest<Result<IPaginate<ProductDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
-public sealed record GetProductByIdQuery(Guid Id) : IRequest<ProductDto>, ISecuredRequest
+public sealed record GetProductByIdQuery(Guid Id) : IRequest<Result<ProductDto>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
 /// <summary>Yeniden sipariş verilmesi gereken ürünler.</summary>
-public sealed record GetProductsToReorderQuery : IRequest<IReadOnlyList<ProductDto>>, ISecuredRequest
+public sealed record GetProductsToReorderQuery : IRequest<Result<IReadOnlyList<ProductDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
@@ -59,10 +59,10 @@ public sealed class SearchProductsQueryValidator : AbstractValidator<SearchProdu
 }
 
 public sealed class ProductQueryHandlers
-    : IRequestHandler<GetProductListQuery, IPaginate<ProductListItemDto>>,
-        IRequestHandler<SearchProductsQuery, IPaginate<ProductDto>>,
-        IRequestHandler<GetProductByIdQuery, ProductDto>,
-        IRequestHandler<GetProductsToReorderQuery, IReadOnlyList<ProductDto>>
+    : IRequestHandler<GetProductListQuery, Result<IPaginate<ProductListItemDto>>>,
+        IRequestHandler<SearchProductsQuery, Result<IPaginate<ProductDto>>>,
+        IRequestHandler<GetProductByIdQuery, Result<ProductDto>>,
+        IRequestHandler<GetProductsToReorderQuery, Result<IReadOnlyList<ProductDto>>>
 {
     private readonly IRepository<Product, Guid> _products;
     private readonly IRepository<Category, Guid> _categories;
@@ -81,7 +81,7 @@ public sealed class ProductQueryHandlers
         _mapper = mapper;
     }
 
-    public async Task<IPaginate<ProductListItemDto>> Handle(GetProductListQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<ProductListItemDto>>> Handle(GetProductListQuery request, CancellationToken cancellationToken)
     {
         IQueryable<Product> query = _products.Query(enableTracking: false);
 
@@ -100,7 +100,7 @@ public sealed class ProductQueryHandlers
         IQueryable<Category> categories = _categories.Query(withDeleted: true, enableTracking: false);
         IQueryable<Supplier> suppliers = _suppliers.Query(withDeleted: true, enableTracking: false);
 
-        return await query
+        return Result.Ok(await query
             .OrderBy(p => p.Name)
             .Select(p => new ProductListItemDto(
                 p.Id,
@@ -112,28 +112,26 @@ public sealed class ProductQueryHandlers
                 p.UnitsInStock,
                 p.IsDiscontinued
             ))
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken));
     }
 
-    public async Task<IPaginate<ProductDto>> Handle(SearchProductsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<ProductDto>>> Handle(SearchProductsQuery request, CancellationToken cancellationToken)
     {
-        IPaginate<Product> page = await DynamicSearch
-            .Apply(_products.Query(enableTracking: false), request.Query, q => q.OrderBy(p => p.Name))
-            .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+        Result<IQueryable<Product>> query = DynamicSearch.Apply(_products.Query(enableTracking: false), request.Query, q => q.OrderBy(p => p.Name));
+        if (query.IsFailure)
+            return query.Errors;
 
-        return page.Map(p => _mapper.Map<Product, ProductDto>(p)!);
+        IPaginate<Product> page = await query.Value.ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
+        return Result.Ok(page.Map(p => _mapper.Map<Product, ProductDto>(p)!));
     }
 
-    public async Task<ProductDto> Handle(GetProductByIdQuery request, CancellationToken cancellationToken)
-    {
-        Product product =
-            await _products.GetByIdAsync(request.Id, enableTracking: false, cancellationToken: cancellationToken)
-            ?? throw NotFoundException.For<Product>(request.Id);
+    public Task<Result<ProductDto>> Handle(GetProductByIdQuery request, CancellationToken cancellationToken) =>
+        _products
+            .GetByIdAsync(request.Id, enableTracking: false, cancellationToken: cancellationToken)
+            .ToResult(ProductErrors.NotFound(request.Id))
+            .Map(product => _mapper.Map<Product, ProductDto>(product)!);
 
-        return _mapper.Map<Product, ProductDto>(product)!;
-    }
-
-    public async Task<IReadOnlyList<ProductDto>> Handle(GetProductsToReorderQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<ProductDto>>> Handle(GetProductsToReorderQuery request, CancellationToken cancellationToken)
     {
         IPaginate<Product> page = await _products.GetListAsync(
             p => !p.IsDiscontinued && p.UnitsInStock + p.UnitsOnOrder <= p.ReorderLevel,
@@ -143,6 +141,6 @@ public sealed class ProductQueryHandlers
             cancellationToken: cancellationToken
         );
 
-        return page.Items.Select(p => _mapper.Map<Product, ProductDto>(p)!).ToList();
+        return Result.Ok<IReadOnlyList<ProductDto>>(page.Items.Select(p => _mapper.Map<Product, ProductDto>(p)!).ToList());
     }
 }

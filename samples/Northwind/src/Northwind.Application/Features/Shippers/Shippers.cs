@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
 using Can.Core.Mapping;
 using Can.Core.Mediator;
@@ -18,12 +19,12 @@ public sealed class ShipperProfile : MappingProfile
     }
 }
 
-public sealed record GetShipperListQuery : IRequest<IReadOnlyList<ShipperDto>>, ISecuredRequest
+public sealed record GetShipperListQuery : IRequest<Result<IReadOnlyList<ShipperDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
-public sealed class GetShipperListQueryHandler : IRequestHandler<GetShipperListQuery, IReadOnlyList<ShipperDto>>
+public sealed class GetShipperListQueryHandler : IRequestHandler<GetShipperListQuery, Result<IReadOnlyList<ShipperDto>>>
 {
     private readonly IRepository<Shipper, Guid> _shippers;
     private readonly IMapper _mapper;
@@ -34,6 +35,8 @@ public sealed class GetShipperListQueryHandler : IRequestHandler<GetShipperListQ
         _mapper = mapper;
     }
 
-    public async Task<IReadOnlyList<ShipperDto>> Handle(GetShipperListQuery request, CancellationToken cancellationToken) =>
-        await _shippers.Query(enableTracking: false).OrderBy(s => s.CompanyName).ProjectTo<ShipperDto>(_mapper).ToListAsync(cancellationToken);
+    public async Task<Result<IReadOnlyList<ShipperDto>>> Handle(GetShipperListQuery request, CancellationToken cancellationToken) =>
+        Result.Ok<IReadOnlyList<ShipperDto>>(
+            await _shippers.Query(enableTracking: false).OrderBy(s => s.CompanyName).ProjectTo<ShipperDto>(_mapper).ToListAsync(cancellationToken)
+        );
 }

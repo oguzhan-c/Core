@@ -1,7 +1,6 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
 using Can.Core.Application.Rules;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using FluentValidation;
@@ -34,40 +33,46 @@ public sealed class CategoryBusinessRules : BaseBusinessRules
         _products = products;
     }
 
-    public async Task NameMustBeUniqueAsync(string name, Guid? exceptId, CancellationToken cancellationToken)
+    public async Task<Result<Success>> NameMustBeUniqueAsync(string name, Guid? exceptId, CancellationToken cancellationToken)
     {
         string trimmed = name.Trim();
-        if (await _categories.AnyAsync(c => c.Name == trimmed && c.Id != exceptId, cancellationToken: cancellationToken))
-            throw new ConflictException($"'{trimmed}' adında bir kategori zaten var.");
+        return await _categories.AnyAsync(c => c.Name == trimmed && c.Id != exceptId, cancellationToken: cancellationToken)
+            ? Error.Conflict("category.duplicate_name", $"'{trimmed}' adında bir kategori zaten var.")
+            : Result.Success;
     }
 
-    public async Task<Category> MustExistAsync(Guid id, CancellationToken cancellationToken) =>
-        await _categories.GetByIdAsync(id, cancellationToken: cancellationToken) ?? throw NotFoundException.For<Category>(id);
+    public Task<Result<Category>> MustExistAsync(Guid id, CancellationToken cancellationToken) =>
+        _categories.GetByIdAsync(id, cancellationToken: cancellationToken).ToResult(CategoryErrors.NotFound(id));
 
-    public async Task MustHaveNoProductsAsync(Guid id, CancellationToken cancellationToken)
-    {
-        if (await _products.AnyAsync(p => p.CategoryId == id, cancellationToken: cancellationToken))
-            throw new BusinessException("Ürünü olan kategori silinemez; önce ürünleri başka kategoriye taşı.");
-    }
+    public async Task<Result<Success>> MustHaveNoProductsAsync(Guid id, CancellationToken cancellationToken) =>
+        await _products.AnyAsync(p => p.CategoryId == id, cancellationToken: cancellationToken) ? CategoryErrors.HasProducts : Result.Success;
+}
+
+public static class CategoryErrors
+{
+    public static readonly Error HasProducts =
+        Error.Failure("category.has_products", "Ürünü olan kategori silinemez; önce ürünleri başka kategoriye taşı.");
+
+    public static Error NotFound(Guid id) => Error.NotFound("category.not_found", $"'{id}' kategorisi bulunamadı.");
 }
 
 // ---------------------------------------------------------------- command'lar
 
 public sealed record CreateCategoryCommand(string Name, string? Description)
-    : IRequest<Guid>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+    : IRequest<Result<Guid>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
     public IReadOnlyCollection<string> CacheTagsToRemove => [CategoryCacheTags.Categories];
 }
 
 public sealed record UpdateCategoryCommand(Guid Id, string Name, string? Description)
-    : IRequest, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+    : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
     public IReadOnlyCollection<string> CacheTagsToRemove => [CategoryCacheTags.Categories];
 }
 
-public sealed record DeleteCategoryCommand(Guid Id) : IRequest, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
+public sealed record DeleteCategoryCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
     public IReadOnlyCollection<string> CacheTagsToRemove => [CategoryCacheTags.Categories];
@@ -93,9 +98,9 @@ public sealed class UpdateCategoryCommandValidator : AbstractValidator<UpdateCat
 }
 
 public sealed class CategoryCommandHandlers
-    : IRequestHandler<CreateCategoryCommand, Guid>,
-        IRequestHandler<UpdateCategoryCommand>,
-        IRequestHandler<DeleteCategoryCommand>
+    : IRequestHandler<CreateCategoryCommand, Result<Guid>>,
+        IRequestHandler<UpdateCategoryCommand, Result<Success>>,
+        IRequestHandler<DeleteCategoryCommand, Result<Success>>
 {
     private readonly IRepository<Category, Guid> _categories;
     private readonly CategoryBusinessRules _rules;
@@ -106,48 +111,61 @@ public sealed class CategoryCommandHandlers
         _rules = rules;
     }
 
-    public async Task<Guid> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Guid>> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
     {
-        await _rules.NameMustBeUniqueAsync(request.Name, null, cancellationToken);
+        Result<Success> unique = await _rules.NameMustBeUniqueAsync(request.Name, null, cancellationToken);
+        if (unique.IsFailure)
+            return unique.Errors;
 
-        Category category = Category.Create(request.Name, request.Description);
-        await _categories.AddAsync(category, cancellationToken);
-        return category.Id;
+        return await Category
+            .Create(request.Name, request.Description)
+            .TapAsync(category => _categories.AddAsync(category, cancellationToken))
+            .Map(category => category.Id);
     }
 
-    public async Task Handle(UpdateCategoryCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(UpdateCategoryCommand request, CancellationToken cancellationToken)
     {
-        Category category = await _rules.MustExistAsync(request.Id, cancellationToken);
-        await _rules.NameMustBeUniqueAsync(request.Name, request.Id, cancellationToken);
-        category.Update(request.Name, request.Description);
+        Result<Category> category = await _rules.MustExistAsync(request.Id, cancellationToken);
+        if (category.IsFailure)
+            return category.Errors;
+
+        Result<Success> unique = await _rules.NameMustBeUniqueAsync(request.Name, request.Id, cancellationToken);
+        return unique.IsFailure ? unique : category.Value.Update(request.Name, request.Description);
     }
 
-    public async Task Handle(DeleteCategoryCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(DeleteCategoryCommand request, CancellationToken cancellationToken)
     {
-        Category category = await _rules.MustExistAsync(request.Id, cancellationToken);
-        await _rules.MustHaveNoProductsAsync(request.Id, cancellationToken);
-        _categories.Delete(category);
+        Result<Category> category = await _rules.MustExistAsync(request.Id, cancellationToken);
+        if (category.IsFailure)
+            return category.Errors;
+
+        Result<Success> empty = await _rules.MustHaveNoProductsAsync(request.Id, cancellationToken);
+        if (empty.IsFailure)
+            return empty;
+
+        _categories.Delete(category.Value);
+        return Result.Success;
     }
 }
 
 // ---------------------------------------------------------------- query'ler
 
 /// <summary>Tüm kategoriler, ürün sayılarıyla. Önbelleğe alınır; kategori değişince temizlenir.</summary>
-public sealed record GetCategoryListQuery : IRequest<IReadOnlyList<CategoryDto>>, ISecuredRequest, ICachableRequest
+public sealed record GetCategoryListQuery : IRequest<Result<IReadOnlyList<CategoryDto>>>, ISecuredRequest, ICachableRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
     public string CacheKey => "categories:list";
     public IReadOnlyCollection<string> CacheTags => [CategoryCacheTags.Categories];
 }
 
-public sealed record GetCategoryByIdQuery(Guid Id) : IRequest<CategoryDto>, ISecuredRequest
+public sealed record GetCategoryByIdQuery(Guid Id) : IRequest<Result<CategoryDto>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
 public sealed class CategoryQueryHandlers
-    : IRequestHandler<GetCategoryListQuery, IReadOnlyList<CategoryDto>>,
-        IRequestHandler<GetCategoryByIdQuery, CategoryDto>
+    : IRequestHandler<GetCategoryListQuery, Result<IReadOnlyList<CategoryDto>>>,
+        IRequestHandler<GetCategoryByIdQuery, Result<CategoryDto>>
 {
     private readonly IRepository<Category, Guid> _categories;
     private readonly IRepository<Product, Guid> _products;
@@ -158,13 +176,16 @@ public sealed class CategoryQueryHandlers
         _products = products;
     }
 
-    public async Task<IReadOnlyList<CategoryDto>> Handle(GetCategoryListQuery request, CancellationToken cancellationToken) =>
+    public async Task<Result<IReadOnlyList<CategoryDto>>> Handle(GetCategoryListQuery request, CancellationToken cancellationToken) =>
         // Sıralama projeksiyondan ÖNCE: EF, DTO'nun (constructor ile oluşan) alanına göre sıralamayı SQL'e çeviremez.
-        await Project(_categories.Query(enableTracking: false).OrderBy(c => c.Name)).ToListAsync(cancellationToken);
+        Result.Ok<IReadOnlyList<CategoryDto>>(
+            await Project(_categories.Query(enableTracking: false).OrderBy(c => c.Name)).ToListAsync(cancellationToken)
+        );
 
-    public async Task<CategoryDto> Handle(GetCategoryByIdQuery request, CancellationToken cancellationToken) =>
-        await Project(_categories.Query(enableTracking: false).Where(c => c.Id == request.Id)).FirstOrDefaultAsync(cancellationToken)
-        ?? throw NotFoundException.For<Category>(request.Id);
+    public Task<Result<CategoryDto>> Handle(GetCategoryByIdQuery request, CancellationToken cancellationToken) =>
+        Project(_categories.Query(enableTracking: false).Where(c => c.Id == request.Id))
+            .FirstOrDefaultAsync(cancellationToken)
+            .ToResult(CategoryErrors.NotFound(request.Id));
 
     private IQueryable<CategoryDto> Project(IQueryable<Category> categories)
     {

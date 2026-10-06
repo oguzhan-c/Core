@@ -1,6 +1,5 @@
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Repositories;
@@ -41,23 +40,25 @@ public sealed record OtpSetupDto(string Secret, string ProvisioningUri);
 internal static class AccountUsers
 {
     /// <summary>Giriş yapmış kullanıcıyı (bu mağazada) yükler.</summary>
-    public static async Task<AppUser> CurrentAsync(ICurrentUser currentUser, IRepository<AppUser, Guid> users, CancellationToken cancellationToken)
+    public static async Task<Result<AppUser>> CurrentAsync(ICurrentUser currentUser, IRepository<AppUser, Guid> users, CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(currentUser.Id, out Guid userId))
-            throw new UnauthorizedException();
+            return Error.Unauthorized();
 
-        return await users.GetByIdAsync(userId, cancellationToken: cancellationToken) ?? throw new UnauthorizedException();
+        return await users.GetByIdAsync(userId, cancellationToken: cancellationToken).ToResult(Error.Unauthorized());
     }
 
-    public static Guid CurrentId(ICurrentUser currentUser) =>
-        Guid.TryParse(currentUser.Id, out Guid userId) ? userId : throw new UnauthorizedException();
+    public static Result<Guid> CurrentId(ICurrentUser currentUser) =>
+        Guid.TryParse(currentUser.Id, out Guid userId) ? userId : Error.Unauthorized();
+
+    public static readonly Error PasskeyNotFound = Error.NotFound("passkey.not_found", "Passkey bulunamadı.");
 }
 
 // ---------------------------------------------------------------- özet
 
-public sealed record GetAccountSecurityQuery : IRequest<AccountSecurityDto>, ISecuredRequest;
+public sealed record GetAccountSecurityQuery : IRequest<Result<AccountSecurityDto>>, ISecuredRequest;
 
-public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountSecurityQuery, AccountSecurityDto>
+public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountSecurityQuery, Result<AccountSecurityDto>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -76,9 +77,13 @@ public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountS
         _services = services;
     }
 
-    public async Task<AccountSecurityDto> Handle(GetAccountSecurityQuery request, CancellationToken cancellationToken)
+    public async Task<Result<AccountSecurityDto>> Handle(GetAccountSecurityQuery request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
+
+        AppUser user = current.Value;
 
         List<UserPasskey<Guid>> passkeys = await _passkeys
             .Query(enableTracking: false)
@@ -102,9 +107,9 @@ public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountS
 /// Authenticator uygulaması kurulumunun ilk adımı: yeni gizli anahtar üretilir (henüz aktif değil). Kullanıcı QR kodu
 /// okutup uygulamadaki ilk kodu <see cref="EnableOtpCommand"/> ile girince iki adımlı giriş açılır.
 /// </summary>
-public sealed record BeginOtpSetupCommand : IRequest<OtpSetupDto>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record BeginOtpSetupCommand : IRequest<Result<OtpSetupDto>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupCommand, OtpSetupDto>
+public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupCommand, Result<OtpSetupDto>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -129,11 +134,15 @@ public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupC
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<OtpSetupDto> Handle(BeginOtpSetupCommand request, CancellationToken cancellationToken)
+    public async Task<Result<OtpSetupDto>> Handle(BeginOtpSetupCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
+
+        AppUser user = current.Value;
         if (user.AuthenticatorType == AuthenticatorType.Otp)
-            throw new ConflictException("Authenticator uygulaması zaten açık. Yenisini kurmak için önce iki adımlı doğrulamayı kapat.");
+            return Error.Conflict("otp.already_enabled", "Authenticator uygulaması zaten açık. Yenisini kurmak için önce iki adımlı doğrulamayı kapat.");
 
         // Yarım kalmış eski kurulum varsa silinir (kullanıcı başına tek kayıt; benzersiz index).
         if (await _otpAuthenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken) is { } existing)
@@ -156,7 +165,7 @@ public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupC
 }
 
 /// <summary>Kurulumu tamamlar: uygulamadaki ilk kod doğruysa girişte artık bu uygulamanın kodu istenir.</summary>
-public sealed record EnableOtpCommand(string Code) : IRequest, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record EnableOtpCommand(string Code) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
 public sealed class EnableOtpCommandValidator : AbstractValidator<EnableOtpCommand>
 {
@@ -166,7 +175,7 @@ public sealed class EnableOtpCommandValidator : AbstractValidator<EnableOtpComma
     }
 }
 
-public sealed class EnableOtpCommandHandler : IRequestHandler<EnableOtpCommand>
+public sealed class EnableOtpCommandHandler : IRequestHandler<EnableOtpCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -179,25 +188,26 @@ public sealed class EnableOtpCommandHandler : IRequestHandler<EnableOtpCommand>
         _verifier = verifier;
     }
 
-    public async Task Handle(EnableOtpCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(EnableOtpCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
 
+        AppUser user = current.Value;
         if (await _verifier.VerifyOtpAsync(user.Id, request.Code, requireVerified: false, cancellationToken) is null)
-            throw new BusinessException("Kod hatalı. Uygulamadaki güncel kodu gir (saatin doğru olduğundan emin ol).")
-            {
-                Code = AuthErrorCodes.InvalidTwoFactorCode,
-            };
+            return Error.Failure(AuthErrorCodes.InvalidTwoFactorCode, "Kod hatalı. Uygulamadaki güncel kodu gir (saatin doğru olduğundan emin ol).");
 
         user.SetAuthenticator(AuthenticatorType.Otp);
+        return Result.Success;
     }
 }
 
 // ---------------------------------------------------------------- e-posta ile ikinci adım
 
-public sealed record EnableEmailTwoFactorCommand : IRequest, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record EnableEmailTwoFactorCommand : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class EnableEmailTwoFactorCommandHandler : IRequestHandler<EnableEmailTwoFactorCommand>
+public sealed class EnableEmailTwoFactorCommandHandler : IRequestHandler<EnableEmailTwoFactorCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -213,23 +223,28 @@ public sealed class EnableEmailTwoFactorCommandHandler : IRequestHandler<EnableE
         _otpAuthenticators = otpAuthenticators;
     }
 
-    public async Task Handle(EnableEmailTwoFactorCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(EnableEmailTwoFactorCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
+
+        AppUser user = current.Value;
         if (!user.EmailConfirmed)
-            throw new BusinessException("Önce e-posta adresini doğrula.");
+            return Error.Failure("email_not_confirmed", "Önce e-posta adresini doğrula.");
 
         if (await _otpAuthenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken) is { } otp)
             _otpAuthenticators.Delete(otp, permanent: true);
 
         user.SetAuthenticator(AuthenticatorType.Email);
+        return Result.Success;
     }
 }
 
 // ---------------------------------------------------------------- kapatma
 
 /// <summary>İki adımlı doğrulamayı kapatır; güvenlik için şifre tekrar istenir.</summary>
-public sealed record DisableTwoFactorCommand(string Password) : IRequest, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record DisableTwoFactorCommand(string Password) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
 public sealed class DisableTwoFactorCommandValidator : AbstractValidator<DisableTwoFactorCommand>
 {
@@ -239,7 +254,7 @@ public sealed class DisableTwoFactorCommandValidator : AbstractValidator<Disable
     }
 }
 
-public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoFactorCommand>
+public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoFactorCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -258,26 +273,30 @@ public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoF
         _passwordHasher = passwordHasher;
     }
 
-    public async Task Handle(DisableTwoFactorCommand request, CancellationToken cancellationToken)
+    public async Task<Result<Success>> Handle(DisableTwoFactorCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
 
+        AppUser user = current.Value;
         if (user.PasswordHash is null || _passwordHasher.Verify(request.Password, user.PasswordHash) == PasswordVerificationResult.Failed)
-            throw new BusinessException("Şifre hatalı.");
+            return Error.Validation("invalid_password", "Şifre hatalı.", "Password");
 
         if (await _otpAuthenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken) is { } otp)
             _otpAuthenticators.Delete(otp, permanent: true);
 
         user.SetAuthenticator(AuthenticatorType.None);
+        return Result.Success;
     }
 }
 
 // ---------------------------------------------------------------- passkey'ler
 
 /// <summary>Passkey kaydının ilk adımı: tarayıcıya verilecek seçenekler (WebApi bunları kısa süre saklar).</summary>
-public sealed record BeginPasskeyRegistrationCommand : IRequest<CredentialCreateOptions>, ISecuredRequest;
+public sealed record BeginPasskeyRegistrationCommand : IRequest<Result<CredentialCreateOptions>>, ISecuredRequest;
 
-public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<BeginPasskeyRegistrationCommand, CredentialCreateOptions>
+public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<BeginPasskeyRegistrationCommand, Result<CredentialCreateOptions>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -299,9 +318,13 @@ public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<Beg
         _tenantContext = tenantContext;
     }
 
-    public async Task<CredentialCreateOptions> Handle(BeginPasskeyRegistrationCommand request, CancellationToken cancellationToken)
+    public async Task<Result<CredentialCreateOptions>> Handle(BeginPasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
+
+        AppUser user = current.Value;
 
         List<byte[]> existing = await _passkeys
             .Query(enableTracking: false)
@@ -310,7 +333,7 @@ public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<Beg
             .ToListAsync(cancellationToken);
 
         if (existing.Count >= PasskeyLimits.MaxPerUser)
-            throw new BusinessException($"En fazla {PasskeyLimits.MaxPerUser} passkey eklenebilir; önce birini sil.");
+            return Error.Failure("passkey.limit", $"En fazla {PasskeyLimits.MaxPerUser} passkey eklenebilir; önce birini sil.");
 
         // Cihazın passkey listesinde görünen ad: aynı e-posta farklı mağazalarda kullanılabildiği için mağaza adı da eklenir.
         string store = _tenantContext.Tenant?.Name ?? "Northwind";
@@ -329,7 +352,7 @@ public static class PasskeyLimits
 
 /// <summary>Passkey kaydını tamamlar: tarayıcının yanıtı ilk adımdaki seçeneklerle doğrulanır ve passkey saklanır.</summary>
 public sealed record CompletePasskeyRegistrationCommand(AuthenticatorAttestationRawResponse Response, CredentialCreateOptions Options, string? Name)
-    : IRequest<PasskeyDto>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+    : IRequest<Result<PasskeyDto>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
 public sealed class CompletePasskeyRegistrationCommandValidator : AbstractValidator<CompletePasskeyRegistrationCommand>
 {
@@ -341,7 +364,7 @@ public sealed class CompletePasskeyRegistrationCommandValidator : AbstractValida
     }
 }
 
-public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<CompletePasskeyRegistrationCommand, PasskeyDto>
+public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<CompletePasskeyRegistrationCommand, Result<PasskeyDto>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
@@ -363,13 +386,17 @@ public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<
         _timeProvider = timeProvider;
     }
 
-    public async Task<PasskeyDto> Handle(CompletePasskeyRegistrationCommand request, CancellationToken cancellationToken)
+    public async Task<Result<PasskeyDto>> Handle(CompletePasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
-        AppUser user = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
+        if (current.IsFailure)
+            return current.Errors;
+
+        AppUser user = current.Value;
 
         // Seçenekler bu kullanıcı için üretilmiş olmalı (başka oturumun seçenekleriyle kayıt yapılamaz).
         if (!request.Options.User.Id.SequenceEqual(user.PasskeyUserHandle))
-            throw new ForbiddenException("Passkey isteği bu hesaba ait değil.");
+            return Error.Forbidden("passkey.wrong_user", "Passkey isteği bu hesaba ait değil.");
 
         PasskeyCredential credential;
         try
@@ -383,7 +410,7 @@ public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw new BusinessException("Passkey kaydedilemedi; tekrar dene.") { Code = AuthErrorCodes.PasskeyFailed };
+            return Error.Failure(AuthErrorCodes.PasskeyFailed, "Passkey kaydedilemedi; tekrar dene.");
         }
 
         var passkey = new UserPasskey<Guid>(user.Id, credential, request.Name ?? string.Empty, _timeProvider.GetUtcNow());
@@ -392,7 +419,7 @@ public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<
     }
 }
 
-public sealed record RenamePasskeyCommand(Guid Id, string Name) : IRequest, ISecuredRequest, ITransactionalRequest;
+public sealed record RenamePasskeyCommand(Guid Id, string Name) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest;
 
 public sealed class RenamePasskeyCommandValidator : AbstractValidator<RenamePasskeyCommand>
 {
@@ -402,7 +429,7 @@ public sealed class RenamePasskeyCommandValidator : AbstractValidator<RenamePass
     }
 }
 
-public sealed class RenamePasskeyCommandHandler : IRequestHandler<RenamePasskeyCommand>
+public sealed class RenamePasskeyCommandHandler : IRequestHandler<RenamePasskeyCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
@@ -413,20 +440,24 @@ public sealed class RenamePasskeyCommandHandler : IRequestHandler<RenamePasskeyC
         _passkeys = passkeys;
     }
 
-    public async Task Handle(RenamePasskeyCommand request, CancellationToken cancellationToken)
-    {
-        Guid userId = AccountUsers.CurrentId(_currentUser);
-        UserPasskey<Guid> passkey =
-            await _passkeys.GetAsync(p => p.Id == request.Id && p.UserId == userId, cancellationToken: cancellationToken)
-            ?? throw new NotFoundException("Passkey bulunamadı.");
-
-        passkey.Rename(request.Name);
-    }
+    public Task<Result<Success>> Handle(RenamePasskeyCommand request, CancellationToken cancellationToken) =>
+        AccountUsers
+            .CurrentId(_currentUser)
+            .ThenAsync(userId =>
+                _passkeys
+                    .GetAsync(p => p.Id == request.Id && p.UserId == userId, cancellationToken: cancellationToken)
+                    .ToResult(AccountUsers.PasskeyNotFound)
+            )
+            .Map(passkey =>
+            {
+                passkey.Rename(request.Name);
+                return Result.Success;
+            });
 }
 
-public sealed record DeletePasskeyCommand(Guid Id) : IRequest, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record DeletePasskeyCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class DeletePasskeyCommandHandler : IRequestHandler<DeletePasskeyCommand>
+public sealed class DeletePasskeyCommandHandler : IRequestHandler<DeletePasskeyCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
@@ -437,13 +468,17 @@ public sealed class DeletePasskeyCommandHandler : IRequestHandler<DeletePasskeyC
         _passkeys = passkeys;
     }
 
-    public async Task Handle(DeletePasskeyCommand request, CancellationToken cancellationToken)
-    {
-        Guid userId = AccountUsers.CurrentId(_currentUser);
-        UserPasskey<Guid> passkey =
-            await _passkeys.GetAsync(p => p.Id == request.Id && p.UserId == userId, cancellationToken: cancellationToken)
-            ?? throw new NotFoundException("Passkey bulunamadı.");
-
-        _passkeys.Delete(passkey, permanent: true);
-    }
+    public Task<Result<Success>> Handle(DeletePasskeyCommand request, CancellationToken cancellationToken) =>
+        AccountUsers
+            .CurrentId(_currentUser)
+            .ThenAsync(userId =>
+                _passkeys
+                    .GetAsync(p => p.Id == request.Id && p.UserId == userId, cancellationToken: cancellationToken)
+                    .ToResult(AccountUsers.PasskeyNotFound)
+            )
+            .Map(passkey =>
+            {
+                _passkeys.Delete(passkey, permanent: true);
+                return Result.Success;
+            });
 }

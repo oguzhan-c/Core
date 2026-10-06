@@ -1,5 +1,5 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
-using Can.Core.Application.Exceptions;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Outbox;
 using Can.Core.Persistence.Paging;
@@ -28,13 +28,13 @@ public sealed record OutboxMessageDto(
     OutboxStatus Status);
 
 /// <summary>Mağazanın outbox mesajları: kalıcı event'lerin (kargo bildirimi, ürün kaldırma ...) yayın durumu.</summary>
-public sealed record GetOutboxMessagesQuery(PageRequest Page, OutboxStatus? Status = null) : IRequest<IPaginate<OutboxMessageDto>>, ISecuredRequest
+public sealed record GetOutboxMessagesQuery(PageRequest Page, OutboxStatus? Status = null) : IRequest<Result<IPaginate<OutboxMessageDto>>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
 
 /// <summary>Başarısız mesajı yeniden denemeye alır.</summary>
-public sealed record RetryOutboxMessageCommand(Guid Id) : IRequest, ISecuredRequest
+public sealed record RetryOutboxMessageCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
@@ -45,8 +45,8 @@ public sealed class GetOutboxMessagesQueryValidator : AbstractValidator<GetOutbo
 }
 
 public sealed class OutboxHandlers
-    : IRequestHandler<GetOutboxMessagesQuery, IPaginate<OutboxMessageDto>>,
-        IRequestHandler<RetryOutboxMessageCommand>
+    : IRequestHandler<GetOutboxMessagesQuery, Result<IPaginate<OutboxMessageDto>>>,
+        IRequestHandler<RetryOutboxMessageCommand, Result<Success>>
 {
     private readonly IOutboxMonitor _outbox;
     private readonly ICurrentTenant _currentTenant;
@@ -57,7 +57,7 @@ public sealed class OutboxHandlers
         _currentTenant = currentTenant;
     }
 
-    public async Task<IPaginate<OutboxMessageDto>> Handle(GetOutboxMessagesQuery request, CancellationToken cancellationToken)
+    public async Task<Result<IPaginate<OutboxMessageDto>>> Handle(GetOutboxMessagesQuery request, CancellationToken cancellationToken)
     {
         string? tenantId = _currentTenant.Id?.ToString();
         IQueryable<OutboxMessage> query = _outbox.Query().Where(m => m.TenantId == tenantId);
@@ -74,7 +74,7 @@ public sealed class OutboxHandlers
             .OrderByDescending(m => m.OccurredAt)
             .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken);
 
-        return page.Map(m => new OutboxMessageDto(
+        return Result.Ok(page.Map(m => new OutboxMessageDto(
             m.Id,
             m.EventId,
             ShortTypeName(m.Type),
@@ -86,14 +86,13 @@ public sealed class OutboxHandlers
             m.ProcessedAt is not null ? OutboxStatus.Processed
                 : m.LastError is not null ? OutboxStatus.Failed
                 : OutboxStatus.Pending
-        ));
+        )));
     }
 
-    public async Task Handle(RetryOutboxMessageCommand request, CancellationToken cancellationToken)
-    {
-        if (!await _outbox.RetryAsync(request.Id, _currentTenant.Id?.ToString(), cancellationToken))
-            throw new NotFoundException("Yeniden denenecek mesaj bulunamadı (zaten yayınlanmış olabilir).");
-    }
+    public async Task<Result<Success>> Handle(RetryOutboxMessageCommand request, CancellationToken cancellationToken) =>
+        await _outbox.RetryAsync(request.Id, _currentTenant.Id?.ToString(), cancellationToken)
+            ? Result.Success
+            : Error.NotFound("outbox.not_found", "Yeniden denenecek mesaj bulunamadı (zaten yayınlanmış olabilir).");
 
     /// <summary><c>Northwind.Domain.Orders.OrderShipped, Northwind.Domain</c> → <c>OrderShipped</c>.</summary>
     private static string ShortTypeName(string type)

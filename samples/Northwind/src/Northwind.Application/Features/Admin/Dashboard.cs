@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Application;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
@@ -19,12 +20,12 @@ public sealed record DashboardDto(
     IReadOnlyList<OrderListItemDto> RecentOrders);
 
 /// <summary>Yönetim paneli özeti.</summary>
-public sealed record GetDashboardQuery : IRequest<DashboardDto>, ISecuredRequest
+public sealed record GetDashboardQuery : IRequest<Result<DashboardDto>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => AppRoles.Staff;
 }
 
-public sealed class GetDashboardQueryHandler : IRequestHandler<GetDashboardQuery, DashboardDto>
+public sealed class GetDashboardQueryHandler : IRequestHandler<GetDashboardQuery, Result<DashboardDto>>
 {
     private readonly IRepository<Product, Guid> _products;
     private readonly IRepository<Customer, Guid> _customers;
@@ -37,7 +38,7 @@ public sealed class GetDashboardQueryHandler : IRequestHandler<GetDashboardQuery
         _orders = orders;
     }
 
-    public async Task<DashboardDto> Handle(GetDashboardQuery request, CancellationToken cancellationToken)
+    public async Task<Result<DashboardDto>> Handle(GetDashboardQuery request, CancellationToken cancellationToken)
     {
         // Aynı DbContext üzerinde sorgular sırayla çalışmalı (paralel değil).
         int productCount = await _products.CountAsync(p => !p.IsDiscontinued, cancellationToken: cancellationToken);
