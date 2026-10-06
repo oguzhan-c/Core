@@ -80,6 +80,37 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
 
     public ICollection<UserRole<TId>> UserRoles { get; protected set; } = [];
 
+    /// <summary>Rolden bağımsız, doğrudan verilen yetkiler.</summary>
+    public ICollection<UserOperationClaim<TId>> OperationClaims { get; protected set; } = [];
+
+    /// <summary>Kullanıcıya doğrudan yetki verir (zaten varsa bir şey yapmaz).</summary>
+    public void GrantOperationClaim(OperationClaim<TId> operationClaim)
+    {
+        ArgumentNullException.ThrowIfNull(operationClaim);
+        if (OperationClaims.All(c => !c.OperationClaimId.Equals(operationClaim.Id)))
+            OperationClaims.Add(new UserOperationClaim<TId>(Id, operationClaim.Id));
+    }
+
+    public void RevokeOperationClaim(TId operationClaimId)
+    {
+        foreach (UserOperationClaim<TId> claim in OperationClaims.Where(c => c.OperationClaimId.Equals(operationClaimId)).ToList())
+            OperationClaims.Remove(claim);
+    }
+
+    /// <summary>
+    /// Kullanıcının tüm yetki adları: rollerinden gelenler + doğrudan verilenler. <c>UserRoles.Role.OperationClaims.OperationClaim</c>
+    /// ve <c>OperationClaims.OperationClaim</c> yüklenmiş olmalı (yüklenmeyenler atlanır).
+    /// </summary>
+    public IReadOnlyList<string> GetPermissionNames() =>
+        UserRoles
+            .SelectMany(ur => ur.Role is null ? Enumerable.Empty<RoleOperationClaim<TId>>() : ur.Role.OperationClaims)
+            .Select(rc => rc.OperationClaim?.Name)
+            .Concat(OperationClaims.Select(uc => uc.OperationClaim?.Name))
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
     // ---------------------------------------------------------------- davranışlar
 
     public void SetEmail(string email)

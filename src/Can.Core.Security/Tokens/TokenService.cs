@@ -16,13 +16,18 @@ namespace Can.Core.Security.Tokens;
 /// değiştirmek isterse sunucu üyeliği kontrol edip o tenant için yeni token üretir.
 /// </param>
 /// <param name="AdditionalClaims">Ek claim'ler.</param>
+/// <param name="Permissions">
+/// Yetkiler (<c>permission</c>). Token (ve cookie) boyutu büyümesin diye çok sayıda yetkiyi tek tek değil,
+/// mümkünse joker (<c>"products.*"</c>) olarak ver.
+/// </param>
 public sealed record TokenSubject(
     string UserId,
     string? UserName = null,
     string? Email = null,
     IReadOnlyCollection<string>? Roles = null,
     string? TenantId = null,
-    IReadOnlyCollection<Claim>? AdditionalClaims = null);
+    IReadOnlyCollection<Claim>? AdditionalClaims = null,
+    IReadOnlyCollection<string>? Permissions = null);
 
 public sealed record AccessToken(string Token, DateTimeOffset ExpiresAt);
 
@@ -56,6 +61,7 @@ public sealed class TokenService : ITokenService
 {
     public const string RoleClaimType = "role";
     public const string TenantClaimType = "tenant_id";
+    public const string PermissionClaimType = "permission";
 
     private readonly JwtOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -94,6 +100,9 @@ public sealed class TokenService : ITokenService
 
         foreach (string role in subject.Roles ?? [])
             claims.Add(new Claim(RoleClaimType, role));
+
+        foreach (string permission in (subject.Permissions ?? []).Distinct(StringComparer.OrdinalIgnoreCase))
+            claims.Add(new Claim(PermissionClaimType, permission));
 
         if (!string.IsNullOrWhiteSpace(subject.TenantId))
             claims.Add(new Claim(TenantClaimType, subject.TenantId));

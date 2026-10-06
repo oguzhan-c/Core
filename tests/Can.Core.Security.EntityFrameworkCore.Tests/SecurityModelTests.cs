@@ -23,6 +23,7 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : Can
 {
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Role<Guid>> Roles => Set<Role<Guid>>();
+    public DbSet<OperationClaim<Guid>> OperationClaims => Set<OperationClaim<Guid>>();
     public DbSet<RefreshToken<Guid>> RefreshTokens => Set<RefreshToken<Guid>>();
     public DbSet<UserPasskey<Guid>> Passkeys => Set<UserPasskey<Guid>>();
     public DbSet<OtpAuthenticator<Guid>> OtpAuthenticators => Set<OtpAuthenticator<Guid>>();
@@ -58,6 +59,56 @@ public sealed class SecurityModelTests : IAsyncLifetime
     private AuthDbContext Create() => new(new DbContextOptionsBuilder<AuthDbContext>().UseSqlite(_connection).Options);
 
     private static RefreshTokenValue Token(string hash) => new("raw-" + hash, hash, DateTimeOffset.UtcNow.AddDays(7));
+
+    [Fact]
+    public async Task Permissions_come_from_roles_and_direct_grants()
+    {
+        var write = new OperationClaim<Guid>(Guid.CreateVersion7(), "Products.Write", "Ürün ekleme/düzenleme");
+        var read = new OperationClaim<Guid>(Guid.CreateVersion7(), "products.read");
+        var cancel = new OperationClaim<Guid>(Guid.CreateVersion7(), "orders.cancel");
+
+        var editor = new Role<Guid>(Guid.CreateVersion7(), "Editor");
+        editor.GrantOperationClaim(write);
+        editor.GrantOperationClaim(read);
+        editor.GrantOperationClaim(read); // tekrar eklenmez
+
+        var user = new AppUser("grace@test.local", "Grace Hopper");
+        user.AddRole(editor);
+        user.GrantOperationClaim(cancel);
+        user.GrantOperationClaim(read); // rolde de var; ad bir kez döner
+
+        await using (AuthDbContext db = Create())
+        {
+            db.OperationClaims.AddRange(write, read, cancel);
+            db.Roles.Add(editor);
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        await using (AuthDbContext db = Create())
+        {
+            AppUser loaded = await db.Users
+                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role!).ThenInclude(r => r.OperationClaims).ThenInclude(rc => rc.OperationClaim)
+                .Include(u => u.OperationClaims).ThenInclude(uc => uc.OperationClaim)
+                .SingleAsync(u => u.Id == user.Id);
+
+            Assert.Equal(new[] { "orders.cancel", "products.read", "products.write" }, loaded.GetPermissionNames());
+
+            Role<Guid> role = await db.Roles.Include(r => r.OperationClaims).SingleAsync(r => r.Id == editor.Id);
+            role.RevokeOperationClaim(write.Id);
+            await db.SaveChangesAsync();
+        }
+
+        await using (AuthDbContext db = Create())
+        {
+            Assert.Single(await db.Roles.Where(r => r.Id == editor.Id).SelectMany(r => r.OperationClaims).ToListAsync());
+            await Assert.ThrowsAsync<DbUpdateException>(async () =>
+            {
+                db.OperationClaims.Add(new OperationClaim<Guid>(Guid.CreateVersion7(), "PRODUCTS.WRITE"));
+                await db.SaveChangesAsync();
+            });
+        }
+    }
 
     [Fact]
     public async Task User_roles_tokens_and_authenticators_round_trip()

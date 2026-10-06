@@ -35,6 +35,23 @@ public class Role<TId> : AuditedEntity<TId>
 
     public string NormalizedName { get; protected set; }
 
+    /// <summary>Rolün yetkileri.</summary>
+    public ICollection<RoleOperationClaim<TId>> OperationClaims { get; protected set; } = [];
+
+    /// <summary>Role yetki verir (zaten varsa bir şey yapmaz).</summary>
+    public void GrantOperationClaim(OperationClaim<TId> operationClaim)
+    {
+        ArgumentNullException.ThrowIfNull(operationClaim);
+        if (OperationClaims.All(c => !c.OperationClaimId.Equals(operationClaim.Id)))
+            OperationClaims.Add(new RoleOperationClaim<TId>(Id, operationClaim.Id));
+    }
+
+    public void RevokeOperationClaim(TId operationClaimId)
+    {
+        foreach (RoleOperationClaim<TId> claim in OperationClaims.Where(c => c.OperationClaimId.Equals(operationClaimId)).ToList())
+            OperationClaims.Remove(claim);
+    }
+
     public void Rename(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

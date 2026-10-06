@@ -17,6 +17,9 @@ public sealed class CanWebApiOptions
 
     public string[] RoleClaimTypes { get; set; } = [ClaimTypes.Role, "role", "roles"];
 
+    /// <summary>Yetki (operation claim) claim adları.</summary>
+    public string[] PermissionClaimTypes { get; set; } = ["permission", "permissions"];
+
     // ---------------------------------------------------------------- Tenant
 
     /// <summary>

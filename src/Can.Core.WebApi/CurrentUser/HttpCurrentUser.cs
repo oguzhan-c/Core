@@ -32,6 +32,8 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public IReadOnlyCollection<string> Roles => ClaimHelper.FindAll(User, _options.RoleClaimTypes);
 
+    public IReadOnlyCollection<string> Permissions => ClaimHelper.FindAll(User, _options.PermissionClaimTypes);
+
     private string? FindFirst(string[] claimTypes) => ClaimHelper.FindFirst(User, claimTypes);
 }
 

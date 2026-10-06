@@ -16,6 +16,8 @@ public sealed class FakeCurrentUser : ICurrentUser
     public string? Email => null;
     public List<string> RoleList { get; } = [];
     public IReadOnlyCollection<string> Roles => RoleList;
+    public List<string> PermissionList { get; } = [];
+    public IReadOnlyCollection<string> Permissions => PermissionList;
 }
 
 public sealed class FakeCurrentTenant : ICurrentTenant
@@ -66,6 +68,7 @@ public sealed record CreateProductCommand(string Name, int Price)
     : IRequest<int>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest, ILoggableRequest
 {
     public IReadOnlyCollection<string> Roles => ["Product.Write"];
+    public IReadOnlyCollection<string> Permissions => ["products.create"];
     public IReadOnlyCollection<string> CacheTagsToRemove => ["products"];
 }
 

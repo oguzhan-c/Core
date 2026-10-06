@@ -71,6 +71,35 @@ public class ApplicationTests
         Assert.Equal(2, await host.Sender.Send(ValidCommand));
     }
 
+    [Fact]
+    public async Task Required_permission_or_wildcard_is_allowed()
+    {
+        var host = new Host();
+
+        host.User.PermissionList.Add("orders.*");
+        await Assert.ThrowsAsync<ForbiddenException>(() => host.Sender.Send(ValidCommand));
+
+        host.User.PermissionList.Add("PRODUCTS.CREATE");
+        Assert.Equal(1, await host.Sender.Send(ValidCommand));
+
+        host.User.PermissionList.Clear();
+        host.User.PermissionList.Add("products.*");
+        Assert.Equal(2, await host.Sender.Send(ValidCommand));
+    }
+
+    [Theory]
+    [InlineData("*", "products.write", true)]
+    [InlineData("products.*", "products.write", true)]
+    [InlineData("products.*", "products", true)]
+    [InlineData("products.*", "products.variants.write", true)]
+    [InlineData("products.*", "productsx.write", false)]
+    [InlineData("products.write", "products.read", false)]
+    [InlineData("Products.Write", "products.write", true)]
+    public void Permission_matching(string granted, string required, bool expected)
+    {
+        Assert.Equal(expected, PermissionMatcher.Covers(granted, required));
+    }
+
     // ---------------------------------------------------------------- doğrulama
 
     [Fact]

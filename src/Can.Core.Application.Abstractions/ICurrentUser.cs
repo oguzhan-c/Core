@@ -16,9 +16,15 @@ public interface ICurrentUser
 
     IReadOnlyCollection<string> Roles { get; }
 
+    /// <summary>Yetkiler (operation claim'ler); joker içerebilir (<c>"products.*"</c>, <c>"*"</c>).</summary>
+    IReadOnlyCollection<string> Permissions => [];
+
     bool IsAuthenticated => Id is not null;
 
     bool IsInRole(string role) => Roles.Contains(role, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Kullanıcının yetkileri <paramref name="permission"/>'ı kapsıyor mu (joker dahil).</summary>
+    bool HasPermission(string permission) => PermissionMatcher.IsGranted(Permissions, permission);
 }
 
 /// <summary>Kullanıcı bilgisi olmayan ortamlar (testler, arka plan işleri) için varsayılan.</summary>

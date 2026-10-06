@@ -16,7 +16,14 @@ namespace Can.Core.Application;
 /// </summary>
 public interface ISecuredRequest
 {
+    /// <summary>Bu rollerden biri yeterli.</summary>
     IReadOnlyCollection<string> Roles => [];
+
+    /// <summary>
+    /// Bu yetkilerden biri yeterli (<c>"products.write"</c>). Hem rol hem yetki verildiyse herhangi birinin tutması
+    /// yeter. İkisi de boşsa giriş yapmış olmak yeterli; yönetici rolü her şeyi geçer.
+    /// </summary>
+    IReadOnlyCollection<string> Permissions => [];
 }
 
 /// <summary>Handler bir transaction içinde çalışır; başarılıysa kaydedilip commit edilir, hata olursa geri alınır.</summary>
