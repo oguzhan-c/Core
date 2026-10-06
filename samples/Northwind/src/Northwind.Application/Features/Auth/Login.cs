@@ -3,6 +3,7 @@ using Can.Core.Application.Exceptions;
 using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Repositories;
+using Can.Core.Security.Entities;
 using Can.Core.Security.Hashing;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -12,9 +13,10 @@ namespace Northwind.Application.Features.Auth;
 
 /// <summary>
 /// Mağaza + e-posta + şifre ile giriş. Tenant istemciden yalnızca BURADA alınır; sonraki tüm isteklerde imzalı
-/// token'daki tenant kullanılır.
+/// token'daki tenant kullanılır. Kullanıcı iki adımlı doğrulamayı açtıysa oturum açılmaz, ikinci adım istenir
+/// (<see cref="CompleteTwoFactorLoginCommand"/>).
 /// </summary>
-public sealed record LoginCommand(string Tenant, string Email, string Password, string? IpAddress = null) : IRequest<AuthResult>, ILoggableRequest;
+public sealed record LoginCommand(string Tenant, string Email, string Password, string? IpAddress = null) : IRequest<LoginResult>, ILoggableRequest;
 
 public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
@@ -26,7 +28,7 @@ public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
     }
 }
 
-public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResult>
+public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
 {
     private const string InvalidCredentials = "Mağaza, e-posta ya da şifre hatalı.";
 
@@ -35,6 +37,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResu
     private readonly IRepository<AppUser, Guid> _users;
     private readonly IPasswordHasher _passwordHasher;
     private readonly AuthTokenIssuer _tokenIssuer;
+    private readonly EmailVerification _emailVerification;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
 
@@ -44,9 +47,11 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResu
         IRepository<AppUser, Guid> users,
         IPasswordHasher passwordHasher,
         AuthTokenIssuer tokenIssuer,
+        EmailVerification emailVerification,
         IUnitOfWork unitOfWork,
         TimeProvider timeProvider)
     {
+        _emailVerification = emailVerification;
         _tenantStore = tenantStore;
         _tenantContext = tenantContext;
         _users = users;
@@ -56,7 +61,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResu
         _timeProvider = timeProvider;
     }
 
-    public async Task<AuthResult> Handle(LoginCommand request, CancellationToken cancellationToken)
+    public async Task<LoginResult> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
         TenantInfo? tenant = await _tenantStore.FindAsync(request.Tenant.Trim(), cancellationToken);
         if (tenant is not { IsActive: true })
@@ -103,8 +108,25 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResu
             throw new ForbiddenException("E-posta adresin henüz doğrulanmadı. Gönderdiğimiz kodu gir.") { Code = AuthErrorCodes.EmailNotConfirmed };
         }
 
+        // İki adımlı doğrulama açıksa oturum henüz açılmaz.
+        if (user.AuthenticatorType != AuthenticatorType.None)
+        {
+            string? destination = null;
+            if (user.AuthenticatorType == AuthenticatorType.Email)
+            {
+                await _emailVerification.SendCodeAsync(user, signIn: true, cancellationToken);
+                destination = EmailMask.Mask(user.Email);
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return LoginResult.RequiresTwoFactor(
+                new TwoFactorChallenge(tenant.Identifier, user.Id, user.SecurityStamp, user.AuthenticatorType),
+                new TwoFactorPrompt(user.AuthenticatorType, destination)
+            );
+        }
+
         AuthResult result = await _tokenIssuer.IssueAsync(user, request.IpAddress, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return result;
+        return LoginResult.SignedIn(result);
     }
 }
