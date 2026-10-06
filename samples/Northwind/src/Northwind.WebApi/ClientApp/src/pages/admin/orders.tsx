@@ -106,7 +106,7 @@ export function AdminOrdersPage() {
 
 export function AdminOrderDetailPage() {
   const { id = "" } = useParams();
-  const { hasRole } = useAuth();
+  const { hasRole, hasPermission } = useAuth();
   const [shipOpen, setShipOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
@@ -145,12 +145,12 @@ export function AdminOrderDetailPage() {
             actions={
               o.status === "Placed" && (
                 <>
-                  {hasRole("Warehouse", "Admin") && (
+                  {hasPermission("orders.ship") && (
                     <Button onClick={() => setShipOpen(true)}>
                       <TruckIcon /> Kargoya ver
                     </Button>
                   )}
-                  {hasRole("Sales", "Admin") && (
+                  {hasPermission("orders.cancel") && (
                     <Button variant="outline" onClick={() => setCancelOpen(true)}>
                       <BanIcon /> İptal et
                     </Button>

@@ -32,6 +32,7 @@ public sealed class NorthwindDbContext : CanDbContext
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Role<Guid>> Roles => Set<Role<Guid>>();
+    public DbSet<OperationClaim<Guid>> OperationClaims => Set<OperationClaim<Guid>>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {

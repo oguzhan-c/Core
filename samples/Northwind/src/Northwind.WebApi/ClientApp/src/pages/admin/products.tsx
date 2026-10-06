@@ -61,9 +61,9 @@ type DialogState =
 const ALL = "all";
 
 export function AdminProductsPage() {
-  const { hasRole } = useAuth();
+  const { hasRole, hasPermission } = useAuth();
   const isAdmin = hasRole("Admin");
-  const canRestock = hasRole("Warehouse", "Admin");
+  const canRestock = hasPermission("products.stock");
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");

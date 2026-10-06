@@ -71,7 +71,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, Result<L
         string normalizedEmail = request.Email.Trim().ToUpperInvariant();
         AppUser? user = await _users.GetAsync(
             u => u.NormalizedEmail == normalizedEmail,
-            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            include: q => q.WithRolesAndPermissions(),
             cancellationToken: cancellationToken
         );
 

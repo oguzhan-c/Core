@@ -3,6 +3,7 @@ using Can.Core.Persistence.Context;
 using Can.Core.Persistence.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Northwind.Application.Common;
+using Northwind.Application.Features.Auth;
 using Northwind.Domain.Identity;
 using Northwind.Infrastructure.Persistence;
 
@@ -17,8 +18,7 @@ internal sealed class IdentityStore : IIdentityStore
     public Task<AppUser?> FindUserInAnyTenantAsync(Guid userId, CancellationToken cancellationToken) =>
         _db.Users
             .IgnoreQueryFilters([CanQueryFilters.Tenant]) // soft delete filtresi kalır
-            .Include(u => u.UserRoles)
-            .ThenInclude(ur => ur.Role)
+            .WithRolesAndPermissions()
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 }
 

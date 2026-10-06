@@ -33,6 +33,8 @@ export interface UserProfile {
   tenant?: string | null;
   tenantName?: string | null;
   roles: Role[];
+  /** İnce taneli yetkiler (rollerden + doğrudan verilen), ör. "orders.ship". */
+  permissions: string[];
 }
 
 // ---------------------------------------------------------------- hesap güvenliği

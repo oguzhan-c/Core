@@ -72,12 +72,20 @@ export function useAuth() {
   return useMemo(() => {
     const user = me.data ?? null;
     const hasRole = (...roles: Role[]) => !!user && roles.some((r) => user.roles.includes(r));
+    /** Sunucudaki kuralla aynı: Admin her şeyi geçer; "orders.*" joker olarak eşleşir. */
+    const hasPermission = (permission: string) =>
+      !!user &&
+      (user.roles.includes("Admin") ||
+        (user.permissions ?? []).some(
+          (p) => p === "*" || p === permission || (p.endsWith(".*") && permission.startsWith(p.slice(0, -1)))
+        ));
     return {
       user,
       isLoading: me.isLoading,
       isStaff: hasRole(...staffRoles),
       isCustomer: hasRole("Customer"),
       hasRole,
+      hasPermission,
       login,
       completeTwoFactor,
       resendTwoFactorCode,

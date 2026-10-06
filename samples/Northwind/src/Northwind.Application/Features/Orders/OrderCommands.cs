@@ -11,7 +11,7 @@ using Northwind.Domain.Customers;
 using Northwind.Domain.Employees;
 using Northwind.Domain.Orders;
 using Northwind.Domain.Shipping;
-using AppRoles = Northwind.Domain.Identity.Roles;
+using AppPermissions = Northwind.Domain.Identity.Permissions;
 
 namespace Northwind.Application.Features.Orders;
 
@@ -34,19 +34,19 @@ public sealed record PlaceOrderCommand(
     ShipToDto? ShipTo,
     IReadOnlyList<PlaceOrderLine> Lines) : IRequest<Result<PlaceOrderResult>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
-    public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
+    public IReadOnlyCollection<string> Permissions => [AppPermissions.OrdersCreate];
     public IReadOnlyCollection<string> CacheTagsToRemove => [OrderCacheTags.Reports];
 }
 
 public sealed record ShipOrderCommand(Guid OrderId, Guid ShipperId) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest
 {
-    public IReadOnlyCollection<string> Roles => [AppRoles.Warehouse];
+    public IReadOnlyCollection<string> Permissions => [AppPermissions.OrdersShip];
 }
 
 /// <summary>Siparişi iptal eder; ürünler <see cref="OrderCancelled"/> handler'ı ile aynı transaction'da stoğa geri konur.</summary>
 public sealed record CancelOrderCommand(Guid OrderId) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ICacheRemoverRequest
 {
-    public IReadOnlyCollection<string> Roles => [AppRoles.Sales];
+    public IReadOnlyCollection<string> Permissions => [AppPermissions.OrdersCancel];
     public IReadOnlyCollection<string> CacheTagsToRemove => [OrderCacheTags.Reports];
 }
 

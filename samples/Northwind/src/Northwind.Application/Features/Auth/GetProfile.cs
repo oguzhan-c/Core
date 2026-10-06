@@ -31,7 +31,7 @@ public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, Re
 
         AppUser? user = await _users.GetByIdAsync(
             userId,
-            include: q => q.Include(u => u.UserRoles).ThenInclude(ur => ur.Role),
+            include: q => q.WithRolesAndPermissions(),
             enableTracking: false,
             cancellationToken: cancellationToken
         );
