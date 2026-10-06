@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Domain.Auditing;
 using Can.Core.Domain.MultiTenancy;
 using Can.Core.Security.Entities;
@@ -20,8 +21,8 @@ public sealed class AppUser : User<Guid>, IMultiTenant<Guid>
     private AppUser(string email, string firstName, string lastName)
         : base(Guid.CreateVersion7(), email)
     {
-        FirstName = Check.Required(firstName, "Ad", NameMaxLength);
-        LastName = Check.Required(lastName, "Soyad", NameMaxLength);
+        FirstName = Check.Clean(firstName);
+        LastName = Check.Clean(lastName);
     }
 
     public string FirstName { get; private set; }
@@ -31,16 +32,19 @@ public sealed class AppUser : User<Guid>, IMultiTenant<Guid>
     public Guid TenantId { get; set; }
 
     /// <summary>Yönetici tarafından oluşturulan (e-postası onaylı) kullanıcı.</summary>
-    public static AppUser Create(string email, string firstName, string lastName, string passwordHash)
-    {
-        AppUser user = Register(email, firstName, lastName, passwordHash);
-        user.ConfirmEmail();
-        return user;
-    }
+    public static Result<AppUser> Create(string email, string firstName, string lastName, string passwordHash) =>
+        Register(email, firstName, lastName, passwordHash).Tap(user => user.ConfirmEmail());
 
     /// <summary>Siteden kayıt olan kullanıcı: e-posta doğrulanana kadar giriş yapamaz.</summary>
-    public static AppUser Register(string email, string firstName, string lastName, string passwordHash)
+    public static Result<AppUser> Register(string email, string firstName, string lastName, string passwordHash)
     {
+        Result<Success> valid = Result.Validate(
+            Check.Required(firstName, "Ad", NameMaxLength),
+            Check.Required(lastName, "Soyad", NameMaxLength)
+        );
+        if (valid.IsFailure)
+            return valid.Errors;
+
         var user = new AppUser(email, firstName, lastName);
         user.SetPasswordHash(passwordHash);
         return user;

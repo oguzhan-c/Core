@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Northwind.Domain.Common;
 
 namespace Northwind.Domain.Catalog;
@@ -34,7 +35,7 @@ public sealed class Supplier : TenantAggregateRoot
 
     public string? HomePage { get; private set; }
 
-    public static Supplier Create(
+    public static Result<Supplier> Create(
         string companyName,
         string? contactName,
         string? contactTitle,
@@ -44,11 +45,10 @@ public sealed class Supplier : TenantAggregateRoot
         string? homePage)
     {
         var supplier = new Supplier(Guid.CreateVersion7());
-        supplier.Update(companyName, contactName, contactTitle, address, phone, fax, homePage);
-        return supplier;
+        return supplier.Update(companyName, contactName, contactTitle, address, phone, fax, homePage).Map(_ => supplier);
     }
 
-    public void Update(
+    public Result<Success> Update(
         string companyName,
         string? contactName,
         string? contactTitle,
@@ -57,12 +57,24 @@ public sealed class Supplier : TenantAggregateRoot
         string? fax,
         string? homePage)
     {
-        CompanyName = Check.Required(companyName, "Firma adı", CompanyNameMaxLength);
-        ContactName = Check.Optional(contactName, "Yetkili", ContactMaxLength);
-        ContactTitle = Check.Optional(contactTitle, "Yetkili unvanı", ContactMaxLength);
+        Result<Success> valid = Result.Validate(
+            Check.Required(companyName, "Firma adı", CompanyNameMaxLength),
+            Check.Optional(contactName, "Yetkili", ContactMaxLength),
+            Check.Optional(contactTitle, "Yetkili unvanı", ContactMaxLength),
+            Check.Optional(phone, "Telefon", PhoneMaxLength),
+            Check.Optional(fax, "Faks", PhoneMaxLength),
+            Check.Optional(homePage, "Web sitesi", HomePageMaxLength)
+        );
+        if (valid.IsFailure)
+            return valid;
+
+        CompanyName = Check.Clean(companyName);
+        ContactName = Check.CleanOptional(contactName);
+        ContactTitle = Check.CleanOptional(contactTitle);
         Address = address;
-        Phone = Check.Optional(phone, "Telefon", PhoneMaxLength);
-        Fax = Check.Optional(fax, "Faks", PhoneMaxLength);
-        HomePage = Check.Optional(homePage, "Web sitesi", HomePageMaxLength);
+        Phone = Check.CleanOptional(phone);
+        Fax = Check.CleanOptional(fax);
+        HomePage = Check.CleanOptional(homePage);
+        return Result.Success;
     }
 }

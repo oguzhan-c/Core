@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Northwind.Domain.Common;
 
 namespace Northwind.Domain.Employees;
@@ -51,7 +52,7 @@ public sealed class Employee : TenantAggregateRoot
 
     public IReadOnlyCollection<EmployeeTerritory> Territories => _territories;
 
-    public static Employee Create(
+    public static Result<Employee> Create(
         string firstName,
         string lastName,
         string? title,
@@ -63,29 +64,39 @@ public sealed class Employee : TenantAggregateRoot
         string? extension,
         string? notes)
     {
-        var employee = new Employee(Guid.CreateVersion7())
+        Result<Success> valid = Result.Validate(
+            Check.Required(firstName, "Ad", NameMaxLength),
+            Check.Required(lastName, "Soyad", NameMaxLength),
+            Check.Optional(title, "Unvan", TitleMaxLength),
+            Check.Optional(titleOfCourtesy, "Hitap", TitleMaxLength),
+            Check.Optional(homePhone, "Telefon", PhoneMaxLength),
+            Check.Optional(extension, "Dahili", 8)
+        );
+        if (valid.IsFailure)
+            return valid.Errors;
+
+        return new Employee(Guid.CreateVersion7())
         {
-            FirstName = Check.Required(firstName, "Ad", NameMaxLength),
-            LastName = Check.Required(lastName, "Soyad", NameMaxLength),
-            Title = Check.Optional(title, "Unvan", TitleMaxLength),
-            TitleOfCourtesy = Check.Optional(titleOfCourtesy, "Hitap", TitleMaxLength),
+            FirstName = Check.Clean(firstName),
+            LastName = Check.Clean(lastName),
+            Title = Check.CleanOptional(title),
+            TitleOfCourtesy = Check.CleanOptional(titleOfCourtesy),
             BirthDate = birthDate,
             HireDate = hireDate,
             Address = address,
-            HomePhone = Check.Optional(homePhone, "Telefon", PhoneMaxLength),
-            Extension = Check.Optional(extension, "Dahili", 8),
+            HomePhone = Check.CleanOptional(homePhone),
+            Extension = Check.CleanOptional(extension),
             Notes = notes,
         };
-
-        return employee;
     }
 
-    public void ReportTo(Employee? manager)
+    public Result<Success> ReportTo(Employee? manager)
     {
         if (manager is not null && manager.Id == Id)
-            throw new Can.Core.Domain.Exceptions.BusinessException("Çalışan kendisine bağlı olamaz.");
+            return Error.Failure("employee.self_manager", "Çalışan kendisine bağlı olamaz.");
 
         ManagerId = manager?.Id;
+        return Result.Success;
     }
 
     public void AssignTerritory(string territoryCode)

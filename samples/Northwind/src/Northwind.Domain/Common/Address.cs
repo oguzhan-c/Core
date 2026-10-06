@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Domain.ValueObjects;
 
 namespace Northwind.Domain.Common;
@@ -18,13 +19,26 @@ public sealed class Address : ValueObject
         Country = string.Empty;
     }
 
-    public Address(string street, string city, string? region, string? postalCode, string country)
+    private Address(string street, string city, string? region, string? postalCode, string country)
     {
-        Street = Check.Required(street, "Adres", StreetMaxLength);
-        City = Check.Required(city, "Şehir", CityMaxLength);
-        Region = Check.Optional(region, "Bölge", RegionMaxLength);
-        PostalCode = Check.Optional(postalCode, "Posta kodu", PostalCodeMaxLength);
-        Country = Check.Required(country, "Ülke", CountryMaxLength);
+        Street = Check.Clean(street);
+        City = Check.Clean(city);
+        Region = Check.CleanOptional(region);
+        PostalCode = Check.CleanOptional(postalCode);
+        Country = Check.Clean(country);
+    }
+
+    public static Result<Address> Create(string street, string city, string? region, string? postalCode, string country)
+    {
+        Result<Success> valid = Result.Validate(
+            Check.Required(street, "Adres", StreetMaxLength),
+            Check.Required(city, "Şehir", CityMaxLength),
+            Check.Optional(region, "Bölge", RegionMaxLength),
+            Check.Optional(postalCode, "Posta kodu", PostalCodeMaxLength),
+            Check.Required(country, "Ülke", CountryMaxLength)
+        );
+
+        return valid.IsFailure ? valid.Errors : new Address(street, city, region, postalCode, country);
     }
 
     public string Street { get; private set; }

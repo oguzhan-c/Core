@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Domain.Auditing;
 using Northwind.Domain.Common;
 
@@ -20,7 +21,7 @@ public sealed class Customer : TenantAggregateRoot
     private Customer(Guid id, string code)
         : base(id)
     {
-        Code = NormalizeCode(code);
+        Code = code;
         CompanyName = string.Empty;
     }
 
@@ -42,7 +43,7 @@ public sealed class Customer : TenantAggregateRoot
     /// <summary>Siteden kayıt olduysa müşterinin kullanıcı hesabı.</summary>
     public Guid? UserId { get; private set; }
 
-    public static Customer Create(
+    public static Result<Customer> Create(
         string code,
         string companyName,
         string? contactName,
@@ -51,35 +52,62 @@ public sealed class Customer : TenantAggregateRoot
         string? phone,
         string? fax)
     {
-        var customer = new Customer(Guid.CreateVersion7(), code);
-        customer.Update(companyName, contactName, contactTitle, address, phone, fax);
-        return customer;
+        return NormalizeCode(code).Then(normalized =>
+        {
+            var customer = new Customer(Guid.CreateVersion7(), normalized);
+            return customer.Update(companyName, contactName, contactTitle, address, phone, fax).Map(_ => customer);
+        });
     }
 
-    public void Update(string companyName, string? contactName, string? contactTitle, Address? address, string? phone, string? fax)
+    public Result<Success> Update(string companyName, string? contactName, string? contactTitle, Address? address, string? phone, string? fax)
     {
-        CompanyName = Check.Required(companyName, "Firma adı", CompanyNameMaxLength);
-        ContactName = Check.Optional(contactName, "Yetkili", ContactMaxLength);
-        ContactTitle = Check.Optional(contactTitle, "Yetkili unvanı", ContactMaxLength);
+        Result<Success> valid = Result.Validate(
+            Check.Required(companyName, "Firma adı", CompanyNameMaxLength),
+            Check.Optional(contactName, "Yetkili", ContactMaxLength),
+            Check.Optional(contactTitle, "Yetkili unvanı", ContactMaxLength),
+            Check.Optional(phone, "Telefon", PhoneMaxLength),
+            Check.Optional(fax, "Faks", PhoneMaxLength)
+        );
+        if (valid.IsFailure)
+            return valid;
+
+        CompanyName = Check.Clean(companyName);
+        ContactName = Check.CleanOptional(contactName);
+        ContactTitle = Check.CleanOptional(contactTitle);
         Address = address;
-        Phone = Check.Optional(phone, "Telefon", PhoneMaxLength);
-        Fax = Check.Optional(fax, "Faks", PhoneMaxLength);
+        Phone = Check.CleanOptional(phone);
+        Fax = Check.CleanOptional(fax);
+        return Result.Success;
     }
 
     /// <summary>Müşteriyi bir kullanıcı hesabına bağlar (site üzerinden sipariş verebilmesi için).</summary>
-    public void LinkUser(Guid userId)
+    public Result<Success> LinkUser(Guid userId)
     {
         if (UserId is { } current && current != userId)
-            throw new Can.Core.Domain.Exceptions.BusinessException("Müşteri zaten başka bir hesaba bağlı.");
+            return CustomerErrors.AlreadyLinked;
 
         UserId = userId;
+        return Result.Success;
     }
 
-    public static string NormalizeCode(string code)
+    /// <summary>Müşteri kodu: 1-5 harf/rakam, büyük harfe çevrilir (ör. <c>" alfki"</c> → <c>"ALFKI"</c>).</summary>
+    public static Result<string> NormalizeCode(string code)
     {
-        string normalized = Check.Required(code, "Müşteri kodu", CodeLength).ToUpperInvariant();
-        return normalized.All(char.IsLetterOrDigit)
-            ? normalized
-            : throw new Can.Core.Domain.Exceptions.BusinessException("Müşteri kodu yalnızca harf ve rakam içerebilir.");
+        if (Check.Required(code, "Müşteri kodu", CodeLength) is { } error)
+            return error;
+
+        string normalized = Check.Clean(code).ToUpperInvariant();
+        return normalized.All(char.IsLetterOrDigit) ? normalized : CustomerErrors.InvalidCode;
     }
+}
+
+/// <summary>Müşteri hataları.</summary>
+public static class CustomerErrors
+{
+    public static readonly Error AlreadyLinked = Error.Conflict("customer.already_linked", "Müşteri zaten başka bir hesaba bağlı.");
+
+    public static readonly Error InvalidCode =
+        Error.Validation("customer.invalid_code", "Müşteri kodu yalnızca harf ve rakam içerebilir.", "Code");
+
+    public static Error NotFound(Guid id) => Error.NotFound("customer.not_found", $"'{id}' müşterisi bulunamadı.");
 }

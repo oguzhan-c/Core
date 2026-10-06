@@ -1,4 +1,4 @@
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Northwind.Domain.Catalog;
 using Northwind.Domain.Common;
 using Northwind.Domain.Customers;
@@ -9,12 +9,12 @@ namespace Northwind.Domain.Tests;
 public class OrderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 5, 12, 0, 0, TimeSpan.Zero);
-    private static readonly Address Address = new("Obere Str. 57", "Berlin", null, "12209", "Germany");
+    private static readonly Address Address = Address.Create("Obere Str. 57", "Berlin", null, "12209", "Germany").Value;
 
     private static Product Chai(int stock = 10, int reorderLevel = 2) =>
-        Product.Create("Chai", null, null, "10 boxes x 20 bags", 18m, stock, reorderLevel);
+        Product.Create("Chai", null, null, "10 boxes x 20 bags", 18m, stock, reorderLevel).Value;
 
-    private static Order NewOrder() => Order.Place(10249, Guid.NewGuid(), null, "Alfreds Futterkiste", Address, null, 5m, Now);
+    private static Order NewOrder() => Order.Place(10249, Guid.NewGuid(), null, "Alfreds Futterkiste", Address, null, 5m, Now).Value;
 
     [Fact]
     public void Adding_a_line_reserves_stock_and_merges_same_product()
@@ -22,8 +22,8 @@ public class OrderTests
         Product chai = Chai(stock: 10);
         Order order = NewOrder();
 
-        order.AddLine(chai, 3, 0.1m);
-        order.AddLine(chai, 2);
+        Assert.True(order.AddLine(chai, 3, 0.1m).IsSuccess);
+        Assert.True(order.AddLine(chai, 2).IsSuccess);
 
         OrderLine line = Assert.Single(order.Lines);
         Assert.Equal(5, line.Quantity);
@@ -39,11 +39,14 @@ public class OrderTests
         Product chai = Chai(stock: 2);
         Order order = NewOrder();
 
-        Assert.Throws<BusinessException>(() => order.AddLine(chai, 3));
+        Result<Success> tooMany = order.AddLine(chai, 3);
+        Assert.Equal("product.insufficient_stock", tooMany.FirstError.Code);
+        Assert.Equal(2, tooMany.FirstError.Metadata["inStock"]);
         Assert.Equal(2, chai.UnitsInStock);
+        Assert.Empty(order.Lines);
 
         chai.Discontinue();
-        Assert.Throws<BusinessException>(() => order.AddLine(chai, 1));
+        Assert.Equal("product.discontinued", order.AddLine(chai, 1).FirstError.Code);
     }
 
     [Fact]
@@ -64,20 +67,20 @@ public class OrderTests
         order.AddLine(Chai(), 1);
         Guid shipper = Guid.NewGuid();
 
-        order.Ship(shipper, Now.AddDays(1));
+        Assert.True(order.Ship(shipper, Now.AddDays(1)).IsSuccess);
 
         Assert.Equal(OrderStatus.Shipped, order.Status);
         var shipped = Assert.IsType<OrderShipped>(order.DomainEvents.Last());
         Assert.Equal(shipper, shipped.ShipperId);
         Assert.Equal(23m, shipped.Total);
-        Assert.Throws<BusinessException>(() => order.Cancel());
-        Assert.Throws<BusinessException>(() => order.AddLine(Chai(), 1));
+        Assert.Equal(OrderErrors.AlreadyShipped, order.Cancel().FirstError);
+        Assert.Equal(OrderErrors.NotEditable, order.AddLine(Chai(), 1).FirstError);
     }
 
     [Fact]
     public void Empty_order_cannot_be_shipped()
     {
-        Assert.Throws<BusinessException>(() => NewOrder().Ship(Guid.NewGuid(), Now));
+        Assert.Equal(OrderErrors.Empty, NewOrder().Ship(Guid.NewGuid(), Now).FirstError);
     }
 
     [Fact]
@@ -87,8 +90,8 @@ public class OrderTests
         Order order = NewOrder();
         order.AddLine(chai, 4);
 
-        order.Cancel();
-        order.Cancel(); // ikinci kez: etkisiz
+        Assert.True(order.Cancel().IsSuccess);
+        Assert.True(order.Cancel().IsSuccess); // ikinci kez: etkisiz
 
         Assert.Equal(OrderStatus.Cancelled, order.Status);
         var cancelled = Assert.Single(order.DomainEvents.OfType<OrderCancelled>());
@@ -98,7 +101,16 @@ public class OrderTests
     [Fact]
     public void Discount_must_be_between_zero_and_one()
     {
-        Assert.Throws<BusinessException>(() => NewOrder().AddLine(Chai(), 1, 1.5m));
+        Assert.Equal(OrderErrors.InvalidDiscount, NewOrder().AddLine(Chai(), 1, 1.5m).FirstError);
+    }
+
+    [Fact]
+    public void Placing_collects_all_field_errors()
+    {
+        Result<Order> result = Order.Place(0, Guid.NewGuid(), null, "", Address, null, -1m, Now);
+
+        Assert.Equal(3, result.Errors.Length);
+        Assert.All(result.Errors, e => Assert.Equal(ErrorType.Validation, e.Type));
     }
 }
 
@@ -107,7 +119,7 @@ public class CatalogTests
     [Fact]
     public void Price_change_raises_event_only_when_price_changes()
     {
-        Product product = Product.Create("Chang", null, null, null, 19m, 17, 25);
+        Product product = Product.Create("Chang", null, null, null, 19m, 17, 25).Value;
 
         product.ChangePrice(19m);
         Assert.Empty(product.DomainEvents);
@@ -115,12 +127,15 @@ public class CatalogTests
         product.ChangePrice(21.5m);
         var changed = Assert.IsType<ProductPriceChanged>(Assert.Single(product.DomainEvents));
         Assert.Equal((19m, 21.5m), (changed.OldPrice, changed.NewPrice));
+
+        Assert.Equal("not_negative", product.ChangePrice(-1m).FirstError.Code);
+        Assert.Equal(21.5m, product.UnitPrice);
     }
 
     [Fact]
     public void Discontinue_is_idempotent_and_raises_integration_event_once()
     {
-        Product product = Product.Create("Chang", null, null, null, 19m, 17, 25);
+        Product product = Product.Create("Chang", null, null, null, 19m, 17, 25).Value;
 
         product.Discontinue();
         product.Discontinue();
@@ -132,11 +147,20 @@ public class CatalogTests
     [Fact]
     public void Needs_reorder_counts_units_on_order()
     {
-        Product product = Product.Import("Aniseed Syrup", null, null, null, 10m, 13, 70, 25, false);
+        Product product = Product.Import("Aniseed Syrup", null, null, null, 10m, 13, 70, 25, false).Value;
         Assert.False(product.NeedsReorder);
 
-        Product low = Product.Import("Chef Anton's Gumbo Mix", null, null, null, 21.35m, 0, 0, 0, false);
+        Product low = Product.Import("Chef Anton's Gumbo Mix", null, null, null, 21.35m, 0, 0, 0, false).Value;
         Assert.True(low.NeedsReorder);
+    }
+
+    [Fact]
+    public void Invalid_product_returns_errors_instead_of_throwing()
+    {
+        Result<Product> result = Product.Create("", null, null, null, -1m, 0, 0);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains(result.Errors, e => e.Field == "Ürün adı" || e.Field == "Birim fiyat");
     }
 
     [Theory]
@@ -144,7 +168,7 @@ public class CatalogTests
     [InlineData(" anatr ", "ANATR")]
     public void Customer_code_is_normalized(string code, string expected)
     {
-        Assert.Equal(expected, Customer.NormalizeCode(code));
+        Assert.Equal(expected, Customer.NormalizeCode(code).Value);
     }
 
     [Theory]
@@ -153,13 +177,15 @@ public class CatalogTests
     [InlineData("A-B")]
     public void Invalid_customer_code_is_rejected(string code)
     {
-        Assert.Throws<BusinessException>(() => Customer.NormalizeCode(code));
+        Assert.True(Customer.NormalizeCode(code).IsFailure);
     }
 
     [Fact]
     public void Address_requires_street_city_and_country_and_compares_by_value()
     {
-        Assert.Throws<BusinessException>(() => new Address("", "Berlin", null, null, "Germany"));
-        Assert.Equal(new Address("A", "B", null, "1", "C"), new Address("A ", "B", "", "1", "C"));
+        Result<Address> invalid = Address.Create("", "", null, null, "");
+        Assert.Equal(3, invalid.Errors.Length);
+
+        Assert.Equal(Address.Create("A", "B", null, "1", "C").Value, Address.Create("A ", "B", "", "1", "C").Value);
     }
 }

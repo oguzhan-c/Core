@@ -1,5 +1,5 @@
 using Can.Core.Domain.Auditing;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Northwind.Domain.Common;
 
 namespace Northwind.Domain.Catalog;
@@ -45,7 +45,7 @@ public sealed class Product : TenantAggregateRoot
 
     public bool NeedsReorder => !IsDiscontinued && UnitsInStock + UnitsOnOrder <= ReorderLevel;
 
-    public static Product Create(
+    public static Result<Product> Create(
         string name,
         Guid? categoryId,
         Guid? supplierId,
@@ -54,18 +54,19 @@ public sealed class Product : TenantAggregateRoot
         int unitsInStock,
         int reorderLevel)
     {
-        var product = new Product(Guid.CreateVersion7())
-        {
-            UnitPrice = Check.NotNegative(unitPrice, "Birim fiyat"),
-            UnitsInStock = Check.NotNegative(unitsInStock, "Stok"),
-        };
+        Result<Success> valid = Result.Validate(
+            Check.NotNegative(unitPrice, "Birim fiyat"),
+            Check.NotNegative(unitsInStock, "Stok")
+        );
+        if (valid.IsFailure)
+            return valid.Errors;
 
-        product.UpdateDetails(name, categoryId, supplierId, quantityPerUnit, reorderLevel);
-        return product;
+        var product = new Product(Guid.CreateVersion7()) { UnitPrice = unitPrice, UnitsInStock = unitsInStock };
+        return product.UpdateDetails(name, categoryId, supplierId, quantityPerUnit, reorderLevel).Map(_ => product);
     }
 
-    /// <summary>Hazır veriyi (Northwind) içe aktarırken: event üretmez.</summary>
-    public static Product Import(
+    /// <summary>Dış kaynaktan (Northwind SQL) aktarım: siparişteki miktar ve satış durumu da verilir.</summary>
+    public static Result<Product> Import(
         string name,
         Guid? categoryId,
         Guid? supplierId,
@@ -76,59 +77,90 @@ public sealed class Product : TenantAggregateRoot
         int reorderLevel,
         bool isDiscontinued)
     {
-        Product product = Create(name, categoryId, supplierId, quantityPerUnit, unitPrice, unitsInStock, reorderLevel);
-        product.UnitsOnOrder = Check.NotNegative(unitsOnOrder, "Siparişteki miktar");
-        product.IsDiscontinued = isDiscontinued;
-        return product;
+        if (Check.NotNegative(unitsOnOrder, "Siparişteki miktar") is { } error)
+            return error;
+
+        return Create(name, categoryId, supplierId, quantityPerUnit, unitPrice, unitsInStock, reorderLevel)
+            .Tap(product =>
+            {
+                product.UnitsOnOrder = unitsOnOrder;
+                product.IsDiscontinued = isDiscontinued;
+            });
     }
 
-    public void UpdateDetails(string name, Guid? categoryId, Guid? supplierId, string? quantityPerUnit, int reorderLevel)
+    public Result<Success> UpdateDetails(string name, Guid? categoryId, Guid? supplierId, string? quantityPerUnit, int reorderLevel)
     {
-        Name = Check.Required(name, "Ürün adı", NameMaxLength);
+        Result<Success> valid = Result.Validate(
+            Check.Required(name, "Ürün adı", NameMaxLength),
+            Check.Optional(quantityPerUnit, "Birim", QuantityPerUnitMaxLength),
+            Check.NotNegative(reorderLevel, "Yeniden sipariş seviyesi")
+        );
+        if (valid.IsFailure)
+            return valid;
+
+        Name = Check.Clean(name);
         CategoryId = categoryId;
         SupplierId = supplierId;
-        QuantityPerUnit = Check.Optional(quantityPerUnit, "Birim", QuantityPerUnitMaxLength);
-        ReorderLevel = Check.NotNegative(reorderLevel, "Yeniden sipariş seviyesi");
+        QuantityPerUnit = Check.CleanOptional(quantityPerUnit);
+        ReorderLevel = reorderLevel;
+        return Result.Success;
     }
 
-    public void ChangePrice(decimal newPrice)
+    /// <summary>Fiyatı değiştirir; değiştiyse <see cref="ProductPriceChanged"/> event'i yayınlanır.</summary>
+    public Result<Success> ChangePrice(decimal newPrice)
     {
-        Check.NotNegative(newPrice, "Birim fiyat");
+        if (Check.NotNegative(newPrice, "Birim fiyat") is { } error)
+            return error;
+
         if (newPrice == UnitPrice)
-            return;
+            return Result.Success;
 
         decimal oldPrice = UnitPrice;
         UnitPrice = newPrice;
         RaiseDomainEvent(new ProductPriceChanged(Id, oldPrice, newPrice));
+        return Result.Success;
     }
 
-    /// <summary>Tedarikçiden gelen ürünü stoğa ekler.</summary>
-    public void Restock(int quantity)
+    /// <summary>Tedarikçiden gelen ürün: stok artar, siparişteki miktar düşer.</summary>
+    public Result<Success> Restock(int quantity)
     {
-        Check.Positive(quantity, "Miktar");
+        if (Check.Positive(quantity, "Miktar") is { } error)
+            return error;
+
         UnitsInStock += quantity;
         UnitsOnOrder = Math.Max(0, UnitsOnOrder - quantity);
+        return Result.Success;
     }
 
-    /// <summary>Sipariş için stoktan düşer.</summary>
-    public void ReserveStock(int quantity)
+    /// <summary>Siparişe ayırır. Stok yeniden sipariş seviyesine düşerse <see cref="StockBelowReorderLevel"/> yayınlanır.</summary>
+    public Result<Success> ReserveStock(int quantity)
     {
-        Check.Positive(quantity, "Miktar");
+        if (Check.Positive(quantity, "Miktar") is { } error)
+            return error;
 
         if (IsDiscontinued)
-            throw new BusinessException($"'{Name}' satıştan kaldırılmış; siparişe eklenemez.");
+            return ProductErrors.Discontinued(Name);
 
         if (quantity > UnitsInStock)
-            throw new BusinessException($"'{Name}' için yeterli stok yok (stok: {UnitsInStock}, istenen: {quantity}).");
+            return ProductErrors.InsufficientStock(Name, UnitsInStock, quantity);
 
         UnitsInStock -= quantity;
 
         if (UnitsInStock <= ReorderLevel)
             RaiseDomainEvent(new StockBelowReorderLevel(Id, Name, UnitsInStock, ReorderLevel));
+
+        return Result.Success;
     }
 
-    /// <summary>İptal edilen siparişin ürünlerini stoğa geri koyar.</summary>
-    public void ReleaseStock(int quantity) => UnitsInStock += Check.Positive(quantity, "Miktar");
+    /// <summary>İptal edilen siparişin ürünleri stoğa geri döner.</summary>
+    public Result<Success> ReleaseStock(int quantity)
+    {
+        if (Check.Positive(quantity, "Miktar") is { } error)
+            return error;
+
+        UnitsInStock += quantity;
+        return Result.Success;
+    }
 
     public void Discontinue()
     {
@@ -138,4 +170,18 @@ public sealed class Product : TenantAggregateRoot
         IsDiscontinued = true;
         RaiseDomainEvent(new ProductDiscontinued(Id, Name));
     }
+}
+
+/// <summary>Ürün hataları.</summary>
+public static class ProductErrors
+{
+    public static Error NotFound(Guid id) => Error.NotFound("product.not_found", $"'{id}' ürünü bulunamadı.");
+
+    public static Error Discontinued(string name) =>
+        Error.Failure("product.discontinued", $"'{name}' satıştan kaldırılmış; siparişe eklenemez.");
+
+    public static Error InsufficientStock(string name, int inStock, int requested) =>
+        Error.Failure("product.insufficient_stock", $"'{name}' için yeterli stok yok (stok: {inStock}, istenen: {requested}).")
+            .WithMetadata("inStock", inStock)
+            .WithMetadata("requested", requested);
 }
