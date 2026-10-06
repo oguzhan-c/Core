@@ -514,7 +514,7 @@ builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarl
 
 **Entity'ler** (tek `TId` ile, türetip genişletilir): `User<TId>` (e-posta, şifre hash'i, 2FA tipi, hesap kilitleme,
 security stamp), `Role<TId>`, `UserRole<TId>`, `RefreshToken<TId>` (rotasyon ve iptal), `OtpAuthenticator<TId>`,
-`EmailAuthenticator<TId>`, `UserPasskey<TId>`.
+`EmailAuthenticator<TId>`, `UserPasskey<TId>`, `OperationClaim<TId>` + `RoleOperationClaim<TId>` + `UserOperationClaim<TId>`.
 
 Tabloları kurmak için (`Can.Core.Security.EntityFrameworkCore`):
 
@@ -525,6 +525,27 @@ protected override void ConfigureModel(ModelBuilder modelBuilder) =>
 
 Roller JWT'ye `role` claim'i olarak yazılır; `ISecuredRequest.Roles`, `ICurrentUser.IsInRole` ve
 `[Authorize(Roles = ...)]` aynı claim'i kullanır.
+
+**Yetkiler (operation claim)**: rollerin yanında ince taneli yetkiler. Rollere ya da doğrudan kullanıcıya verilir,
+token'a `permission` claim'i olarak yazılır.
+
+```csharp
+var ship = new OperationClaim<Guid>(Guid.CreateVersion7(), "orders.ship", "Siparişi kargoya verme");
+warehouseRole.GrantOperationClaim(ship);          // rol üzerinden
+user.GrantOperationClaim(cancel);                 // doğrudan
+// giriş: roller + yetkiler yüklü kullanıcıdan
+tokens.CreateAccessToken(new TokenSubject(user.Id.ToString(), Roles: roles, Permissions: user.GetPermissionNames()));
+
+public sealed record ShipOrderCommand(Guid OrderId) : IRequest<Result<Success>>, ISecuredRequest
+{
+    public IReadOnlyCollection<string> Permissions => ["orders.ship"];   // Roles ile birlikte: herhangi biri yeter
+}
+```
+
+Eşleşme büyük/küçük harf duyarsız; `"orders.*"` `orders.` ile başlayan her yetkiyi, `"*"` hepsini kapsar
+(`ICurrentUser.HasPermission`). Yönetici rolü (`CanApplicationOptions.AdminRole`) her şeyi geçer. Yetki listesi
+token'a (ve cookie'ye) girdiği için çok sayıda yetkiyi tek tek değil joker olarak vermek boyutu küçük tutar;
+yetki değişikliği kullanıcının bir sonraki token yenilemesinde geçerli olur.
 
 Güvenlik notları: imza anahtarlarını koda/appsettings'e yazma (User Secrets, ortam değişkeni, Key Vault);
 `OtpAuthenticator.SecretKey`'i veritabanında şifreli sakla; refresh token yeniden kullanımı tespit edilirse
