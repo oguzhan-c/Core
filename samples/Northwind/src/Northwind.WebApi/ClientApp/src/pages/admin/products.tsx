@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArchiveXIcon,
   DollarSignIcon,
@@ -36,11 +35,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
-import type { Category, Paginate, Product, ProductListItem, Supplier } from "@/lib/types";
+import type { Category, ProductListItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  useChangePriceMutation,
+  useCreateProductMutation,
+  useDeleteProductMutation,
+  useDiscontinueProductMutation,
+  useGetCategoriesQuery,
+  useGetProductQuery,
+  useGetProductsQuery,
+  useGetSuppliersQuery,
+  useRestockProductMutation,
+  useUpdateProductMutation,
+} from "@/services/catalog";
 
 type DialogState =
   | { kind: "create" }
@@ -53,7 +64,6 @@ export function AdminProductsPage() {
   const { hasRole } = useAuth();
   const isAdmin = hasRole("Admin");
   const canRestock = hasRole("Warehouse", "Admin");
-  const queryClient = useQueryClient();
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
@@ -62,39 +72,37 @@ export function AdminProductsPage() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const debounced = useDebounced(search);
 
-  const categories = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/api/categories") });
-
-  const products = useQuery({
-    queryKey: ["products", { index, debounced, categoryId, includeDiscontinued }],
-    queryFn: () =>
-      api<Paginate<ProductListItem>>("/api/products", {
-        query: { index, size: 15, search: debounced, categoryId: categoryId === ALL ? undefined : categoryId, includeDiscontinued },
-      }),
-    placeholderData: keepPreviousData,
+  const categories = useGetCategoriesQuery();
+  const products = useGetProductsQuery({
+    index,
+    size: 15,
+    search: debounced,
+    categoryId: categoryId === ALL ? undefined : categoryId,
+    includeDiscontinued,
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["products"] });
-    queryClient.invalidateQueries({ queryKey: ["categories"] });
-  };
+  // Ürün işlemleri ürün, kategori, katalog, panel ve geçmiş etiketlerini geçersiz kılar (services/catalog.ts):
+  // ilgili listeler elle yenilemeye gerek kalmadan güncellenir.
+  const [discontinueProduct] = useDiscontinueProductMutation();
+  const [deleteProduct] = useDeleteProductMutation();
 
-  const discontinue = useMutation({
-    mutationFn: (id: string) => api(`/api/products/${id}/discontinue`, { method: "POST" }),
-    onSuccess: () => {
+  async function discontinue(id: string) {
+    try {
+      await discontinueProduct(id).unwrap();
       toast.success("Ürün satıştan kaldırıldı. Bildirim outbox üzerinden gönderilecek.");
-      invalidate();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
-  const remove = useMutation({
-    mutationFn: (id: string) => api(`/api/products/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
+  async function remove(id: string) {
+    try {
+      await deleteProduct(id).unwrap();
       toast.success("Ürün silindi (soft delete).");
-      invalidate();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   const close = () => setDialog(null);
 
@@ -246,10 +254,10 @@ export function AdminProductsPage() {
       <DataPagination page={products.data} onPageChange={setIndex} />
 
       {(dialog?.kind === "create" || dialog?.kind === "edit") && (
-        <ProductFormDialog productId={dialog.kind === "edit" ? dialog.product.id : undefined} categories={categories.data ?? []} onClose={close} onSaved={invalidate} />
+        <ProductFormDialog productId={dialog.kind === "edit" ? dialog.product.id : undefined} categories={categories.data ?? []} onClose={close} />
       )}
-      {dialog?.kind === "price" && <PriceDialog product={dialog.product} onClose={close} onSaved={invalidate} />}
-      {dialog?.kind === "restock" && <RestockDialog product={dialog.product} onClose={close} onSaved={invalidate} />}
+      {dialog?.kind === "price" && <PriceDialog product={dialog.product} onClose={close} />}
+      {dialog?.kind === "restock" && <RestockDialog product={dialog.product} onClose={close} />}
       {dialog?.kind === "history" && (
         <Dialog open onOpenChange={(open) => !open && close()}>
           <DialogContent className="sm:max-w-2xl">
@@ -267,7 +275,7 @@ export function AdminProductsPage() {
         title="Ürün satıştan kaldırılsın mı?"
         description="Ürün yeni siparişlere eklenemez. ProductDiscontinued event'i outbox'a yazılır ve arka planda yayınlanır."
         confirmText="Satıştan kaldır"
-        onConfirm={() => (dialog?.kind === "discontinue" ? discontinue.mutateAsync(dialog.product.id) : undefined)}
+        onConfirm={() => (dialog?.kind === "discontinue" ? discontinue(dialog.product.id) : undefined)}
       />
       <ConfirmDialog
         open={dialog?.kind === "delete"}
@@ -276,7 +284,7 @@ export function AdminProductsPage() {
         description="Soft delete: kayıt veritabanında kalır, listelerde görünmez."
         confirmText="Sil"
         destructive
-        onConfirm={() => (dialog?.kind === "delete" ? remove.mutateAsync(dialog.product.id) : undefined)}
+        onConfirm={() => (dialog?.kind === "delete" ? remove(dialog.product.id) : undefined)}
       />
     </>
   );
@@ -286,22 +294,16 @@ function ProductFormDialog({
   productId,
   categories,
   onClose,
-  onSaved,
 }: {
   productId?: string;
   categories: Category[];
   onClose: () => void;
-  onSaved: () => void;
 }) {
-  const suppliers = useQuery({
-    queryKey: ["suppliers", "all"],
-    queryFn: () => api<Paginate<Supplier>>("/api/suppliers", { query: { size: 100 } }),
-  });
-  const existing = useQuery({
-    queryKey: ["products", "detail", productId],
-    queryFn: () => api<Product>(`/api/products/${productId}`),
-    enabled: !!productId,
-  });
+  const suppliers = useGetSuppliersQuery({ size: 100 });
+  // Yeni üründe istek atılmaz (skip).
+  const existing = useGetProductQuery(productId ?? "", { skip: !productId });
+  const [createProduct, { isLoading: creating }] = useCreateProductMutation();
+  const [updateProduct, { isLoading: updating }] = useUpdateProductMutation();
 
   const loaded = existing.data;
   const [form, setForm] = useState<{
@@ -325,26 +327,25 @@ function ProductFormDialog({
     reorderLevel: form.reorderLevel ?? String(loaded?.reorderLevel ?? 10),
   };
 
-  const save = useMutation({
-    mutationFn: () => {
-      const common = {
-        name: value.name,
-        categoryId: value.categoryId === ALL ? null : value.categoryId,
-        supplierId: value.supplierId === ALL ? null : value.supplierId,
-        quantityPerUnit: value.quantityPerUnit || null,
-        reorderLevel: Number(value.reorderLevel),
-      };
-      return productId
-        ? api(`/api/products/${productId}`, { method: "PUT", body: common })
-        : api("/api/products", { method: "POST", body: { ...common, unitPrice: Number(value.unitPrice), unitsInStock: Number(value.unitsInStock) } });
-    },
-    onSuccess: () => {
+  async function save() {
+    const details = {
+      name: value.name,
+      categoryId: value.categoryId === ALL ? null : value.categoryId,
+      supplierId: value.supplierId === ALL ? null : value.supplierId,
+      quantityPerUnit: value.quantityPerUnit || null,
+      reorderLevel: Number(value.reorderLevel),
+    };
+
+    try {
+      if (productId) await updateProduct({ id: productId, ...details }).unwrap();
+      else await createProduct({ ...details, unitPrice: Number(value.unitPrice), unitsInStock: Number(value.unitsInStock) }).unwrap();
+
       toast.success(productId ? "Ürün güncellendi." : "Ürün eklendi.");
-      onSaved();
       onClose();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -357,7 +358,7 @@ function ProductFormDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            save.mutate();
+            void save();
           }}
         >
           <Field label="Ad" htmlFor="name">
@@ -417,7 +418,7 @@ function ProductFormDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Vazgeç
             </Button>
-            <Button type="submit" disabled={save.isPending || (!!productId && !loaded)}>
+            <Button type="submit" disabled={creating || updating || (!!productId && !loaded)}>
               Kaydet
             </Button>
           </DialogFooter>
@@ -427,17 +428,19 @@ function ProductFormDialog({
   );
 }
 
-function PriceDialog({ product, onClose, onSaved }: { product: ProductListItem; onClose: () => void; onSaved: () => void }) {
+function PriceDialog({ product, onClose }: { product: ProductListItem; onClose: () => void }) {
   const [price, setPrice] = useState(String(product.unitPrice));
-  const save = useMutation({
-    mutationFn: () => api(`/api/products/${product.id}/price`, { method: "PUT", body: { unitPrice: Number(price) } }),
-    onSuccess: () => {
+  const [changePrice, { isLoading: saving }] = useChangePriceMutation();
+
+  async function save() {
+    try {
+      await changePrice({ id: product.id, unitPrice: Number(price) }).unwrap();
       toast.success("Fiyat güncellendi; eski ve yeni fiyat değişiklik geçmişine yazıldı.");
-      onSaved();
       onClose();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -455,7 +458,7 @@ function PriceDialog({ product, onClose, onSaved }: { product: ProductListItem; 
           <Button variant="outline" onClick={onClose}>
             Vazgeç
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button onClick={save} disabled={saving}>
             Kaydet
           </Button>
         </DialogFooter>
@@ -464,17 +467,19 @@ function PriceDialog({ product, onClose, onSaved }: { product: ProductListItem; 
   );
 }
 
-function RestockDialog({ product, onClose, onSaved }: { product: ProductListItem; onClose: () => void; onSaved: () => void }) {
+function RestockDialog({ product, onClose }: { product: ProductListItem; onClose: () => void }) {
   const [quantity, setQuantity] = useState("10");
-  const save = useMutation({
-    mutationFn: () => api(`/api/products/${product.id}/restock`, { method: "POST", body: { quantity: Number(quantity) } }),
-    onSuccess: () => {
+  const [restock, { isLoading: saving }] = useRestockProductMutation();
+
+  async function save() {
+    try {
+      await restock({ id: product.id, quantity: Number(quantity) }).unwrap();
       toast.success("Stok girişi yapıldı.");
-      onSaved();
       onClose();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -492,7 +497,7 @@ function RestockDialog({ product, onClose, onSaved }: { product: ProductListItem
           <Button variant="outline" onClick={onClose}>
             Vazgeç
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button onClick={save} disabled={saving}>
             Ekle
           </Button>
         </DialogFooter>

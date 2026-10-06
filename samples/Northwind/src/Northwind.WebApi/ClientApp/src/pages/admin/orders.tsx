@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, BanIcon, TruckIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,12 +17,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Order, OrderListItem, OrderStatus, Paginate, Shipper } from "@/lib/types";
+import type { OrderStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { OrderSummary } from "@/pages/admin/order-summary";
+import { useGetShippersQuery } from "@/services/catalog";
+import { useCancelOrderMutation, useGetOrderQuery, useGetOrdersQuery, useShipOrderMutation } from "@/services/sales";
 
 export function AdminOrdersPage() {
   const navigate = useNavigate();
@@ -43,11 +44,7 @@ export function AdminOrdersPage() {
     setParams(next);
   };
 
-  const orders = useQuery({
-    queryKey: ["orders", { status, from, to, index }],
-    queryFn: () => api<Paginate<OrderListItem>>("/api/orders", { query: { index, size: 15, status, from, to } }),
-    placeholderData: keepPreviousData,
-  });
+  const orders = useGetOrdersQuery({ index, size: 15, status, from, to });
 
   return (
     <>
@@ -110,25 +107,21 @@ export function AdminOrdersPage() {
 export function AdminOrderDetailPage() {
   const { id = "" } = useParams();
   const { hasRole } = useAuth();
-  const queryClient = useQueryClient();
   const [shipOpen, setShipOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
-  const order = useQuery({ queryKey: ["orders", "detail", id], queryFn: () => api<Order>(`/api/orders/${id}`) });
+  // İptal/kargo; sipariş, stok, rapor, outbox ve değişiklik geçmişi etiketlerini geçersiz kılar (services/sales.ts).
+  const order = useGetOrderQuery(id);
+  const [cancelOrder] = useCancelOrderMutation();
 
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["orders"] });
-    queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
-  };
-
-  const cancel = useMutation({
-    mutationFn: () => api(`/api/orders/${id}/cancel`, { method: "POST" }),
-    onSuccess: () => {
+  async function cancel() {
+    try {
+      await cancelOrder(id).unwrap();
       toast.success("Sipariş iptal edildi; OrderCancelled event'i ürünleri aynı transaction'da stoğa geri koydu.");
-      refresh();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   const o = order.data;
 
@@ -168,7 +161,7 @@ export function AdminOrderDetailPage() {
           />
           <OrderSummary order={o} />
           {hasRole("Admin") && <AuditHistory entityType="Order" entityId={o.id} />}
-          {shipOpen && <ShipDialog orderId={o.id} onClose={() => setShipOpen(false)} onShipped={refresh} />}
+          {shipOpen && <ShipDialog orderId={o.id} onClose={() => setShipOpen(false)} />}
           <ConfirmDialog
             open={cancelOpen}
             onOpenChange={setCancelOpen}
@@ -176,7 +169,7 @@ export function AdminOrderDetailPage() {
             description="Ürünler stoğa geri konur."
             confirmText="İptal et"
             destructive
-            onConfirm={() => cancel.mutateAsync()}
+            onConfirm={cancel}
           />
         </>
       )}
@@ -184,19 +177,20 @@ export function AdminOrderDetailPage() {
   );
 }
 
-function ShipDialog({ orderId, onClose, onShipped }: { orderId: string; onClose: () => void; onShipped: () => void }) {
-  const shippers = useQuery({ queryKey: ["shippers"], queryFn: () => api<Shipper[]>("/api/shippers") });
+function ShipDialog({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const shippers = useGetShippersQuery();
   const [shipperId, setShipperId] = useState<string>("");
+  const [shipOrder, { isLoading: shipping }] = useShipOrderMutation();
 
-  const ship = useMutation({
-    mutationFn: () => api(`/api/orders/${orderId}/ship`, { method: "POST", body: { shipperId } }),
-    onSuccess: () => {
+  async function ship() {
+    try {
+      await shipOrder({ id: orderId, shipperId }).unwrap();
       toast.success("Kargoya verildi. OrderShipped event'i outbox'a yazıldı; bildirim e-postası birkaç saniye içinde gider.");
-      onShipped();
       onClose();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -223,7 +217,7 @@ function ShipDialog({ orderId, onClose, onShipped }: { orderId: string; onClose:
           <Button variant="outline" onClick={onClose}>
             Vazgeç
           </Button>
-          <Button onClick={() => ship.mutate()} disabled={!shipperId || ship.isPending}>
+          <Button onClick={ship} disabled={!shipperId || shipping}>
             <TruckIcon /> Kargoya ver
           </Button>
         </DialogFooter>

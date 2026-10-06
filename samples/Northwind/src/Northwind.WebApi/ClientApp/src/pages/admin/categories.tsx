@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,26 +12,27 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Category } from "@/lib/types";
+import { useDeleteCategoryMutation, useGetCategoriesQuery, useSaveCategoryMutation } from "@/services/catalog";
 
 export function AdminCategoriesPage() {
   const isAdmin = useAuth().hasRole("Admin");
-  const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Category | "new" | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
 
-  const categories = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/api/categories") });
+  const categories = useGetCategoriesQuery();
+  const [deleteCategory] = useDeleteCategoryMutation();
 
-  const remove = useMutation({
-    mutationFn: (id: string) => api(`/api/categories/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
+  async function remove(id: string) {
+    try {
+      await deleteCategory(id).unwrap();
       toast.success("Kategori silindi.");
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <>
@@ -92,29 +92,28 @@ export function AdminCategoriesPage() {
         description="Ürünü olan kategori silinemez (iş kuralı)."
         confirmText="Sil"
         destructive
-        onConfirm={() => (deleting ? remove.mutateAsync(deleting.id) : undefined)}
+        onConfirm={() => (deleting ? remove(deleting.id) : undefined)}
       />
     </>
   );
 }
 
 function CategoryDialog({ category, onClose }: { category: Category | null; onClose: () => void }) {
-  const queryClient = useQueryClient();
   const [name, setName] = useState(category?.name ?? "");
   const [description, setDescription] = useState(category?.description ?? "");
 
-  const save = useMutation({
-    mutationFn: () =>
-      category
-        ? api(`/api/categories/${category.id}`, { method: "PUT", body: { name, description } })
-        : api("/api/categories", { method: "POST", body: { name, description } }),
-    onSuccess: () => {
+  // Kayıt "Category" etiketini geçersiz kılar: liste kendiliğinden yenilenir.
+  const [saveCategory, { isLoading: saving }] = useSaveCategoryMutation();
+
+  async function save() {
+    try {
+      await saveCategory({ id: category?.id, name, description: description || null }).unwrap();
       toast.success("Kaydedildi.");
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
       onClose();
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -126,7 +125,7 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            save.mutate();
+            void save();
           }}
         >
           <Field label="Ad" htmlFor="name">
@@ -139,7 +138,7 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
             <Button type="button" variant="outline" onClick={onClose}>
               Vazgeç
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <Button type="submit" disabled={saving}>
               Kaydet
             </Button>
           </DialogFooter>

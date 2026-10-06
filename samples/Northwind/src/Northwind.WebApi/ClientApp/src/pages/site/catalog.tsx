@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 
 import { DataPagination } from "@/components/common/data-pagination";
@@ -8,11 +7,11 @@ import { EmptyState, QueryState } from "@/components/common/query-state";
 import { useDebounced } from "@/components/common/use-debounced";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { api } from "@/lib/api";
 import { useStore } from "@/lib/store";
-import type { Paginate, StoreCategory, StoreProduct, StoreProductSort } from "@/lib/types";
+import type { StoreProductSort } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ProductCard } from "@/pages/site/product-card";
+import { useGetStoreCategoriesQuery, useGetStoreProductsQuery } from "@/services/storefront";
 
 export function CatalogPage() {
   const { tenant } = useStore();
@@ -34,19 +33,10 @@ export function CatalogPage() {
     setParams(next);
   };
 
-  const categories = useQuery({
-    queryKey: ["store", tenant, "categories"],
-    queryFn: () => api<StoreCategory[]>(`/api/store/${tenant}/categories`),
-  });
+  const categories = useGetStoreCategoriesQuery(tenant);
 
-  const products = useQuery({
-    queryKey: ["store", tenant, "products", { category, sort, index, q: debouncedSearch }],
-    queryFn: () =>
-      api<Paginate<StoreProduct>>(`/api/store/${tenant}/products`, {
-        query: { categoryId: category, sort, index, size: 12, search: debouncedSearch },
-      }),
-    placeholderData: keepPreviousData,
-  });
+  // Parametreler değişirken önceki sayfa ekranda kalır (data), yenisi gelince değişir; isFetching ile soluklaşır.
+  const products = useGetStoreProductsQuery({ tenant, categoryId: category, sort, index, size: 12, search: debouncedSearch });
 
   return (
     <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 md:grid-cols-[220px_1fr]">

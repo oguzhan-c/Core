@@ -1,15 +1,13 @@
 import { Link, NavLink, Outlet } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { MailIcon, ShoppingCartIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserMenu } from "@/layouts/user-menu";
-import { api } from "@/lib/api";
 import { useStore } from "@/lib/store";
-import type { StoreTenant } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useGetStoreTenantsQuery } from "@/services/storefront";
 
 export function Logo({ className }: { className?: string }) {
   return (
@@ -22,7 +20,7 @@ export function Logo({ className }: { className?: string }) {
 
 export function SiteLayout() {
   const { tenant, setTenant, canChangeTenant, count } = useStore();
-  const tenants = useQuery({ queryKey: ["store", "tenants"], queryFn: () => api<StoreTenant[]>("/api/store/tenants"), staleTime: Infinity });
+  const tenants = useGetStoreTenantsQuery();
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     cn("text-sm transition-colors hover:text-foreground", isActive ? "text-foreground font-medium" : "text-muted-foreground");

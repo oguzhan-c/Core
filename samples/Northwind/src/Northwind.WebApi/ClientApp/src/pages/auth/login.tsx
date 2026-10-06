@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon, FingerprintIcon, LogInIcon, ShieldCheckIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -9,13 +8,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { api, ApiError, errorMessage } from "@/lib/api";
+import { errorMessage, isApiError } from "@/lib/api";
 import { staffRoles, useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
-import type { AuthFeatures, TwoFactorPrompt, UserProfile } from "@/lib/types";
+import type { TwoFactorPrompt, UserProfile } from "@/lib/types";
 import { passkeyErrorMessage, passkeysSupported } from "@/lib/webauthn";
 import { AuthCard } from "@/pages/auth/auth-card";
 import { TenantSelect } from "@/pages/auth/tenant-select";
+import { useGetAuthFeaturesQuery } from "@/services/auth";
 
 const demoAccounts = [
   { email: "admin", role: "Yönetici — her şey" },
@@ -37,11 +37,7 @@ export function LoginPage() {
   const [pending, setPending] = useState(false);
   const [twoFactor, setTwoFactor] = useState<TwoFactorPrompt | null>(null);
 
-  const features = useQuery({
-    queryKey: ["auth", "features"],
-    queryFn: () => api<AuthFeatures>("/api/auth/features"),
-    staleTime: Infinity,
-  });
+  const features = useGetAuthFeaturesQuery();
   const canUsePasskey = !!features.data?.passkeys && passkeysSupported();
 
   function finish(user: UserProfile) {
@@ -64,7 +60,7 @@ export function LoginPage() {
       }
       finish(outcome.user);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "email_not_confirmed") {
+      if (isApiError(err) && err.code === "email_not_confirmed") {
         navigate(`/verify-email?tenant=${encodeURIComponent(tenant)}&email=${encodeURIComponent(email)}`);
         toast.info("Önce e-posta adresini doğrula.");
         return;
@@ -194,7 +190,7 @@ function TwoFactorStep({ prompt, onSuccess, onCancel }: { prompt: TwoFactorPromp
     try {
       onSuccess(await completeTwoFactor(code));
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
+      if (isApiError(err) && err.status === 401) {
         // Bekleyen giriş geçersiz (süre doldu ya da hesap kilitlendi): baştan giriş.
         toast.error(errorMessage(err));
         onCancel();

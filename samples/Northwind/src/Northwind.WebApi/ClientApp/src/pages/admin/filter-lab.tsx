@@ -1,5 +1,4 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookOpenIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 
 import { cleanFilter, emptyGroup, FilterBuilder, type FieldOption } from "@/components/common/filter-builder";
@@ -21,9 +20,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { CustomerListItem, DynamicQuery, Filter, OrderListItem, Paginate, Product, SearchExamples, Sort } from "@/lib/types";
+import type { CustomerListItem, DynamicQuery, Filter, OrderListItem, Product, SearchExamples, Sort } from "@/lib/types";
+import { useGetSearchExamplesQuery, useLazySearchQuery } from "@/services/catalog";
 
 type Entity = "products" | "customers" | "orders";
 
@@ -116,23 +116,24 @@ export function FilterLabPage() {
   const [index, setIndex] = useState(0);
 
   const config = entities[entity];
-  const examples = useQuery({ queryKey: ["search-examples"], queryFn: () => api<SearchExamples>("/api/search/examples"), staleTime: Infinity });
+  const examples = useGetSearchExamplesQuery();
 
   const body = useMemo<DynamicQuery>(
     () => ({ filter: cleanFilter(filter, config.fields), sort: sort.field ? [sort] : null }),
     [filter, sort, config.fields]
   );
 
-  const search = useMutation({
-    mutationFn: (page: number) => api<Paginate<unknown>>(config.endpoint, { method: "POST", body, query: { index: page, size: 10 } }),
-  });
+  // Arama veri değiştirmez: lazy query (butona basınca çalışır). Varlık değişince eski sonuç gizlenir.
+  const [runSearch, search] = useLazySearchQuery();
+  const [hasRun, setHasRun] = useState(false);
+  const showResult = hasRun && search.originalArgs?.endpoint === config.endpoint;
 
   function selectEntity(next: Entity) {
     setEntity(next);
     setFilter(emptyGroup());
     setSort({ field: entities[next].fields[0].value, dir: "asc" });
     setIndex(0);
-    search.reset();
+    setHasRun(false);
   }
 
   function loadExample(example: SearchExamples["examples"][number]) {
@@ -142,12 +143,13 @@ export function FilterLabPage() {
     setFilter(!root ? emptyGroup() : root.field ? { logic: "and", filters: [root] } : root);
     setSort(example.body.sort?.[0] ?? { field: entities[target].fields[0].value, dir: "asc" });
     setIndex(0);
-    search.reset();
+    setHasRun(false);
   }
 
   const run = (page = 0) => {
     setIndex(page);
-    search.mutate(page);
+    setHasRun(true);
+    void runSearch({ endpoint: config.endpoint, body, index: page, size: 10 });
   };
 
   return (
@@ -220,7 +222,7 @@ export function FilterLabPage() {
                 <Button variant="outline" onClick={() => selectEntity(entity)}>
                   <RotateCcwIcon /> Temizle
                 </Button>
-                <Button onClick={() => run(0)} disabled={search.isPending}>
+                <Button onClick={() => run(0)} disabled={search.isFetching}>
                   <PlayIcon /> Çalıştır
                 </Button>
               </div>
@@ -241,13 +243,13 @@ export function FilterLabPage() {
         </Card>
       </div>
 
-      {search.error && (
+      {showResult && search.error && (
         <Alert variant="destructive">
           <AlertDescription>{errorMessage(search.error)}</AlertDescription>
         </Alert>
       )}
 
-      {search.data && (
+      {showResult && search.data && (
         <Card className="py-2">
           <CardContent className="space-y-3 px-2">
             {search.data.count === 0 ? (

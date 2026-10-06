@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MinusIcon, PlusIcon, ShoppingBagIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,11 +12,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { api, ApiError, errorMessage } from "@/lib/api";
+import { errorMessage, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
 import { FREE_SHIPPING_THRESHOLD, shippingFor, useStore } from "@/lib/store";
-import type { Address, PlaceOrderResult } from "@/lib/types";
+import type { Address } from "@/lib/types";
+import { useCheckoutMutation } from "@/services/storefront";
 
 const emptyAddress: Address = { street: "", city: "", region: "", postalCode: "", country: "" };
 
@@ -25,7 +25,6 @@ export function CartPage() {
   const { items, subtotal, setQuantity, remove, clear } = useStore();
   const { user, isCustomer } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const [useSavedAddress, setUseSavedAddress] = useState(true);
   const [shipName, setShipName] = useState("");
@@ -34,27 +33,26 @@ export function CartPage() {
 
   const shipping = shippingFor(subtotal);
 
-  const checkout = useMutation({
-    mutationFn: () =>
-      api<PlaceOrderResult>("/api/store/my/checkout", {
-        method: "POST",
-        body: {
-          lines: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-          shipTo: useSavedAddress ? null : { name: shipName || `${user?.firstName} ${user?.lastName}`, address },
-        },
-      }),
-    onSuccess: (result) => {
+  // Başarılı siparişte stoklar ve sipariş listeleri etiketlerle (invalidatesTags) yenilenir.
+  const [checkout, { isLoading: checkingOut }] = useCheckoutMutation();
+
+  async function placeOrder() {
+    setError(null);
+    try {
+      const result = await checkout({
+        lines: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        shipTo: useSavedAddress ? null : { name: shipName || `${user?.firstName} ${user?.lastName}`, address },
+      }).unwrap();
+
       clear();
-      queryClient.invalidateQueries({ queryKey: ["store"] }); // stoklar değişti
       toast.success(`#${result.number} numaralı siparişin alındı.`);
       navigate(`/account/orders/${result.id}`);
-    },
-    onError: (e) => {
+    } catch (e) {
       // Kayıtlı adres yoksa teslimat formunu aç.
-      if (e instanceof ApiError && e.code === "address_required") setUseSavedAddress(false);
+      if (isApiError(e) && e.code === "address_required") setUseSavedAddress(false);
       setError(errorMessage(e));
-    },
-  });
+    }
+  }
 
   if (items.length === 0) {
     return (
@@ -171,11 +169,8 @@ export function CartPage() {
             <Button
               className="w-full"
               size="lg"
-              disabled={checkout.isPending}
-              onClick={() => {
-                setError(null);
-                checkout.mutate();
-              }}
+              disabled={checkingOut}
+              onClick={placeOrder}
             >
               <ShoppingBagIcon /> Siparişi tamamla
             </Button>

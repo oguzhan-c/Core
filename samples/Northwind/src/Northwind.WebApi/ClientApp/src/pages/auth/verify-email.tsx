@@ -7,14 +7,15 @@ import { Field } from "@/components/common/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api, errorMessage } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import type { UserProfile } from "@/lib/types";
+import { errorMessage } from "@/lib/api";
 import { AuthCard } from "@/pages/auth/auth-card";
+import { useResendVerificationCodeMutation, useVerifyEmailMutation } from "@/services/auth";
 
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
-  const { setUser } = useAuth();
+  // Doğrulama başarılıysa servis oturumu açar (kullanıcı önbelleğe yazılır).
+  const [verifyEmail] = useVerifyEmailMutation();
+  const [resendCode] = useResendVerificationCodeMutation();
   const navigate = useNavigate();
 
   const tenant = params.get("tenant") ?? "northwind";
@@ -28,8 +29,7 @@ export function VerifyEmailPage() {
     setError(null);
     setPending(true);
     try {
-      const user = await api<UserProfile>("/api/auth/verify-email", { method: "POST", body: { tenant, email, code } });
-      setUser(user);
+      await verifyEmail({ tenant, email, code }).unwrap();
       toast.success("E-posta adresin doğrulandı. Hoş geldin!");
       navigate("/");
     } catch (err) {
@@ -41,7 +41,7 @@ export function VerifyEmailPage() {
 
   async function resend() {
     try {
-      await api("/api/auth/resend-code", { method: "POST", body: { tenant, email } });
+      await resendCode({ tenant, email }).unwrap();
       toast.success("Yeni kod gönderildi.");
     } catch (err) {
       toast.error(errorMessage(err));

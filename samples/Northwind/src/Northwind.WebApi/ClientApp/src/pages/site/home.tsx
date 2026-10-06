@@ -1,30 +1,22 @@
 import { Link } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowRightIcon, MailCheckIcon, RadioTowerIcon, ShieldCheckIcon, TruckIcon } from "lucide-react";
 
 import { QueryState } from "@/components/common/query-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { FREE_SHIPPING_THRESHOLD, useStore } from "@/lib/store";
 import { formatMoney } from "@/lib/format";
-import type { Paginate, StoreCategory, StoreProduct, StoreTenant } from "@/lib/types";
 import { ProductCard } from "@/pages/site/product-card";
+import { useGetStoreCategoriesQuery, useGetStoreProductsQuery, useGetStoreTenantsQuery } from "@/services/storefront";
 
 export function HomePage() {
   const { tenant } = useStore();
   const { user } = useAuth();
 
-  const tenants = useQuery({ queryKey: ["store", "tenants"], queryFn: () => api<StoreTenant[]>("/api/store/tenants"), staleTime: Infinity });
-  const categories = useQuery({
-    queryKey: ["store", tenant, "categories"],
-    queryFn: () => api<StoreCategory[]>(`/api/store/${tenant}/categories`),
-  });
-  const featured = useQuery({
-    queryKey: ["store", tenant, "featured"],
-    queryFn: () => api<Paginate<StoreProduct>>(`/api/store/${tenant}/products`, { query: { size: 8, sort: "PriceDesc" } }),
-  });
+  const tenants = useGetStoreTenantsQuery();
+  const categories = useGetStoreCategoriesQuery(tenant);
+  const featured = useGetStoreProductsQuery({ tenant, size: 8, sort: "PriceDesc" });
 
   const tenantName = tenants.data?.find((t) => t.identifier === tenant)?.name ?? tenant;
 

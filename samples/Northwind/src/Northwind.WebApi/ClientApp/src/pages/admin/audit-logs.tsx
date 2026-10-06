@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { AuditChanges } from "@/components/common/audit-changes";
 import { DataPagination } from "@/components/common/data-pagination";
@@ -11,10 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { AuditLog, Paginate } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useGetAuditLogsQuery } from "@/services/sales";
 
 const entityTypes = ["Product", "Customer", "Order", "AppUser"];
 const ALL = "all";
@@ -25,14 +23,7 @@ export function AdminAuditLogsPage() {
   const [entityId, setEntityId] = useState("");
   const debouncedId = useDebounced(entityId);
 
-  const logs = useQuery({
-    queryKey: ["audit-logs", { index, entityType, debouncedId }],
-    queryFn: () =>
-      api<Paginate<AuditLog>>("/api/audit-logs", {
-        query: { index, size: 20, entityType: entityType === ALL ? undefined : entityType, entityId: debouncedId.trim() },
-      }),
-    placeholderData: keepPreviousData,
-  });
+  const logs = useGetAuditLogsQuery({ index, size: 20, entityType: entityType === ALL ? undefined : entityType, entityId: debouncedId.trim() });
 
   return (
     <>
