@@ -1,7 +1,14 @@
-// Backend ile konuşan küçük fetch sarmalayıcısı.
+// RTK Query temeli: tek bir API dilimi (createApi), özellik dosyaları buna endpoint ekler (services/*).
 // - Cookie'ler (HttpOnly JWT) tarayıcı tarafından otomatik gönderilir; token'a JavaScript'ten hiç dokunulmaz.
 // - 401 alınırsa bir kez /api/auth/refresh denenir (eşzamanlı istekler tek yenilemeyi bekler), sonra istek tekrarlanır.
-// - Hatalar ProblemDetails'ten ApiError'a çevrilir (status, code, alan hataları).
+// - Hatalar sunucunun ProblemDetails'inden serileştirilebilir ApiError nesnesine çevrilir (status, code, alan hataları).
+import {
+  createApi,
+  fetchBaseQuery,
+  type BaseQueryFn,
+  type FetchArgs,
+  type FetchBaseQueryError,
+} from "@reduxjs/toolkit/query/react";
 
 export interface ProblemDetails {
   title?: string;
@@ -13,39 +20,58 @@ export interface ProblemDetails {
   details?: { code: string; description: string }[];
 }
 
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code?: string;
-  readonly errors?: Record<string, string[]>;
-  readonly details?: { code: string; description: string }[];
-
-  constructor(status: number, problem: ProblemDetails) {
-    super(problem.detail || problem.title || `İstek başarısız (${status})`);
-    this.status = status;
-    this.code = problem.code;
-    this.errors = problem.errors;
-    this.details = problem.details;
-  }
-
-  /** Alan hatalarını (doğrulama) ya da birden fazla iş hatasını tek metinde toplar. */
-  get description(): string {
-    if (this.errors) return Object.values(this.errors).flat().join(" ");
-    if (this.details?.length) return this.details.map((d) => d.description).join(" ");
-    return this.message;
-  }
+/** RTK Query hatası. Düz nesnedir (Redux state'inde saklanabilsin); `status` 0 ise sunucuya ulaşılamadı. */
+export interface ApiError {
+  status: number;
+  message: string;
+  code?: string;
+  errors?: Record<string, string[]>;
+  details?: { code: string; description: string }[];
 }
 
-type QueryValue = string | number | boolean | null | undefined;
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  body?: unknown;
-  query?: Record<string, QueryValue>;
-  signal?: AbortSignal;
+export function isApiError(error: unknown): error is ApiError {
+  return typeof error === "object" && error !== null && typeof (error as ApiError).status === "number" && typeof (error as ApiError).message === "string";
 }
 
-// Bu adreslerde 401 "oturum yok" demektir; yenileme denenmez.
-const noRefresh = [
+/** Hata mesajını kullanıcıya gösterilecek metne çevirir (alan hataları ve birden fazla iş hatası birleştirilir). */
+export function errorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.errors) return Object.values(error.errors).flat().join(" ");
+    if (error.details?.length) return error.details.map((d) => d.description).join(" ");
+    return error.message;
+  }
+  if (error instanceof Error) return error.message;
+  return "Beklenmeyen bir hata oluştu.";
+}
+
+function toApiError(error: FetchBaseQueryError): ApiError {
+  if (typeof error.status === "number") {
+    const problem = (error.data ?? {}) as ProblemDetails;
+    return {
+      status: error.status,
+      message: problem.detail || problem.title || `İstek başarısız (${error.status})`,
+      code: problem.code,
+      errors: problem.errors,
+      details: problem.details,
+    };
+  }
+
+  return { status: 0, message: error.status === "PARSING_ERROR" ? "Sunucu yanıtı okunamadı." : "Sunucuya ulaşılamadı." };
+}
+
+/** Sorgu parametrelerinden boş olanları (undefined, null, "") atar. */
+export function params(values: Record<string, string | number | boolean | null | undefined>) {
+  const result: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null && value !== "") result[key] = value;
+  }
+  return result;
+}
+
+const rawBaseQuery = fetchBaseQuery({ baseUrl: "/", credentials: "same-origin" });
+
+// Bu adreslerde 401 "oturum yok/geçersiz" demektir; yenileme denenmez.
+const noRefresh = new Set([
   "/api/auth/login",
   "/api/auth/login/two-factor",
   "/api/auth/login/two-factor/resend",
@@ -56,65 +82,53 @@ const noRefresh = [
   "/api/auth/register",
   "/api/auth/verify-email",
   "/api/auth/resend-code",
-];
+]);
 
 let refreshing: Promise<boolean> | null = null;
 
-function refreshSession(): Promise<boolean> {
-  refreshing ??= fetch("/api/auth/refresh", { method: "POST", credentials: "same-origin" })
-    .then((r) => r.ok)
-    .catch(() => false)
-    .finally(() => {
-      // Aynı anda gelen 401'ler aynı yenilemeyi kullansın, sonrakiler yenisini başlatsın.
-      setTimeout(() => (refreshing = null), 0);
-    });
-  return refreshing;
-}
+const baseQuery: BaseQueryFn<string | FetchArgs, unknown, ApiError> = async (args, api, extraOptions) => {
+  const url = typeof args === "string" ? args : args.url;
+  let result = await rawBaseQuery(args, api, extraOptions);
 
-export function buildUrl(path: string, query?: Record<string, QueryValue>): string {
-  if (!query) return path;
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
-  }
-  const qs = params.toString();
-  return qs ? `${path}?${qs}` : path;
-}
+  if (result.error?.status === 401 && !noRefresh.has(url)) {
+    // Aynı anda gelen 401'ler tek yenilemeyi bekler.
+    refreshing ??= Promise.resolve(rawBaseQuery({ url: "/api/auth/refresh", method: "POST" }, api, extraOptions))
+      .then((r) => !r.error)
+      .finally(() => setTimeout(() => (refreshing = null), 0));
 
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const url = buildUrl(path, options.query);
-  const send = () =>
-    fetch(url, {
-      method: options.method ?? (options.body === undefined ? "GET" : "POST"),
-      credentials: "same-origin",
-      headers: options.body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      signal: options.signal,
-    });
-
-  let response = await send();
-
-  if (response.status === 401 && !noRefresh.includes(path) && (await refreshSession())) {
-    response = await send();
-  }
-
-  if (!response.ok) {
-    let problem: ProblemDetails = {};
-    try {
-      problem = (await response.json()) as ProblemDetails;
-    } catch {
-      // gövde yok ya da JSON değil
+    if (await refreshing) {
+      result = await rawBaseQuery(args, api, extraOptions);
+    } else if (url !== "/api/auth/me") {
+      // Oturum yenilenemedi: kullanıcı bilgisini yeniden sor (null döner, arayüz çıkış yapmış duruma geçer).
+      api.dispatch(baseApi.util.invalidateTags(["Me"]));
     }
-    throw new ApiError(response.status, problem);
   }
 
-  const text = await response.text();
-  return (text ? JSON.parse(text) : undefined) as T;
-}
+  return result.error ? { error: toApiError(result.error), meta: result.meta } : { data: result.data, meta: result.meta };
+};
 
-/** Hata mesajını kullanıcıya gösterilecek metne çevirir. */
-export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.description;
-  if (error instanceof Error) return error.message;
-  return "Beklenmeyen bir hata oluştu.";
-}
+/** Kullanıcıya özel veriler: giriş/çıkışta yeniden yüklenir (başka kullanıcının önbelleği görünmesin). */
+export const userScopedTags = [
+  "Category",
+  "Product",
+  "Supplier",
+  "Shipper",
+  "Customer",
+  "Order",
+  "Report",
+  "Dashboard",
+  "AuditLog",
+  "Outbox",
+  "User",
+  "Security",
+  "MyOrder",
+] as const;
+
+export const baseApi = createApi({
+  reducerPath: "api",
+  baseQuery,
+  tagTypes: ["Me", "StoreCatalog", "Mailbox", ...userScopedTags],
+  // Bileşen yeniden açıldığında 30 sn'den eski veriyi tazele; daha yenisi önbellekten gelir.
+  refetchOnMountOrArgChange: 30,
+  endpoints: () => ({}),
+});

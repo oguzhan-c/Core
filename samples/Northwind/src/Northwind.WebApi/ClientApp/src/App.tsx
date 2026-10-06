@@ -5,7 +5,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { SiteLayout } from "@/layouts/site-layout";
 import { useAuth } from "@/lib/auth";
-import { StoreProvider } from "@/lib/store";
 import type { Role } from "@/lib/types";
 import { AccountSecurityPage } from "@/pages/account/security";
 import { AdminAuditLogsPage } from "@/pages/admin/audit-logs";
@@ -41,11 +40,7 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }
 
 const router = createBrowserRouter([
   {
-    element: (
-      <StoreProvider>
-        <SiteLayout />
-      </StoreProvider>
-    ),
+    element: <SiteLayout />,
     children: [
       { index: true, element: <HomePage /> },
       { path: "products", element: <CatalogPage /> },
