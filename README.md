@@ -18,6 +18,8 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
 | `Can.Core.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
 | `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı; outbox ile birlikte çalışır |
+| `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
+| `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
 | `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
 | `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
@@ -655,6 +657,27 @@ app.UseCanExceptionHandler();
   için tr/en metinler WebApi paketinde gömülü gelir; uygulama dosyaları hepsini ezer.
 - FluentValidation mesajları zaten isteğin diline göre gelir (kendi çevirileri var).
 - Kültür zinciri: `en-GB` → `en` → varsayılan kültür; hiç yoksa anahtarın kendisi döner (`ResourceNotFound`).
+
+## Dosya depolama
+
+```csharp
+builder.Services.AddCanLocalFileStorage(o => o.RootPath = "/var/app-files");               // yerel / ağ diski
+builder.Services.AddCanS3FileStorage(o => builder.Configuration.GetSection("Storage:S3").Bind(o)); // ya da S3 uyumlu
+
+// handler: yollar göreli, "/" ile ayrılır
+await storage.SaveAsync($"products/{id}/photo.jpg", stream, new FileSaveOptions { Overwrite = true }, ct);
+await using Stream? file = await storage.OpenReadAsync($"products/{id}/photo.jpg", ct);
+Uri? link = await storage.GetTemporaryUrlAsync(path, TimeSpan.FromMinutes(10), ct);   // S3: presigned; yerel: null
+```
+
+- **Tenant yalıtımı** varsayılan: yollar otomatik `tenants/{tenantId}/...` (tenant yoksa `host/...`) altına gider;
+  bir tenant diğerinin dosyasını adını bilse de okuyamaz. Kapatmak: `configureStorage: o => o.TenantIsolation = false`.
+- `..`, mutlak yol, ters bölü ve kontrol karakterleri reddedilir (dizin dışına çıkma yok).
+- Yerel disk: yazma geçici dosyaya yapılıp yerine taşınır (yarım dosya okunmaz); içerik tipi uzantıdan çıkarılır.
+  Kök klasörü `wwwroot` altına koyma; dosyaları yetki kontrolü yapan bir endpoint'ten ver.
+- S3: AWS SDK yok; `HttpClient` + Signature V4. MinIO/R2 için `ForcePathStyle = true` (varsayılan), R2'de
+  `Region = "auto"`. `Overwrite = false` iken `If-None-Match: *` ile yazar. Gövde imzalanmaz (`UNSIGNED-PAYLOAD`,
+  HTTPS gerekir); anahtarlar user-secrets'ta.
 
 ## Sağlık kontrolleri
 
