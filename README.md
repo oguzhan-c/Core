@@ -17,6 +17,8 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
 | `Can.Core.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
 | `Can.Core.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
+| `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı; outbox ile birlikte çalışır |
+| `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
 | `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
 | `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
@@ -252,6 +254,43 @@ System.Linq.Dynamic.Core yerine doğrudan expression tree kurulur: alan adları 
 değerler SQL parametresi olarak gider. Not: istemci herhangi bir public property'ye göre filtreleyebilir; hassas alanları
 (ör. `PasswordHash`) DTO'ya değil entity'ye filtre açan endpoint'lerde dikkatli ol.
 
+**Specification: sık kullanılan sorgular**
+
+Tek seferlik ya da istemciden gelen sorgular için dinamik sorgu yeterli; uygulamanın birçok yerinde tekrar eden
+sorgular ise adı olan bir sınıfa taşınır. Paket gerektirmez, Application katmanı EF Core'a bağımlı olmaz.
+
+```csharp
+public sealed class ProductsInStockSpec : Specification<Product>
+{
+    public ProductsInStockSpec(int? categoryId = null)
+    {
+        Where(p => p.UnitsInStock > 0 && !p.Discontinued);   // birden fazla Where VE'lenir
+        if (categoryId is not null)
+            Where(p => p.CategoryId == categoryId);
+
+        Include(p => p.Category);                             // iç içe: Include("Lines.Product")
+        OrderBy(p => p.Name);                                 // sonrakiler ThenBy olur
+        AsReadOnly();                                         // AsNoTracking; IncludeDeleted(), Top(n), Page(i, s)
+    }
+}
+
+// Projeksiyon: yalnızca seçilen kolonlar okunur
+public sealed class ProductLookupSpec : Specification<Product, ProductLookup>
+{
+    public ProductLookupSpec() { OrderBy(p => p.Name); Select(p => new ProductLookup(p.Id, p.Name)); }
+}
+
+await repository.ListAsync(new ProductsInStockSpec(3), ct);
+await repository.PaginateAsync(new ProductsInStockSpec(), index: 0, size: 20, ct);
+await repository.ListAsync(new ProductLookupSpec(), ct);              // IReadOnlyList<ProductLookup>
+await repository.FirstOrDefaultAsync(spec, ct); await repository.CountAsync(spec, ct); await repository.AnyAsync(spec, ct);
+
+var spec = new ProductsInStockSpec() & new CheapProductsSpec();      // |, ! ; Specification<Product>.Create(p => ...)
+bool ok = spec.IsSatisfiedBy(product);                               // bellekte (iş kuralı, test)
+```
+
+Birleştirmede koşullar tek parametreye indirgenir (SQL'e çevrilir); include/sıralama soldaki specification'dan alınır.
+
 **Outbox: kaybolmaması gereken event'ler**
 
 `IIntegrationEvent` uygulayan event'ler kayıttan hemen sonra bellekte yayınlanmaz; aggregate değişiklikleriyle aynı
@@ -270,6 +309,23 @@ protected override void ConfigureModel(ModelBuilder modelBuilder)
 // Program.cs
 builder.Services.AddCanOutbox<AppDbContext>(o => o.Interval = TimeSpan.FromSeconds(5));
 ```
+
+**Event bus: servisler arası event'ler**
+
+```csharp
+[IntegrationEventName("sales.order-shipped")]                     // taşıyıcıdaki sabit ad (yoksa tipin tam adı)
+public sealed record OrderShipped(int OrderId, string Email) : DomainEvent, IIntegrationEvent;
+
+builder.Services.AddCanEventBus(typeof(OrderShipped).Assembly);   // tanınan event'ler
+// dinleyen taraf: sıradan bir INotificationHandler<OrderShipped>
+```
+
+`AddCanEventBus` kayıtlıysa outbox event'leri bus'a verir. Bus event'i bir zarfa (`EventEnvelope`: ad, JSON, tenant,
+EventId) koyup taşıyıcıya gönderir; karşı tarafta `EventDispatcher` zarfı açar ve handler'ları event'in tenant'ı adına
+kendi scope'unda çalıştırır. Varsayılan taşıyıcı bellek içidir (aynı süreç, hemen dağıtır; hata olursa outbox tekrar
+dener). RabbitMQ vb. için `IEventTransport` yazılıp `AddCanEventTransport<T>()` ile değiştirilir. Tanınmayan event'ler
+(başka servislerin) atlanır. Doğrudan `eventBus.PublishAsync(...)` veritabanı kaydıyla atomik değildir; veriye bağlı
+event'leri aggregate'ten yükselt.
 
 **Değişiklik geçmişi (audit trail)**
 
@@ -552,6 +608,71 @@ builder.Services.AddCanRedisCache(o =>
 `AddCanApplication` zaten HybridCache kullanır; Redis eklenince HybridCache onu ikinci katman olarak alır. Böylece
 birden fazla sunucu aynı önbelleği paylaşır, uygulama yeniden başlasa da önbellek ısınık kalır. Kod değişmez
 (`ICachableRequest` / `ICacheRemoverRequest` aynen çalışır).
+
+## Localization
+
+Metinler JSON dosyalarında: `Localization/tr.json`, `Localization/en.json` (çıktıya kopyala) ya da gömülü
+`*.tr.json` kaynakları (`<EmbeddedResource Include="Localization\*.json" WithCulture="false" />`; `WithCulture="false"`
+olmazsa MSBuild dosyayı uydu (satellite) assembly'ye koyar). İç içe yazılabilir (`{"product": {"not_found": "..."}}` → `product.not_found`), yorum serbest.
+
+```csharp
+builder.Services.AddCanLocalization(o =>
+{
+    o.DefaultCulture = "tr";
+    o.SupportedCultures = ["tr", "en"];
+    o.ResourceAssemblies.Add(typeof(ProductErrors).Assembly);   // gömülü çeviriler (isteğe bağlı)
+});
+
+app.UseCanRequestLocalization();   // ?culture=en → cookie → Accept-Language → varsayılan; en başlara
+app.UseCanExceptionHandler();
+```
+
+- Her yerde standart `IStringLocalizer` / `IStringLocalizer<T>` kullanılır (tek, paylaşılan sözlük).
+- **Hatalar kodlarıyla çevrilir:** `Error.Failure("product.out_of_stock", "Stok yetersiz.").WithMetadata("name", "Chai")`
+  için sözlükte `"product.out_of_stock": "{name} ürününden ..."` varsa ProblemDetails `detail`'i o dilde, yer tutucular
+  metadata'dan doldurulur; yoksa `Description` kullanılır. Başlıklar ve `unauthorized` / `forbidden` / `unexpected`
+  için tr/en metinler WebApi paketinde gömülü gelir; uygulama dosyaları hepsini ezer.
+- FluentValidation mesajları zaten isteğin diline göre gelir (kendi çevirileri var).
+- Kültür zinciri: `en-GB` → `en` → varsayılan kültür; hiç yoksa anahtarın kendisi döner (`ResourceNotFound`).
+
+## Sağlık kontrolleri
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddCanDbContextCheck<AppDbContext>()   // Persistence: CanConnectAsync
+    .AddCanRedisCheck()                     // Caching.Redis: yaz/oku (Degraded)
+    .AddCanSmtpCheck()                      // Mailing.MailKit: bağlan + giriş (Degraded)
+    .AddCanHangfireCheck();                 // BackgroundJobs.Hangfire: çalışan sunucu var mı (Degraded)
+
+app.MapCanHealthChecks();   // /health/live (kontrol yok) + /health/ready ("ready" etiketliler)
+```
+
+Ek paket yok (ASP.NET Core'un yerleşik health check'leri). `Healthy`/`Degraded` 200, `Unhealthy` 503; yanıt kısa
+JSON (durum, süre, kontrol başına durum/açıklama); exception ayrıntısı yazılmaz. Kritik olmayan bağımlılıklar
+`Degraded` döner: uygulama trafikten çıkarılmaz ama izleme uyarı verir.
+
+## Hız sınırlama
+
+```csharp
+builder.Services.AddCanRateLimiting(o => o.Auth = new() { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) });
+
+app.UseAuthentication();
+app.UseCanTenantResolution();
+app.UseCanRateLimiting();   // kullanıcı/tenant bilindikten sonra
+
+auth.MapPost("/login", ...).RequireRateLimiting(CanRateLimitPolicies.Auth);        // IP başına sıkı
+auth.MapPost("/sms/send", ...).RequireRateLimiting(CanRateLimitPolicies.Sensitive); // kullanıcı/IP başına çok sıkı
+```
+
+| Politika | Anahtar | Varsayılan |
+|---|---|---|
+| Genel (tüm istekler) | kullanıcı (yoksa IP) + tenant | 300/dk, kayan pencere |
+| `Auth` | IP + tenant | 10/dk |
+| `Sensitive` | kullanıcı (yoksa IP) + tenant | 5 / 15 dk |
+
+Aşılınca 429 + `Retry-After` + ProblemDetails (`code: "rate_limited"`). Proxy arkasında `UseForwardedHeaders`
+ayarlanmalı (yoksa herkes proxy'nin IP'sini paylaşır). Sınırlar örnek başınadır (bellekte); birden fazla sunucuda
+her biri ayrı sayar.
 
 ## Logging
 
