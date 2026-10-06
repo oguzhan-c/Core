@@ -37,6 +37,7 @@ public class LoggingTests
         builder.Services.AddCanWebApi();
 
         WebApplication app = builder.Build();
+        app.UseCanRequestLogging();
         app.UseCanExceptionHandler();
         app.Use(async (context, next) =>
         {
@@ -49,7 +50,7 @@ public class LoggingTests
             await next(context);
         });
         app.UseCanTenantResolution();
-        app.UseCanRequestLogging();
+        app.UseCanLogEnrichment();
 
         app.MapGet("/hello", (ILogger<LoggingTests> logger) =>
         {
@@ -57,6 +58,7 @@ public class LoggingTests
             return "ok";
         });
         app.MapGet("/boom", () => { throw new InvalidOperationException("patladı"); });
+        app.MapGet("/secret", () => { throw new Can.Core.Application.Exceptions.UnauthorizedException(); });
 
         await app.StartAsync();
         return (app, app.GetTestClient(), sink);
@@ -89,6 +91,7 @@ public class LoggingTests
             LogEvent summary = RequestSummary(sink, "/hello");
             Assert.Equal(LogEventLevel.Information, summary.Level);
             Assert.Equal("200", Scalar(summary, "StatusCode"));
+            Assert.Equal("u-42", Scalar(summary, "UserId")); // özet satırında da kullanıcı var
         }
     }
 
@@ -102,6 +105,23 @@ public class LoggingTests
 
             LogEvent summary = RequestSummary(sink, "/boom");
             Assert.Equal(LogEventLevel.Error, summary.Level);
+        }
+    }
+
+    [Fact]
+    public async Task Handled_client_errors_are_logged_with_their_real_status()
+    {
+        (WebApplication app, HttpClient client, CollectingSink sink) = await CreateAsync();
+        await using (app)
+        {
+            HttpResponseMessage response = await client.GetAsync("/secret");
+            Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+
+            // Hata işleyici 401'e çevirdi: özet 500/Error değil 401/Warning olmalı.
+            LogEvent summary = RequestSummary(sink, "/secret");
+            Assert.Equal(LogEventLevel.Warning, summary.Level);
+            Assert.Equal("401", Scalar(summary, "StatusCode"));
+            Assert.Null(summary.Exception);
         }
     }
 }
