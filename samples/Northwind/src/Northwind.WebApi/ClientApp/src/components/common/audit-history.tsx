@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { HistoryIcon } from "lucide-react";
 
 import { AuditChanges } from "@/components/common/audit-changes";
@@ -7,18 +6,13 @@ import { DataPagination } from "@/components/common/data-pagination";
 import { EmptyState, QueryState } from "@/components/common/query-state";
 import { AuditActionBadge } from "@/components/common/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { AuditLog, Paginate } from "@/lib/types";
+import { useGetAuditLogsQuery } from "@/services/sales";
 
 /** Bir kaydın değişiklik geçmişi (yalnızca yöneticiler görebilir; diğerlerine 403 döner). */
 export function AuditHistory({ entityType, entityId }: { entityType: string; entityId: string }) {
   const [index, setIndex] = useState(0);
-  const query = useQuery({
-    queryKey: ["audit-logs", entityType, entityId, index],
-    queryFn: () => api<Paginate<AuditLog>>("/api/audit-logs", { query: { entityType, entityId, index, size: 10 } }),
-    retry: false,
-  });
+  const query = useGetAuditLogsQuery({ entityType, entityId, index, size: 10 });
 
   return (
     <Card>

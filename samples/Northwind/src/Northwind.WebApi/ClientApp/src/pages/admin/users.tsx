@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 
 import { DataPagination } from "@/components/common/data-pagination";
@@ -11,9 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import type { Paginate, UserListItem } from "@/lib/types";
+import { useGetUsersQuery } from "@/services/admin";
 
 const ALL = "all";
 
@@ -23,12 +21,7 @@ export function AdminUsersPage() {
   const [role, setRole] = useState(ALL);
   const debounced = useDebounced(search);
 
-  const users = useQuery({
-    queryKey: ["users", { index, debounced, role }],
-    queryFn: () =>
-      api<Paginate<UserListItem>>("/api/admin/users", { query: { index, size: 20, search: debounced, role: role === ALL ? undefined : role } }),
-    placeholderData: keepPreviousData,
-  });
+  const users = useGetUsersQuery({ index, size: 20, search: debounced, role: role === ALL ? undefined : role });
 
   return (
     <>

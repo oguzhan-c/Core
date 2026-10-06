@@ -1,6 +1,5 @@
 import type * as React from "react";
 import { Link } from "react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangleIcon, BoxesIcon, DollarSignIcon, ReceiptIcon, SendIcon, UsersIcon } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -12,31 +11,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
-import type { Dashboard, Product, SalesByCategory, TopCustomer } from "@/lib/types";
+import { useGetDashboardQuery, useRunReorderReportMutation } from "@/services/admin";
+import { useGetProductsToReorderQuery } from "@/services/catalog";
+import { useGetSalesByCategoryQuery, useGetTopCustomersQuery } from "@/services/sales";
 
 export function AdminDashboardPage() {
   const { hasRole } = useAuth();
-  const dashboard = useQuery({ queryKey: ["admin", "dashboard"], queryFn: () => api<Dashboard>("/api/admin/dashboard") });
-  const sales = useQuery({
-    queryKey: ["reports", "sales-by-category"],
-    queryFn: () => api<SalesByCategory[]>("/api/reports/sales-by-category"),
-    enabled: hasRole("Sales", "Admin"),
-  });
-  const top = useQuery({
-    queryKey: ["reports", "top-customers"],
-    queryFn: () => api<TopCustomer[]>("/api/reports/top-customers", { query: { count: 5 } }),
-    enabled: hasRole("Sales", "Admin"),
-  });
-  const reorder = useQuery({ queryKey: ["products", "to-reorder"], queryFn: () => api<Product[]>("/api/products/to-reorder") });
+  const canSeeReports = hasRole("Sales", "Admin");
 
-  const runReport = useMutation({
-    mutationFn: () => api("/api/admin/jobs/reorder-report", { method: "POST" }),
-    onSuccess: () => toast.success("Rapor kuyruğa alındı; arka planda hazırlanıp e-postayla gönderilecek."),
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+  const dashboard = useGetDashboardQuery();
+  // Raporlar yalnızca satış/yönetici için: yetkisi yoksa istek hiç gönderilmez (skip).
+  const sales = useGetSalesByCategoryQuery(undefined, { skip: !canSeeReports });
+  const top = useGetTopCustomersQuery({ count: 5 }, { skip: !canSeeReports });
+  const reorder = useGetProductsToReorderQuery();
+
+  const [runReorderReport, { isLoading: reportQueued }] = useRunReorderReportMutation();
+
+  async function runReport() {
+    try {
+      await runReorderReport().unwrap();
+      toast.success("Rapor kuyruğa alındı; arka planda hazırlanıp e-postayla gönderilecek.");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   const d = dashboard.data;
 
@@ -160,7 +161,7 @@ export function AdminDashboardPage() {
             ))}
             {reorder.data?.length === 0 && <p className="text-muted-foreground text-sm">Her şey yolunda.</p>}
             {hasRole("Admin") && (
-              <Button variant="outline" size="sm" className="mt-2" disabled={runReport.isPending} onClick={() => runReport.mutate()}>
+              <Button variant="outline" size="sm" className="mt-2" disabled={reportQueued} onClick={runReport}>
                 <SendIcon /> Raporu şimdi e-postayla gönder
               </Button>
             )}

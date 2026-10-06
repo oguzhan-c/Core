@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon, SearchIcon } from "lucide-react";
 
 import { AuditHistory } from "@/components/common/audit-history";
@@ -13,11 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatAddress, formatDate, formatMoney } from "@/lib/format";
-import type { Customer, CustomerListItem, OrderListItem, Paginate } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useGetCustomerOrdersQuery, useGetCustomerQuery, useGetCustomersQuery } from "@/services/sales";
 
 export function AdminCustomersPage() {
   const navigate = useNavigate();
@@ -27,12 +25,7 @@ export function AdminCustomersPage() {
   const debouncedSearch = useDebounced(search);
   const debouncedCountry = useDebounced(country);
 
-  const customers = useQuery({
-    queryKey: ["customers", { index, debouncedSearch, debouncedCountry }],
-    queryFn: () =>
-      api<Paginate<CustomerListItem>>("/api/customers", { query: { index, size: 15, search: debouncedSearch, country: debouncedCountry } }),
-    placeholderData: keepPreviousData,
-  });
+  const customers = useGetCustomersQuery({ index, size: 15, search: debouncedSearch, country: debouncedCountry });
 
   return (
     <>
@@ -103,12 +96,8 @@ export function AdminCustomerDetailPage() {
   const isAdmin = useAuth().hasRole("Admin");
   const [index, setIndex] = useState(0);
 
-  const customer = useQuery({ queryKey: ["customers", "detail", id], queryFn: () => api<Customer>(`/api/customers/${id}`) });
-  const orders = useQuery({
-    queryKey: ["customers", id, "orders", index],
-    queryFn: () => api<Paginate<OrderListItem>>(`/api/customers/${id}/orders`, { query: { index, size: 10 } }),
-    placeholderData: keepPreviousData,
-  });
+  const customer = useGetCustomerQuery(id);
+  const orders = useGetCustomerOrdersQuery({ id, index, size: 10 });
 
   const c = customer.data;
 

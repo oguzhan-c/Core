@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,17 +12,13 @@ import { OrderSummary } from "@/pages/admin/order-summary";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Order, OrderListItem, Paginate } from "@/lib/types";
+import { useCancelMyOrderMutation, useGetMyOrderQuery, useGetMyOrdersQuery } from "@/services/storefront";
 
 export function MyOrdersPage() {
   const [index, setIndex] = useState(0);
-  const orders = useQuery({
-    queryKey: ["my-orders", index],
-    queryFn: () => api<Paginate<OrderListItem>>("/api/store/my/orders", { query: { index, size: 10 } }),
-    placeholderData: keepPreviousData,
-  });
+  const orders = useGetMyOrdersQuery({ index, size: 10 });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
@@ -78,20 +73,20 @@ export function MyOrdersPage() {
 
 export function MyOrderDetailPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const order = useQuery({ queryKey: ["my-orders", "detail", id], queryFn: () => api<Order>(`/api/store/my/orders/${id}`) });
+  const order = useGetMyOrderQuery(id!);
+  // Siparişlerim ve katalog (stoklar) etiketlerle yenilenir.
+  const [cancelOrder] = useCancelMyOrderMutation();
 
-  const cancel = useMutation({
-    mutationFn: () => api(`/api/store/my/orders/${id}/cancel`, { method: "POST" }),
-    onSuccess: () => {
+  async function cancel() {
+    try {
+      await cancelOrder(id!).unwrap();
       toast.success("Sipariş iptal edildi; ürünler stoğa geri kondu.");
-      queryClient.invalidateQueries({ queryKey: ["my-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["store"] });
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
@@ -122,7 +117,7 @@ export function MyOrderDetailPage() {
             description="Ürünler stoğa geri konur. Bu işlem geri alınamaz."
             confirmText="İptal et"
             destructive
-            onConfirm={() => cancel.mutateAsync()}
+            onConfirm={cancel}
           />
         </>
       )}

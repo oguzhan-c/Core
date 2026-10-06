@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { InfoIcon, RefreshCwIcon, RotateCcwIcon, SendIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,38 +12,42 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { OutboxMessage, OutboxStatus, Paginate } from "@/lib/types";
+import type { OutboxMessage, OutboxStatus } from "@/lib/types";
+import { useGetOutboxMessagesQuery, useRetryOutboxMessageMutation, useRunReorderReportMutation } from "@/services/admin";
 
 export function AdminOutboxPage() {
-  const queryClient = useQueryClient();
   const [index, setIndex] = useState(0);
   const [status, setStatus] = useState<OutboxStatus | "all">("all");
   const [selected, setSelected] = useState<OutboxMessage | null>(null);
 
-  const messages = useQuery({
-    queryKey: ["outbox", { index, status }],
-    queryFn: () =>
-      api<Paginate<OutboxMessage>>("/api/admin/outbox", { query: { index, size: 20, status: status === "all" ? undefined : status } }),
-    placeholderData: keepPreviousData,
-    refetchInterval: 5000, // işlemci 5 saniyede bir çalışır
-  });
+  const messages = useGetOutboxMessagesQuery(
+    { index, size: 20, status: status === "all" ? undefined : status },
+    { pollingInterval: 5000 } // işlemci 5 saniyede bir çalışır
+  );
 
-  const retry = useMutation({
-    mutationFn: (id: string) => api(`/api/admin/outbox/${id}/retry`, { method: "POST" }),
-    onSuccess: () => {
+  // Yeniden deneme "Outbox" etiketini geçersiz kılar: liste kendiliğinden yenilenir.
+  const [retryMessage] = useRetryOutboxMessageMutation();
+  const [runReorderReport, { isLoading: reportQueued }] = useRunReorderReportMutation();
+
+  async function retry(id: string) {
+    try {
+      await retryMessage(id).unwrap();
       toast.success("Mesaj yeniden denenecek.");
-      queryClient.invalidateQueries({ queryKey: ["outbox"] });
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
-  const runReport = useMutation({
-    mutationFn: () => api("/api/admin/jobs/reorder-report", { method: "POST" }),
-    onSuccess: () => toast.success("Yeniden sipariş raporu kuyruğa alındı (IBackgroundJobQueue)."),
-    onError: (e) => toast.error(errorMessage(e)),
-  });
+  async function runReport() {
+    try {
+      await runReorderReport().unwrap();
+      toast.success("Yeniden sipariş raporu kuyruğa alındı (IBackgroundJobQueue).");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   return (
     <>
@@ -56,7 +59,7 @@ export function AdminOutboxPage() {
             <Button variant="outline" onClick={() => messages.refetch()}>
               <RefreshCwIcon /> Yenile
             </Button>
-            <Button onClick={() => runReport.mutate()} disabled={runReport.isPending}>
+            <Button onClick={runReport} disabled={reportQueued}>
               <SendIcon /> Raporu şimdi çalıştır
             </Button>
           </>
@@ -120,7 +123,7 @@ export function AdminOutboxPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       {m.status === "Failed" && (
-                        <Button variant="outline" size="sm" onClick={() => retry.mutate(m.id)}>
+                        <Button variant="outline" size="sm" onClick={() => retry(m.id)}>
                           <RotateCcwIcon /> Tekrar dene
                         </Button>
                       )}

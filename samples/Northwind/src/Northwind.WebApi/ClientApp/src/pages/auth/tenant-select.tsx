@@ -1,13 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
 
 import { Field } from "@/components/common/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { api } from "@/lib/api";
-import type { StoreTenant } from "@/lib/types";
+import { useGetStoreTenantsQuery } from "@/services/storefront";
 
 /** Giriş/kayıt formlarında mağaza seçimi (mağaza istemciden yalnızca bu akışlarda alınır). */
 export function TenantSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const tenants = useQuery({ queryKey: ["store", "tenants"], queryFn: () => api<StoreTenant[]>("/api/store/tenants"), staleTime: Infinity });
+  const tenants = useGetStoreTenantsQuery();
 
   return (
     <Field label="Mağaza">

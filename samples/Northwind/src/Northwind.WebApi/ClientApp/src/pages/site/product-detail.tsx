@@ -1,27 +1,22 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon, MinusIcon, PlusIcon, ShoppingCartIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { QueryState } from "@/components/common/query-state";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { useStore } from "@/lib/store";
-import type { StoreProduct } from "@/lib/types";
 import { ProductImage, StockBadge } from "@/pages/site/product-card";
+import { useGetStoreProductQuery } from "@/services/storefront";
 
 export function ProductDetailPage() {
   const { id } = useParams();
   const { tenant, add } = useStore();
   const [quantity, setQuantity] = useState(1);
 
-  const product = useQuery({
-    queryKey: ["store", tenant, "product", id],
-    queryFn: () => api<StoreProduct>(`/api/store/${tenant}/products/${id}`),
-  });
+  const product = useGetStoreProductQuery({ tenant, id: id! });
 
   const p = product.data;
 

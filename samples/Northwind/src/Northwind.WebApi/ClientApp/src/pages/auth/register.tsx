@@ -7,15 +7,16 @@ import { Field } from "@/components/common/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api, ApiError, errorMessage } from "@/lib/api";
+import { errorMessage, isApiError } from "@/lib/api";
 import { useStore } from "@/lib/store";
-import type { RegisterResult } from "@/lib/types";
 import { AuthCard } from "@/pages/auth/auth-card";
 import { TenantSelect } from "@/pages/auth/tenant-select";
+import { useRegisterMutation } from "@/services/auth";
 
 export function RegisterPage() {
   const { tenant: storeTenant, setTenant } = useStore();
   const navigate = useNavigate();
+  const [register] = useRegisterMutation();
 
   const [tenant, setTenantValue] = useState(storeTenant);
   const [form, setForm] = useState({ firstName: "", lastName: "", companyName: "", phone: "", email: "", password: "" });
@@ -32,12 +33,12 @@ export function RegisterPage() {
     setErrors({});
     setPending(true);
     try {
-      const result = await api<RegisterResult>("/api/auth/register", { method: "POST", body: { tenant, ...form, phone: form.phone || null } });
+      const result = await register({ tenant, ...form, phone: form.phone || null }).unwrap();
       setTenant(tenant);
       toast.success("Doğrulama kodu e-postana gönderildi.");
       navigate(`/verify-email?tenant=${encodeURIComponent(tenant)}&email=${encodeURIComponent(result.email)}`);
     } catch (err) {
-      if (err instanceof ApiError && err.errors) setErrors(err.errors);
+      if (isApiError(err) && err.errors) setErrors(err.errors);
       setError(errorMessage(err));
     } finally {
       setPending(false);

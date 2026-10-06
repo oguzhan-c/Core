@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { MailIcon, RefreshCwIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState, QueryState } from "@/components/common/query-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { Mail } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useGetMailboxQuery } from "@/services/admin";
 
 /**
  * YALNIZCA geliştirme: e-postalar SMTP yerine klasöre yazılır; bu sayfa onları gösterir
@@ -17,7 +15,7 @@ import { cn } from "@/lib/utils";
  */
 export function MailboxPage() {
   const [selected, setSelected] = useState<string | null>(null);
-  const mails = useQuery({ queryKey: ["dev-mailbox"], queryFn: () => api<Mail[]>("/api/dev/mailbox"), refetchInterval: 5000 });
+  const mails = useGetMailboxQuery(undefined, { pollingInterval: 5000 });
   const mail = mails.data?.find((m) => m.id === selected) ?? mails.data?.[0];
 
   return (

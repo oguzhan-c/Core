@@ -1,5 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   FingerprintIcon,
@@ -24,12 +23,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { AccountSecurity, OtpSetup, PasskeyInfo, TwoFactorMethod } from "@/lib/types";
-import { createPasskey, passkeyErrorMessage, passkeysSupported, type CreationOptionsJson } from "@/lib/webauthn";
-
-const securityKey = ["account", "security"] as const;
+import type { AccountSecurity, PasskeyInfo, TwoFactorMethod } from "@/lib/types";
+import { createPasskey, passkeyErrorMessage, passkeysSupported } from "@/lib/webauthn";
+import {
+  useAddPasskeyMutation,
+  useBeginOtpSetupMutation,
+  useDeletePasskeyMutation,
+  useDisableTwoFactorMutation,
+  useEnableEmailTwoFactorMutation,
+  useEnableOtpMutation,
+  useGetAccountSecurityQuery,
+  usePasskeyRegistrationOptionsMutation,
+  useRenamePasskeyMutation,
+} from "@/services/account";
 
 const methodLabels: Record<TwoFactorMethod, string> = {
   None: "Kapalı",
@@ -39,7 +47,8 @@ const methodLabels: Record<TwoFactorMethod, string> = {
 
 /** Hesap güvenliği: iki adımlı doğrulama (TOTP / e-posta) ve passkey'ler. */
 export function AccountSecurityPage() {
-  const security = useQuery({ queryKey: securityKey, queryFn: () => api<AccountSecurity>("/api/account/security") });
+  // Bu sayfadaki her işlem "Security" etiketini geçersiz kılar; özet kendiliğinden yenilenir.
+  const security = useGetAccountSecurityQuery();
 
   return (
     <div className="mx-auto grid max-w-3xl gap-6 px-4 py-8">
@@ -61,18 +70,20 @@ export function AccountSecurityPage() {
 // ---------------------------------------------------------------- iki adımlı doğrulama
 
 function TwoFactorCard({ security }: { security: AccountSecurity }) {
-  const queryClient = useQueryClient();
   const [otpOpen, setOtpOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [disableOpen, setDisableOpen] = useState(false);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: securityKey });
   const method = security.twoFactor;
+  const [enableEmailTwoFactor] = useEnableEmailTwoFactorMutation();
 
   async function enableEmail() {
-    await api("/api/account/two-factor/email/enable", { method: "POST" });
-    toast.success("Girişte artık e-postana kod gönderilecek.");
-    await refresh();
+    try {
+      await enableEmailTwoFactor().unwrap();
+      toast.success("Girişte artık e-postana kod gönderilecek.");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
   }
 
   return (
@@ -137,15 +148,15 @@ function TwoFactorCard({ security }: { security: AccountSecurity }) {
         )}
       </CardContent>
 
-      <OtpSetupDialog open={otpOpen} onOpenChange={setOtpOpen} onEnabled={refresh} />
-      <DisableTwoFactorDialog open={disableOpen} onOpenChange={setDisableOpen} onDisabled={refresh} />
+      <OtpSetupDialog open={otpOpen} onOpenChange={setOtpOpen} />
+      <DisableTwoFactorDialog open={disableOpen} onOpenChange={setDisableOpen} />
       <ConfirmDialog
         open={emailOpen}
         onOpenChange={setEmailOpen}
         title="E-posta ile iki adımlı doğrulama"
         description={`Bundan sonra her girişte ${security.email} adresine gönderilen kodu girmen gerekecek.`}
         confirmText="Aç"
-        onConfirm={() => enableEmail().catch((err) => toast.error(errorMessage(err)))}
+        onConfirm={enableEmail}
       />
     </Card>
   );
@@ -180,32 +191,28 @@ function MethodOption({
   );
 }
 
-function OtpSetupDialog({ open, onOpenChange, onEnabled }: { open: boolean; onOpenChange: (open: boolean) => void; onEnabled: () => void }) {
+function OtpSetupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   // Pencere her açıldığında yeni anahtar üretilir (yarım kalan eski kurulum sunucuda silinir).
-  const setup = useQuery({
-    queryKey: ["account", "otp-setup"],
-    queryFn: () => api<OtpSetup>("/api/account/two-factor/otp/setup", { method: "POST" }),
-    enabled: open,
-    gcTime: 0,
-    staleTime: Infinity,
-    retry: false,
-  });
+  const [beginSetup, setup] = useBeginOtpSetupMutation();
+  const [enableOtp, { isLoading: enabling }] = useEnableOtpMutation();
 
-  const enable = useMutation({
-    mutationFn: () => api("/api/account/two-factor/otp/enable", { method: "POST", body: { code } }),
-    onSuccess: () => {
+  useEffect(() => {
+    if (open) void beginSetup();
+  }, [open, beginSetup]);
+
+  async function enable() {
+    try {
+      await enableOtp(code).unwrap();
       toast.success("Authenticator uygulaması bağlandı. Girişte artık uygulamadaki kod istenecek.");
       close(false);
-      onEnabled();
-    },
-    onError: (err) => {
+    } catch (err) {
       setCode("");
       setError(errorMessage(err));
-    },
-  });
+    }
+  }
 
   function close(next: boolean) {
     if (!next) {
@@ -218,7 +225,7 @@ function OtpSetupDialog({ open, onOpenChange, onEnabled }: { open: boolean; onOp
   function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    enable.mutate();
+    void enable();
   }
 
   return (
@@ -262,7 +269,7 @@ function OtpSetupDialog({ open, onOpenChange, onEnabled }: { open: boolean; onOp
               <Button type="button" variant="outline" onClick={() => close(false)}>
                 Vazgeç
               </Button>
-              <Button type="submit" disabled={enable.isPending || code.length !== 6}>
+              <Button type="submit" disabled={enabling || code.length !== 6}>
                 <ShieldCheckIcon /> Doğrula ve aç
               </Button>
             </DialogFooter>
@@ -273,19 +280,20 @@ function OtpSetupDialog({ open, onOpenChange, onEnabled }: { open: boolean; onOp
   );
 }
 
-function DisableTwoFactorDialog({ open, onOpenChange, onDisabled }: { open: boolean; onOpenChange: (open: boolean) => void; onDisabled: () => void }) {
+function DisableTwoFactorDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [disableTwoFactor, { isLoading: disabling }] = useDisableTwoFactorMutation();
 
-  const disable = useMutation({
-    mutationFn: () => api("/api/account/two-factor/disable", { method: "POST", body: { password } }),
-    onSuccess: () => {
+  async function disable() {
+    try {
+      await disableTwoFactor(password).unwrap();
       toast.success("İki adımlı doğrulama kapatıldı.");
       close(false);
-      onDisabled();
-    },
-    onError: (err) => setError(errorMessage(err)),
-  });
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
 
   function close(next: boolean) {
     if (!next) {
@@ -306,7 +314,7 @@ function DisableTwoFactorDialog({ open, onOpenChange, onDisabled }: { open: bool
           onSubmit={(e) => {
             e.preventDefault();
             setError(null);
-            disable.mutate();
+            void disable();
           }}
           className="grid gap-4"
         >
@@ -322,7 +330,7 @@ function DisableTwoFactorDialog({ open, onOpenChange, onDisabled }: { open: bool
             <Button type="button" variant="outline" onClick={() => close(false)}>
               Vazgeç
             </Button>
-            <Button type="submit" variant="destructive" disabled={disable.isPending || !password}>
+            <Button type="submit" variant="destructive" disabled={disabling || !password}>
               <ShieldOffIcon /> Kapat
             </Button>
           </DialogFooter>
@@ -346,19 +354,21 @@ function suggestedPasskeyName(): string {
 }
 
 function PasskeysCard({ security }: { security: AccountSecurity }) {
-  const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [renaming, setRenaming] = useState<PasskeyInfo | null>(null);
   const [deleting, setDeleting] = useState<PasskeyInfo | null>(null);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: securityKey });
   const supported = passkeysSupported();
+
+  const [registrationOptions] = usePasskeyRegistrationOptionsMutation();
+  const [addPasskey] = useAddPasskeyMutation();
+  const [renamePasskey] = useRenamePasskeyMutation();
+  const [deletePasskey] = useDeletePasskeyMutation();
 
   async function remove(passkey: PasskeyInfo) {
     try {
-      await api(`/api/account/passkeys/${passkey.id}`, { method: "DELETE" });
+      await deletePasskey(passkey.id).unwrap();
       toast.success(`“${passkey.name}” silindi.`);
-      await refresh();
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -431,11 +441,11 @@ function PasskeysCard({ security }: { security: AccountSecurity }) {
         initialName={suggestedPasskeyName()}
         submitText="Devam"
         onSubmit={async (name) => {
-          const options = await api<CreationOptionsJson>("/api/account/passkeys/options", { method: "POST" });
+          // seçenekler (sunucu) → cihazda passkey oluştur → yanıtı doğrulat ve kaydet (sunucu)
+          const options = await registrationOptions().unwrap();
           const credential = await createPasskey(options);
-          await api("/api/account/passkeys", { method: "POST", body: { name, credential } });
+          await addPasskey({ name, credential }).unwrap();
           toast.success("Passkey eklendi. Artık giriş sayfasında “Passkey ile giriş yap”ı kullanabilirsin.");
-          await refresh();
         }}
       />
       <PasskeyNameDialog
@@ -445,8 +455,7 @@ function PasskeysCard({ security }: { security: AccountSecurity }) {
         initialName={renaming?.name ?? ""}
         submitText="Kaydet"
         onSubmit={async (name) => {
-          await api(`/api/account/passkeys/${renaming!.id}`, { method: "PUT", body: { name } });
-          await refresh();
+          await renamePasskey({ id: renaming!.id, name }).unwrap();
         }}
       />
       <ConfirmDialog
