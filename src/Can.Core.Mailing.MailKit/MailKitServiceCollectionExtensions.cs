@@ -21,6 +21,8 @@ public static class MailKitServiceCollectionExtensions
         options.Validate();
 
         services.RemoveAll<IEmailSender>();
+        services.RemoveAll<SmtpOptions>();
+        services.AddSingleton(options); // sağlık kontrolü de kullanır
         services.AddSingleton<IEmailSender>(new MailKitEmailSender(options));
 
         return services;

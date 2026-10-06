@@ -8,7 +8,9 @@
     "conflict": "Conflict",
     "server_error": "Server error",
     "unexpected": "An unexpected error occurred.",
+    "too_many_requests": "Too many requests"
   },
+  "rate_limited": "Too many requests; please try again later.",
   "unauthorized": "You must sign in to do this.",
   "forbidden": "You are not allowed to do this.",
   "unexpected": "An unexpected error occurred."

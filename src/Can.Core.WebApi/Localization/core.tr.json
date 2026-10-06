@@ -8,7 +8,9 @@
     "conflict": "Çakışma",
     "server_error": "Sunucu hatası",
     "unexpected": "Beklenmeyen bir hata oluştu.",
+    "too_many_requests": "Çok fazla istek"
   },
+  "rate_limited": "Çok fazla istek gönderildi; biraz sonra tekrar dene.",
   "unauthorized": "Bu işlem için giriş yapmalısın.",
   "forbidden": "Bu işlem için yetkin yok.",
   "unexpected": "Beklenmeyen bir hata oluştu."
