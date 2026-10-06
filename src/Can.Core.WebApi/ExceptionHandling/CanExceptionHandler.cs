@@ -48,13 +48,13 @@ public sealed class CanExceptionHandler : IExceptionHandler
 
         (int status, string title) = exception switch
         {
-            ValidationException => (StatusCodes.Status400BadRequest, "Doğrulama hatası"),
-            BusinessException => (StatusCodes.Status400BadRequest, "İş kuralı ihlali"),
-            UnauthorizedException => (StatusCodes.Status401Unauthorized, "Giriş gerekli"),
-            ForbiddenException => (StatusCodes.Status403Forbidden, "Yetki yok"),
-            NotFoundException => (StatusCodes.Status404NotFound, "Bulunamadı"),
-            ConflictException => (StatusCodes.Status409Conflict, "Çakışma"),
-            _ => (StatusCodes.Status500InternalServerError, "Sunucu hatası"),
+            ValidationException => (StatusCodes.Status400BadRequest, ProblemTitles.Validation),
+            BusinessException => (StatusCodes.Status400BadRequest, ProblemTitles.Business),
+            UnauthorizedException => (StatusCodes.Status401Unauthorized, ProblemTitles.Unauthorized),
+            ForbiddenException => (StatusCodes.Status403Forbidden, ProblemTitles.Forbidden),
+            NotFoundException => (StatusCodes.Status404NotFound, ProblemTitles.NotFound),
+            ConflictException => (StatusCodes.Status409Conflict, ProblemTitles.Conflict),
+            _ => (StatusCodes.Status500InternalServerError, ProblemTitles.ServerError),
         };
 
         ProblemDetails problem = exception is ValidationException validation
