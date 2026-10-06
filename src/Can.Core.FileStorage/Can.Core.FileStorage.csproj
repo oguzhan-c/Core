@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.FileStorage</RootNamespace>
+    <Description>Dosya depolama soyutlaması (IFileStorage), yerel disk implementasyonu ve tenant'a göre otomatik klasörleme. Bulut sağlayıcıları ayrı paket (S3 uyumlu: Can.Core.FileStorage.S3).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.FileStorage.Tests" />
+  </ItemGroup>
+
+</Project>
