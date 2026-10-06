@@ -103,15 +103,23 @@ public static class SerilogExtensions
     }
 
     /// <summary>
-    /// Her isteğin özetini tek satırda loglar (yöntem, yol, durum kodu, süre) ve istek boyunca yazılan tüm loglara
-    /// <c>UserId</c> ile <c>TenantId</c> ekler. <c>UseAuthentication()</c> ve <c>UseCanTenantResolution()</c>'dan
-    /// SONRA ekle. İstek/yanıt gövdeleri loglanmaz.
+    /// Her isteğin özetini tek satırda loglar (yöntem, yol, durum kodu, süre). İstek/yanıt gövdeleri loglanmaz.
     /// </summary>
+    /// <remarks>
+    /// Pipeline'ın EN BAŞINA, <c>UseCanExceptionHandler()</c>'dan ÖNCE ekle: böylece hata işleyicinin verdiği gerçek
+    /// durum kodu (ör. <c>UnauthorizedException</c> → 401) loglanır. İçeride kalırsa yakalanmamış hatayı görür ve
+    /// her hatayı 500 sanır. Kullanıcı/tenant bilgisi için ayrıca <see cref="UseCanLogEnrichment"/> ekle.
+    /// <code>
+    /// app.UseCanRequestLogging();
+    /// app.UseCanExceptionHandler();
+    /// app.UseAuthentication();
+    /// app.UseCanTenantResolution();
+    /// app.UseCanLogEnrichment();
+    /// </code>
+    /// </remarks>
     public static IApplicationBuilder UseCanRequestLogging(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
-
-        app.UseMiddleware<LogContextEnrichmentMiddleware>();
 
         return app.UseSerilogRequestLogging(options =>
         {
@@ -131,6 +139,16 @@ public static class SerilogExtensions
             };
         });
     }
+
+    /// <summary>
+    /// İstek boyunca yazılan tüm loglara ve istek özetine <c>UserId</c> ile <c>TenantId</c> ekler.
+    /// <c>UseAuthentication()</c> ve <c>UseCanTenantResolution()</c>'dan SONRA ekle.
+    /// </summary>
+    public static IApplicationBuilder UseCanLogEnrichment(this IApplicationBuilder app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        return app.UseMiddleware<LogContextEnrichmentMiddleware>();
+    }
 }
 
 /// <summary>İstek boyunca yazılan her log satırına kullanıcı ve tenant bilgisini ekler.</summary>
@@ -147,6 +165,15 @@ internal sealed class LogContextEnrichmentMiddleware
     {
         string? userId = context.RequestServices.GetService<ICurrentUser>()?.Id;
         string? tenantId = context.RequestServices.GetService<ICurrentTenant>()?.Id?.ToString();
+
+        // İstek özeti (UseCanRequestLogging) pipeline'ın dışında yazıldığı için bilgiyi diagnostic context'e de koy.
+        if (context.RequestServices.GetService<IDiagnosticContext>() is { } diagnostics)
+        {
+            if (userId is not null)
+                diagnostics.Set("UserId", userId);
+            if (tenantId is not null)
+                diagnostics.Set("TenantId", tenantId);
+        }
 
         using (LogContext.PushProperty("UserId", userId))
         using (LogContext.PushProperty("TenantId", tenantId))
