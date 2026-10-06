@@ -39,6 +39,13 @@ public sealed class SmtpOptions
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Sunucu sertifikasının iptal (CRL/OCSP) kontrolü. Varsayılan açık; macOS gibi iptal listesine
+    /// ulaşamayan ortamlarda "incomplete certificate revocation check" hatası alırsan kapat.
+    /// Sertifika zinciri ve host adı doğrulaması kapatılsa da yapılmaya devam eder.
+    /// </summary>
+    public bool CheckCertificateRevocation { get; set; } = true;
+
     internal void Validate()
     {
         if (string.IsNullOrWhiteSpace(Host))
@@ -66,7 +73,11 @@ public sealed class MailKitEmailSender : IEmailSender
         ArgumentNullException.ThrowIfNull(message);
 
         using MimeMessage mime = MimeMessageFactory.Create(message, new EmailAddress(_options.FromAddress, _options.FromName));
-        using var client = new SmtpClient { Timeout = (int)_options.Timeout.TotalMilliseconds };
+        using var client = new SmtpClient
+        {
+            Timeout = (int)_options.Timeout.TotalMilliseconds,
+            CheckCertificateRevocation = _options.CheckCertificateRevocation,
+        };
 
         SecureSocketOptions socketOptions = _options.Security switch
         {
