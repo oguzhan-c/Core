@@ -130,4 +130,5 @@ public static class ProblemTitles
     public const string NotFound = "Bulunamadı";
     public const string Conflict = "Çakışma";
     public const string ServerError = "Sunucu hatası";
+    public const string TooManyRequests = "Çok fazla istek";
 }
