@@ -1,0 +1,15 @@
+{
+  "problem": {
+    "validation": "Validation failed",
+    "business": "Business rule violation",
+    "unauthorized": "Authentication required",
+    "forbidden": "Forbidden",
+    "not_found": "Not found",
+    "conflict": "Conflict",
+    "server_error": "Server error",
+    "unexpected": "An unexpected error occurred.",
+  },
+  "unauthorized": "You must sign in to do this.",
+  "forbidden": "You are not allowed to do this.",
+  "unexpected": "An unexpected error occurred."
+}

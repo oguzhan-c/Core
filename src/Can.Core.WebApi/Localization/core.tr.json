@@ -1,0 +1,15 @@
+{
+  "problem": {
+    "validation": "Doğrulama hatası",
+    "business": "İş kuralı ihlali",
+    "unauthorized": "Giriş gerekli",
+    "forbidden": "Yetki yok",
+    "not_found": "Bulunamadı",
+    "conflict": "Çakışma",
+    "server_error": "Sunucu hatası",
+    "unexpected": "Beklenmeyen bir hata oluştu.",
+  },
+  "unauthorized": "Bu işlem için giriş yapmalısın.",
+  "forbidden": "Bu işlem için yetkin yok.",
+  "unexpected": "Beklenmeyen bir hata oluştu."
+}

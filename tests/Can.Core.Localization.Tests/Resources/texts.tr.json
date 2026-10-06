@@ -1,0 +1,9 @@
+{
+  // yorum satırları desteklenir
+  "greeting": "Merhaba {0}",
+  "product": {
+    "out_of_stock": "{name} ürününden yalnızca {available} adet kaldı.",
+    "not_found": "Ürün bulunamadı."
+  },
+  "only_tr": "Yalnızca Türkçe"
+}

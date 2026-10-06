@@ -14,6 +14,12 @@
     <ProjectReference Include="..\Can.Core.Domain\Can.Core.Domain.csproj" />
     <ProjectReference Include="..\Can.Core.Security\Can.Core.Security.csproj" />
     <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
+    <ProjectReference Include="..\Can.Core.Localization\Can.Core.Localization.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Varsayılan tr/en metinler (problem başlıkları, ortak hata kodları); uygulama çevirileri bunları ezer. -->
+    <EmbeddedResource Include="Localization\*.json" WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>

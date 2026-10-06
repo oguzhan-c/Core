@@ -73,7 +73,7 @@ public sealed class CanExceptionHandler : IExceptionHandler
             _logger.LogError(exception, "İşlenmeyen hata: {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
 
             // Üretimde iç ayrıntılar (SQL, stack trace, bağlantı bilgisi ...) istemciye sızmasın.
-            problem.Detail = _environment.IsDevelopment() ? exception.ToString() : "Beklenmeyen bir hata oluştu.";
+            problem.Detail = _environment.IsDevelopment() ? exception.ToString() : Localization.ErrorProblemResult.UnexpectedDetail;
         }
         else
         {
