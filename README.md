@@ -462,10 +462,11 @@ E-postayı istek içinde değil, domain event handler'ından (ileride arka plan 
 ```csharp
 builder.AddCanSerilog(o => o.FilePath = "logs/app-.json");   // isteğe bağlı dosya
 
+app.UseCanRequestLogging();   // her isteğe tek özet satırı — EN DIŞTA (gerçek durum kodu loglansın)
 app.UseCanExceptionHandler();
 app.UseAuthentication();
 app.UseCanTenantResolution();
-app.UseCanRequestLogging();   // her isteğe tek özet satırı + tüm loglara UserId/TenantId
+app.UseCanLogEnrichment();    // tüm loglara ve özete UserId/TenantId
 ```
 
 Varsayılanlar: Development'ta okunur konsol, diğer ortamlarda JSON; Microsoft/System kaynakları Warning.
