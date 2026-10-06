@@ -20,6 +20,7 @@ export default defineConfig({
       "/openapi": backend,
       "/swagger": backend,
       "/scalar": backend,
+      "/hangfire": backend,
     },
   },
   build: {

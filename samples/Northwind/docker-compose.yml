@@ -12,5 +12,12 @@ services:
     volumes:
       - northwind-can-data:/var/lib/postgresql/data
 
+  # İsteğe bağlı dağıtık önbellek: appsettings'te Redis:ConnectionString = "localhost:6379"
+  redis:
+    image: redis:7-alpine
+    container_name: northwind-can-redis
+    ports:
+      - "6379:6379"
+
 volumes:
   northwind-can-data:

@@ -10,6 +10,7 @@ import {
   RadioTowerIcon,
   ReceiptIcon,
   StoreIcon,
+  TimerIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +29,8 @@ interface NavItem {
   icon: LucideIcon;
   roles?: Role[];
   end?: boolean;
+  /** Sunucu sayfası: yeni sekmede, tam sayfa yüklemeyle açılır. */
+  external?: boolean;
 }
 
 const sections: { title: string; items: NavItem[] }[] = [
@@ -55,6 +58,8 @@ const sections: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/admin/audit-logs", label: "Değişiklik geçmişi", icon: HistoryIcon, roles: ["Admin"] },
       { to: "/admin/outbox", label: "Outbox & işler", icon: RadioTowerIcon, roles: ["Admin"] },
+      // Sunucu sayfası (SPA değil); yalnızca Hangfire:Enabled açıkken vardır.
+      { to: "/hangfire", label: "Hangfire", icon: TimerIcon, roles: ["Admin"], external: true },
       { to: "/admin/users", label: "Kullanıcılar", icon: UsersIcon, roles: ["Admin"] },
     ],
   },
@@ -71,25 +76,39 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
         return (
           <div key={section.title} className="space-y-1">
             <p className="text-muted-foreground px-2 text-xs font-medium tracking-wide uppercase">{section.title}</p>
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={onNavigate}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60"
-                  )
-                }
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </NavLink>
-            ))}
+            {items.map((item) =>
+              item.external ? (
+                <a
+                  key={item.to}
+                  href={item.to}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={onNavigate}
+                  className="text-sidebar-foreground/80 hover:bg-sidebar-accent/60 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
+                >
+                  <item.icon className="size-4" />
+                  {item.label}
+                </a>
+              ) : (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60"
+                    )
+                  }
+                >
+                  <item.icon className="size-4" />
+                  {item.label}
+                </NavLink>
+              )
+            )}
           </div>
         );
       })}

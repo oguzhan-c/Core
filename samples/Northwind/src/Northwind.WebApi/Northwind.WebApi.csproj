@@ -18,9 +18,13 @@
     <ProjectReference Include="..\..\..\..\src\Can.Core.WebApi\Can.Core.WebApi.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Logging.Serilog\Can.Core.Logging.Serilog.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing.MailKit\Can.Core.Mailing.MailKit.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing.SendGrid\Can.Core.Mailing.SendGrid.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Caching.Redis\Can.Core.Caching.Redis.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.BackgroundJobs.Hangfire\Can.Core.BackgroundJobs.Hangfire.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hangfire.PostgreSql" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="Scalar.AspNetCore" />
