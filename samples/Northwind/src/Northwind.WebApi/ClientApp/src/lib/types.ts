@@ -35,6 +35,47 @@ export interface UserProfile {
   roles: Role[];
 }
 
+// ---------------------------------------------------------------- hesap güvenliği
+
+/** Girişte şifreden sonra istenen ikinci adım. */
+export type TwoFactorMethod = "None" | "Email" | "Otp";
+
+export interface TwoFactorPrompt {
+  method: TwoFactorMethod;
+  /** E-posta yönteminde maskelenmiş adres (me*****@gmail.com). */
+  destination?: string | null;
+}
+
+export interface LoginResponse {
+  user: UserProfile | null;
+  twoFactor: TwoFactorPrompt | null;
+}
+
+export interface AuthFeatures {
+  passkeys: boolean;
+}
+
+export interface PasskeyInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  isBackedUp: boolean;
+}
+
+export interface AccountSecurity {
+  email: string;
+  emailConfirmed: boolean;
+  twoFactor: TwoFactorMethod;
+  passkeysEnabled: boolean;
+  passkeys: PasskeyInfo[];
+}
+
+export interface OtpSetup {
+  secret: string;
+  provisioningUri: string;
+}
+
 export interface RegisterResult {
   email: string;
   codeExpiresAt: string;

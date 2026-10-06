@@ -7,6 +7,7 @@ import { SiteLayout } from "@/layouts/site-layout";
 import { useAuth } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
 import type { Role } from "@/lib/types";
+import { AccountSecurityPage } from "@/pages/account/security";
 import { AdminAuditLogsPage } from "@/pages/admin/audit-logs";
 import { AdminCategoriesPage } from "@/pages/admin/categories";
 import { AdminCustomerDetailPage, AdminCustomersPage } from "@/pages/admin/customers";
@@ -63,6 +64,14 @@ const router = createBrowserRouter([
         element: (
           <RequireRole roles={["Customer"]}>
             <MyOrderDetailPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: "account/security",
+        element: (
+          <RequireRole roles={["Customer", "Sales", "Warehouse"]}>
+            <AccountSecurityPage />
           </RequireRole>
         ),
       },

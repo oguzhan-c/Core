@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router";
-import { LayoutDashboardIcon, LogOutIcon, PackageIcon, StoreIcon, UserIcon } from "lucide-react";
+import { LayoutDashboardIcon, LogOutIcon, PackageIcon, ShieldCheckIcon, StoreIcon, UserIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -70,6 +70,11 @@ export function UserMenu() {
             </Link>
           </DropdownMenuItem>
         )}
+        <DropdownMenuItem asChild>
+          <Link to="/account/security">
+            <ShieldCheckIcon /> Hesap güvenliği
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link to="/">
             <StoreIcon /> Mağaza
