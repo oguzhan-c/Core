@@ -12,6 +12,7 @@
     <Project Path="src/Can.Core.Security.EntityFrameworkCore/Can.Core.Security.EntityFrameworkCore.csproj" />
     <Project Path="src/Can.Core.MultiTenancy/Can.Core.MultiTenancy.csproj" />
     <Project Path="src/Can.Core.BackgroundJobs/Can.Core.BackgroundJobs.csproj" />
+    <Project Path="src/Can.Core.Caching.Redis/Can.Core.Caching.Redis.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
     <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
     <Project Path="src/Can.Core.Logging.Serilog/Can.Core.Logging.Serilog.csproj" />
@@ -27,6 +28,7 @@
     <Project Path="tests/Can.Core.Security.EntityFrameworkCore.Tests/Can.Core.Security.EntityFrameworkCore.Tests.csproj" />
     <Project Path="tests/Can.Core.MultiTenancy.Tests/Can.Core.MultiTenancy.Tests.csproj" />
     <Project Path="tests/Can.Core.BackgroundJobs.Tests/Can.Core.BackgroundJobs.Tests.csproj" />
+    <Project Path="tests/Can.Core.Caching.Redis.Tests/Can.Core.Caching.Redis.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
     <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />
