@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Logging;
@@ -49,19 +50,33 @@ public sealed class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
         bool fromHandler = false;
         string cacheKey = _currentTenant.Id is { } tenantId ? $"tenant:{tenantId}:{request.CacheKey}" : request.CacheKey;
 
-        TResponse response = await _cache
-            .GetOrCreateAsync(
-                cacheKey,
-                async _ =>
-                {
-                    fromHandler = true;
-                    return await next().ConfigureAwait(false);
-                },
-                entryOptions,
-                request.CacheTags,
-                cancellationToken
-            )
-            .ConfigureAwait(false);
+        TResponse response;
+        try
+        {
+            response = await _cache
+                .GetOrCreateAsync(
+                    cacheKey,
+                    async _ =>
+                    {
+                        fromHandler = true;
+                        TResponse fresh = await next().ConfigureAwait(false);
+
+                        // Başarısız Result önbelleğe yazılmaz (ör. geçici "bulunamadı").
+                        if (fresh is IResultBase { IsSuccess: false })
+                            throw new FailedResultSignal(fresh);
+
+                        return fresh;
+                    },
+                    entryOptions,
+                    request.CacheTags,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+        catch (FailedResultSignal signal)
+        {
+            return (TResponse)signal.Response!;
+        }
 
         if (!fromHandler)
             _logger.LogDebug("Önbellekten geldi: {CacheKey}", cacheKey);
@@ -97,6 +112,10 @@ public sealed class CacheRemovingBehavior<TRequest, TResponse> : IPipelineBehavi
         CancellationToken cancellationToken)
     {
         TResponse response = await next().ConfigureAwait(false);
+
+        // İşlem başarısızsa veri değişmedi; önbellek olduğu gibi kalır.
+        if (response is IResultBase { IsSuccess: false })
+            return response;
 
         foreach (string tag in request.CacheTagsToRemove)
         {

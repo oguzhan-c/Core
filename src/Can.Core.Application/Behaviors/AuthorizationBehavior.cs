@@ -1,4 +1,5 @@
 using Can.Core.Application.Exceptions;
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 
 namespace Can.Core.Application.Behaviors;
@@ -25,7 +26,11 @@ public sealed class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavi
         CancellationToken cancellationToken)
     {
         if (!_currentUser.IsAuthenticated)
-            throw new UnauthorizedException();
+        {
+            return ResultTypes.TryCreateFailure([Error.Unauthorized()], out TResponse unauthorized)
+                ? Task.FromResult(unauthorized)
+                : throw new UnauthorizedException();
+        }
 
         IReadOnlyCollection<string> requiredRoles = request.Roles;
 
@@ -35,7 +40,11 @@ public sealed class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavi
             || requiredRoles.Any(_currentUser.IsInRole);
 
         if (!allowed)
-            throw new ForbiddenException();
+        {
+            return ResultTypes.TryCreateFailure([Error.Forbidden()], out TResponse forbidden)
+                ? Task.FromResult(forbidden)
+                : throw new ForbiddenException();
+        }
 
         return next();
     }

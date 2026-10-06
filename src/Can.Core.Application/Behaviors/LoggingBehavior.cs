@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Microsoft.Extensions.Logging;
 
@@ -29,7 +30,21 @@ public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
         try
         {
             TResponse response = await next().ConfigureAwait(false);
-            _logger.LogInformation("{RequestName} tamamlandı. Kullanıcı: {User}", requestName, user);
+
+            if (response is IResultBase { IsSuccess: false } failed)
+            {
+                _logger.LogWarning(
+                    "{RequestName} başarısız. Kullanıcı: {User}. Hatalar: {Errors}",
+                    requestName,
+                    user,
+                    string.Join("; ", failed.Errors.Select(e => e.ToString()))
+                );
+            }
+            else
+            {
+                _logger.LogInformation("{RequestName} tamamlandı. Kullanıcı: {User}", requestName, user);
+            }
+
             return response;
         }
         catch (Exception ex)
