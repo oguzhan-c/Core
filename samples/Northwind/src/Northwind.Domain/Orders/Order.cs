@@ -1,6 +1,6 @@
 using Can.Core.Domain.Auditing;
 using Can.Core.Domain.Entities;
-using Can.Core.Domain.Exceptions;
+using Can.Core.Domain.Results;
 using Northwind.Domain.Catalog;
 using Northwind.Domain.Common;
 
@@ -66,7 +66,7 @@ public sealed class Order : TenantAggregateRoot
 
     public decimal Total => Subtotal + Freight;
 
-    public static Order Place(
+    public static Result<Order> Place(
         int number,
         Guid customerId,
         Guid? employeeId,
@@ -78,16 +78,24 @@ public sealed class Order : TenantAggregateRoot
     {
         ArgumentNullException.ThrowIfNull(shipAddress);
 
+        Result<Success> valid = Result.Validate(
+            Check.Positive(number, "Sipariş numarası"),
+            Check.NotNegative(freight, "Kargo ücreti"),
+            Check.Required(shipName, "Alıcı", ShipNameMaxLength)
+        );
+        if (valid.IsFailure)
+            return valid.Errors;
+
         var order = new Order(Guid.CreateVersion7())
         {
-            Number = Check.Positive(number, "Sipariş numarası"),
+            Number = number,
             CustomerId = customerId,
             EmployeeId = employeeId,
             Status = OrderStatus.Placed,
             OrderedAt = now,
             RequiredDate = requiredDate,
-            Freight = Check.NotNegative(freight, "Kargo ücreti"),
-            ShipName = Check.Required(shipName, "Alıcı", ShipNameMaxLength),
+            Freight = freight,
+            ShipName = Check.Clean(shipName),
             ShipAddress = shipAddress,
         };
 
@@ -95,49 +103,60 @@ public sealed class Order : TenantAggregateRoot
         return order;
     }
 
-    /// <summary>Ürünü siparişe ekler ve stoğundan düşer. Aynı ürün tekrar eklenirse miktar artar.</summary>
-    /// <param name="product">Eklenen ürün; fiyatı o anki birim fiyattır.</param>
-    /// <param name="quantity">Miktar.</param>
-    /// <param name="discount">İndirim oranı, 0 ile 1 arası (ör. 0,15 = %15).</param>
-    public void AddLine(Product product, int quantity, decimal discount = 0)
+    /// <summary>Ürün ekler ve stoğu ayırır. Aynı ürün tekrar eklenirse miktarı artar.</summary>
+    public Result<Success> AddLine(Product product, int quantity, decimal discount = 0)
     {
         ArgumentNullException.ThrowIfNull(product);
-        EnsureStatus(OrderStatus.Placed, "Yalnızca yeni siparişlere ürün eklenebilir.");
+
+        if (Status != OrderStatus.Placed)
+            return OrderErrors.NotEditable;
 
         if (discount is < 0 or > 1)
-            throw new BusinessException("İndirim 0 ile 1 arasında olmalı.");
+            return OrderErrors.InvalidDiscount;
 
-        product.ReserveStock(quantity);
+        if (Check.Positive(quantity, "Miktar") is { } error)
+            return error;
+
+        Result<Success> reserved = product.ReserveStock(quantity);
+        if (reserved.IsFailure)
+            return reserved;
 
         OrderLine? existing = _lines.FirstOrDefault(l => l.ProductId == product.Id);
         if (existing is not null)
             existing.Increase(quantity);
         else
             _lines.Add(new OrderLine(Id, product.Id, product.Name, product.UnitPrice, quantity, discount));
+
+        return Result.Success;
     }
 
-    public void Ship(Guid shipperId, DateTimeOffset now)
+    public Result<Success> Ship(Guid shipperId, DateTimeOffset now)
     {
-        EnsureStatus(OrderStatus.Placed, "Yalnızca yeni siparişler kargoya verilebilir.");
+        if (Status != OrderStatus.Placed)
+            return OrderErrors.NotShippable;
 
         if (_lines.Count == 0)
-            throw new BusinessException("Ürünü olmayan sipariş kargoya verilemez.");
+            return OrderErrors.Empty;
 
         Status = OrderStatus.Shipped;
         ShipperId = shipperId;
         ShippedAt = now;
         RaiseDomainEvent(new OrderShipped(Id, Number, CustomerId, shipperId, Total));
+        return Result.Success;
     }
 
-    public void Cancel()
+    /// <summary>İptal eder; ayrılan stok <see cref="OrderCancelled"/> event'i ile geri döner. Zaten iptalse bir şey yapmaz.</summary>
+    public Result<Success> Cancel()
     {
         if (Status == OrderStatus.Cancelled)
-            return;
+            return Result.Success;
 
-        EnsureStatus(OrderStatus.Placed, "Kargoya verilmiş sipariş iptal edilemez.");
+        if (Status != OrderStatus.Placed)
+            return OrderErrors.AlreadyShipped;
 
         Status = OrderStatus.Cancelled;
         RaiseDomainEvent(new OrderCancelled(Id, Number, _lines.Select(l => new OrderedQuantity(l.ProductId, l.Quantity)).ToList()));
+        return Result.Success;
     }
 
     /// <summary>Hazır veriyi (Northwind) içe aktarırken: stok düşmez, event üretmez.</summary>
@@ -174,12 +193,6 @@ public sealed class Order : TenantAggregateRoot
 
         return order;
     }
-
-    private void EnsureStatus(OrderStatus expected, string message)
-    {
-        if (Status != expected)
-            throw new BusinessException(message);
-    }
 }
 
 /// <summary>Sipariş satırı. Ürün adı ve fiyatı sipariş anındaki hâliyle saklanır.</summary>
@@ -197,7 +210,7 @@ public sealed class OrderLine : Entity<Guid>
         ProductId = productId;
         ProductName = productName;
         UnitPrice = unitPrice;
-        Quantity = Check.Positive(quantity, "Miktar");
+        Quantity = quantity;
         Discount = discount;
     }
 
@@ -215,5 +228,17 @@ public sealed class OrderLine : Entity<Guid>
 
     public decimal LineTotal => Math.Round(UnitPrice * Quantity * (1 - Discount), 2, MidpointRounding.AwayFromZero);
 
-    internal void Increase(int quantity) => Quantity += Check.Positive(quantity, "Miktar");
+    internal void Increase(int quantity) => Quantity += quantity;
+}
+
+/// <summary>Sipariş hataları.</summary>
+public static class OrderErrors
+{
+    public static readonly Error NotEditable = Error.Failure("order.not_editable", "Yalnızca yeni siparişlere ürün eklenebilir.");
+    public static readonly Error NotShippable = Error.Failure("order.not_shippable", "Yalnızca yeni siparişler kargoya verilebilir.");
+    public static readonly Error AlreadyShipped = Error.Failure("order.already_shipped", "Kargoya verilmiş sipariş iptal edilemez.");
+    public static readonly Error Empty = Error.Failure("order.empty", "Ürünü olmayan sipariş kargoya verilemez.");
+    public static readonly Error InvalidDiscount = Error.Validation("order.invalid_discount", "İndirim 0 ile 1 arasında olmalı.", "Discount");
+
+    public static Error NotFound(Guid id) => Error.NotFound("order.not_found", $"'{id}' siparişi bulunamadı.");
 }

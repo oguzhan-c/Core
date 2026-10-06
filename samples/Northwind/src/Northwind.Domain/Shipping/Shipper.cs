@@ -1,3 +1,4 @@
+using Can.Core.Domain.Results;
 using Northwind.Domain.Common;
 
 namespace Northwind.Domain.Shipping;
@@ -23,16 +24,23 @@ public sealed class Shipper : TenantAggregateRoot
 
     public string? Phone { get; private set; }
 
-    public static Shipper Create(string companyName, string? phone)
+    public static Result<Shipper> Create(string companyName, string? phone)
     {
         var shipper = new Shipper(Guid.CreateVersion7());
-        shipper.Update(companyName, phone);
-        return shipper;
+        return shipper.Update(companyName, phone).Map(_ => shipper);
     }
 
-    public void Update(string companyName, string? phone)
+    public Result<Success> Update(string companyName, string? phone)
     {
-        CompanyName = Check.Required(companyName, "Firma adı", CompanyNameMaxLength);
-        Phone = Check.Optional(phone, "Telefon", PhoneMaxLength);
+        Result<Success> valid = Result.Validate(
+            Check.Required(companyName, "Firma adı", CompanyNameMaxLength),
+            Check.Optional(phone, "Telefon", PhoneMaxLength)
+        );
+        if (valid.IsFailure)
+            return valid;
+
+        CompanyName = Check.Clean(companyName);
+        Phone = Check.CleanOptional(phone);
+        return Result.Success;
     }
 }
