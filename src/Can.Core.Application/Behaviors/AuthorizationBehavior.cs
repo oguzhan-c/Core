@@ -6,7 +6,8 @@ namespace Can.Core.Application.Behaviors;
 
 /// <summary>
 /// <see cref="ISecuredRequest"/> istekleri için: giriş yapılmamışsa <see cref="UnauthorizedException"/>,
-/// gerekli rollerden hiçbiri yoksa <see cref="ForbiddenException"/>.
+/// gerekli rollerden ve yetkilerden hiçbiri yoksa <see cref="ForbiddenException"/> (Result dönen isteklerde
+/// exception yerine <c>Error.Unauthorized</c> / <c>Error.Forbidden</c>).
 /// </summary>
 public sealed class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : ISecuredRequest
@@ -33,11 +34,13 @@ public sealed class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavi
         }
 
         IReadOnlyCollection<string> requiredRoles = request.Roles;
+        IReadOnlyCollection<string> requiredPermissions = request.Permissions;
 
         bool allowed =
-            requiredRoles.Count == 0
+            (requiredRoles.Count == 0 && requiredPermissions.Count == 0)
             || (_options.AdminRole is { Length: > 0 } adminRole && _currentUser.IsInRole(adminRole))
-            || requiredRoles.Any(_currentUser.IsInRole);
+            || requiredRoles.Any(_currentUser.IsInRole)
+            || requiredPermissions.Any(_currentUser.HasPermission);
 
         if (!allowed)
         {

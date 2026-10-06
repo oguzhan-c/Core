@@ -29,7 +29,10 @@ public static class SecurityModelBuilderExtensions
     /// </code>
     /// </example>
     /// <remarks>
-    /// <para>Yapılandırılan tablolar: Users, Roles, UserRoles, RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys.</para>
+    /// <para>
+    /// Yapılandırılan tablolar: Users, Roles, UserRoles, OperationClaims, RoleOperationClaims, UserOperationClaims,
+    /// RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys.
+    /// </para>
     /// <para>
     /// E-posta benzersizliği silinmiş (soft delete) kullanıcıları da kapsar; silinen kullanıcının e-postası tekrar
     /// kullanılacaksa silerken e-postayı değiştir ya da veritabanına özel filtreli index tanımla.
@@ -65,6 +68,7 @@ public static class SecurityModelBuilderExtensions
             b.HasIndex(u => u.PasskeyUserHandle).IsUnique();
 
             b.HasMany(u => u.UserRoles).WithOne().HasForeignKey(ur => ur.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(u => u.OperationClaims).WithOne().HasForeignKey(uc => uc.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Role<TId>>(b =>
@@ -76,6 +80,34 @@ public static class SecurityModelBuilderExtensions
             b.Property(r => r.CreatedBy).HasMaxLength(128);
             b.Property(r => r.UpdatedBy).HasMaxLength(128);
             b.HasIndex(r => r.NormalizedName).IsUnique();
+            b.HasMany(r => r.OperationClaims).WithOne().HasForeignKey(rc => rc.RoleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OperationClaim<TId>>(b =>
+        {
+            b.ToTable(Table("OperationClaims"), options.Schema);
+            b.HasKey(c => c.Id);
+            b.Property(c => c.Name).HasMaxLength(OperationClaim<TId>.NameMaxLength).IsRequired();
+            b.Property(c => c.Description).HasMaxLength(512);
+            b.Property(c => c.CreatedBy).HasMaxLength(128);
+            b.Property(c => c.UpdatedBy).HasMaxLength(128);
+            b.HasIndex(c => c.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<RoleOperationClaim<TId>>(b =>
+        {
+            b.ToTable(Table("RoleOperationClaims"), options.Schema);
+            b.HasKey(rc => rc.Id);
+            b.HasIndex(rc => new { rc.RoleId, rc.OperationClaimId }).IsUnique();
+            b.HasOne(rc => rc.OperationClaim).WithMany().HasForeignKey(rc => rc.OperationClaimId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserOperationClaim<TId>>(b =>
+        {
+            b.ToTable(Table("UserOperationClaims"), options.Schema);
+            b.HasKey(uc => uc.Id);
+            b.HasIndex(uc => new { uc.UserId, uc.OperationClaimId }).IsUnique();
+            b.HasOne(uc => uc.OperationClaim).WithMany().HasForeignKey(uc => uc.OperationClaimId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserRole<TId>>(b =>

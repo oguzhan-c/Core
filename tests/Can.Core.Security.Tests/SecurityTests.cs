@@ -387,4 +387,15 @@ public class RegistrationTests
 
         Assert.Contains("plan", new JsonWebToken(token.Token).Claims.Select(c => c.Type));
     }
+
+    [Fact]
+    public void Permissions_are_written_as_permission_claims()
+    {
+        var tokens = new TokenService(new JwtOptions { Issuer = "i", Audience = "a", SigningKey = new string('k', 32) }, TimeProvider.System);
+
+        AccessToken token = tokens.CreateAccessToken(new TokenSubject("u", Permissions: ["products.*", "orders.cancel", "ORDERS.CANCEL"]));
+
+        string[] permissions = new JsonWebToken(token.Token).Claims.Where(c => c.Type == "permission").Select(c => c.Value).Order().ToArray();
+        Assert.Equal(new[] { "orders.cancel", "products.*" }, permissions);
+    }
 }
