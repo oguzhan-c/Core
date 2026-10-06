@@ -4,6 +4,7 @@ using Can.Core.Domain.Entities;
 using Can.Core.Persistence.Context;
 using Can.Core.Persistence.Dynamic;
 using Can.Core.Persistence.Paging;
+using Can.Core.Persistence.Specifications;
 using Microsoft.EntityFrameworkCore;
 
 namespace Can.Core.Persistence.Repositories;
@@ -143,6 +144,85 @@ public class EfRepository<TEntity, TId> : IRepository<TEntity, TId>
         IQueryable<TEntity> query = Query(withDeleted, enableTracking: false);
         return predicate is null ? query.CountAsync(cancellationToken) : query.CountAsync(predicate, cancellationToken);
     }
+
+    // ---------------------------------------------------------------- Specification
+
+    public virtual Task<TEntity?> FirstOrDefaultAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default) =>
+        SpecificationEvaluator.ApplyOrdering(SpecQuery(specification), specification).FirstOrDefaultAsync(cancellationToken);
+
+    public virtual Task<TResult?> FirstOrDefaultAsync<TResult>(
+        ISpecification<TEntity, TResult> specification,
+        CancellationToken cancellationToken = default) =>
+        SpecificationEvaluator.ApplyOrdering(SpecQuery(specification), specification)
+            .Select(specification.Selector)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public virtual async Task<IReadOnlyList<TEntity>> ListAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default) =>
+        await ListQuery(specification).ToListAsync(cancellationToken).ConfigureAwait(false);
+
+    public virtual async Task<IReadOnlyList<TResult>> ListAsync<TResult>(
+        ISpecification<TEntity, TResult> specification,
+        CancellationToken cancellationToken = default) =>
+        await ListQuery(specification).Select(specification.Selector).ToListAsync(cancellationToken).ConfigureAwait(false);
+
+    public virtual Task<IPaginate<TEntity>> PaginateAsync(
+        ISpecification<TEntity> specification,
+        int index = 0,
+        int size = 10,
+        CancellationToken cancellationToken = default) =>
+        OrderedOrById(SpecQuery(specification), specification).ToPaginateAsync(index, size, cancellationToken: cancellationToken);
+
+    public virtual Task<IPaginate<TResult>> PaginateAsync<TResult>(
+        ISpecification<TEntity, TResult> specification,
+        int index = 0,
+        int size = 10,
+        CancellationToken cancellationToken = default) =>
+        OrderedOrById(SpecQuery(specification), specification)
+            .Select(specification.Selector)
+            .ToPaginateAsync(index, size, cancellationToken: cancellationToken);
+
+    public virtual Task<int> CountAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(specification);
+        return SpecificationEvaluator.ApplyCriteria(Query(specification.WithDeleted, enableTracking: false), specification).CountAsync(cancellationToken);
+    }
+
+    public virtual Task<bool> AnyAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(specification);
+        return SpecificationEvaluator.ApplyCriteria(Query(specification.WithDeleted, enableTracking: false), specification).AnyAsync(cancellationToken);
+    }
+
+    /// <summary>Takip/silinmiş ayarı + include'lar + koşul (sıralama ve sayfa yok).</summary>
+    protected virtual IQueryable<TEntity> SpecQuery(ISpecification<TEntity> specification)
+    {
+        ArgumentNullException.ThrowIfNull(specification);
+
+        IQueryable<TEntity> query = Query(specification.WithDeleted, !specification.AsNoTracking);
+
+        foreach (Expression<Func<TEntity, object?>> include in specification.Includes)
+            query = query.Include(include);
+
+        foreach (string path in specification.IncludePaths)
+            query = query.Include(path);
+
+        return SpecificationEvaluator.ApplyCriteria(query, specification);
+    }
+
+    private IQueryable<TEntity> ListQuery(ISpecification<TEntity> specification)
+    {
+        IQueryable<TEntity> query = SpecQuery(specification);
+
+        // Sayfalı okumada sıralama yoksa sonuç her seferinde farklı olabilir; Id'ye göre sırala.
+        query = specification.Skip is not null || specification.Take is not null
+            ? OrderedOrById(query, specification)
+            : SpecificationEvaluator.ApplyOrdering(query, specification);
+
+        return SpecificationEvaluator.ApplyPaging(query, specification);
+    }
+
+    private static IQueryable<TEntity> OrderedOrById(IQueryable<TEntity> query, ISpecification<TEntity> specification) =>
+        specification.OrderClauses.Count > 0 ? SpecificationEvaluator.ApplyOrdering(query, specification) : query.OrderBy(e => e.Id);
 
     // ---------------------------------------------------------------- Yazma (kaydetmez)
 

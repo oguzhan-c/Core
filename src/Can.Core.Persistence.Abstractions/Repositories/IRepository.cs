@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Can.Core.Domain.Entities;
 using Can.Core.Persistence.Dynamic;
 using Can.Core.Persistence.Paging;
+using Can.Core.Persistence.Specifications;
 
 namespace Can.Core.Persistence.Repositories;
 
@@ -70,6 +71,41 @@ public interface IRepository<TEntity, TId>
         Expression<Func<TEntity, bool>>? predicate = null,
         bool withDeleted = false,
         CancellationToken cancellationToken = default);
+
+    // ---------------------------------------------------------------- Specification
+
+    /// <summary>Specification'a uyan ilk kayıt (sıralama varsa ona göre).</summary>
+    Task<TEntity?> FirstOrDefaultAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default);
+
+    /// <summary>Specification'a uyan ilk kaydın projeksiyonu.</summary>
+    Task<TResult?> FirstOrDefaultAsync<TResult>(ISpecification<TEntity, TResult> specification, CancellationToken cancellationToken = default);
+
+    /// <summary>Specification'a uyan kayıtlar (specification'daki sayfa/Top uygulanır).</summary>
+    Task<IReadOnlyList<TEntity>> ListAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default);
+
+    /// <summary>Specification'a uyan kayıtların projeksiyonu; yalnızca seçilen kolonlar okunur.</summary>
+    Task<IReadOnlyList<TResult>> ListAsync<TResult>(ISpecification<TEntity, TResult> specification, CancellationToken cancellationToken = default);
+
+    /// <summary>Sayfalı liste; specification'daki sayfa yok sayılır. Sıralama yoksa Id'ye göre sıralanır.</summary>
+    Task<IPaginate<TEntity>> PaginateAsync(
+        ISpecification<TEntity> specification,
+        int index = 0,
+        int size = 10,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Projeksiyonlu sayfalı liste.</summary>
+    Task<IPaginate<TResult>> PaginateAsync<TResult>(
+        ISpecification<TEntity, TResult> specification,
+        int index = 0,
+        int size = 10,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Specification'ın koşuluna uyan kayıt sayısı (sayfa yok sayılır).</summary>
+    Task<int> CountAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default);
+
+    Task<bool> AnyAsync(ISpecification<TEntity> specification, CancellationToken cancellationToken = default);
+
+    // ---------------------------------------------------------------- Yazma
 
     Task<TEntity> AddAsync(TEntity entity, CancellationToken cancellationToken = default);
 
