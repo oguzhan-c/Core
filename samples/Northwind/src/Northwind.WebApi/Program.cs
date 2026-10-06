@@ -1,10 +1,15 @@
 using System.Text.Json.Serialization;
 using Can.Core.BackgroundJobs;
+using Can.Core.BackgroundJobs.Hangfire;
+using Can.Core.Caching.Redis;
 using Can.Core.Logging.Serilog;
 using Can.Core.Mailing.MailKit;
+using Can.Core.Mailing.SendGrid;
 using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Northwind.Application;
 using Northwind.Application.Features.Products;
 using Northwind.Infrastructure;
@@ -48,19 +53,68 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<TwoFactorCookie>();
 builder.Services.AddSingleton<PasskeyCeremonyStore>();
 
-// Geliştirmede e-postalar klasöre .eml olarak yazılır; diğer ortamlarda SMTP.
-if (config["Mail:PickupDirectory"] is { Length: > 0 } pickupDirectory)
-    builder.Services.AddCanEmailPickupDirectory(pickupDirectory, config["Mail:From"] ?? "no-reply@northwind.local", "Northwind");
-else
-    builder.Services.AddCanMailKit(o => config.GetSection("Mail:Smtp").Bind(o));
+// E-posta: Mail:Provider = Pickup | Smtp | SendGrid. Boşsa PickupDirectory doluysa klasör, değilse SMTP.
+string mailProvider = config["Mail:Provider"] is { Length: > 0 } provider
+    ? provider
+    : config["Mail:PickupDirectory"] is { Length: > 0 } ? "Pickup" : "Smtp";
 
-// Her mağaza için günlük "yeniden sipariş" raporu.
-builder.Services.AddCanRecurringJob<ReorderReportJob>(o =>
+switch (mailProvider.ToUpperInvariant())
 {
-    o.Interval = TimeSpan.FromHours(24);
-    o.RunOnStartup = false;
-    o.PerTenant = true;
-});
+    case "PICKUP":
+        builder.Services.AddCanEmailPickupDirectory(
+            config["Mail:PickupDirectory"] is { Length: > 0 } dir ? dir : "mails",
+            config["Mail:From"] ?? "no-reply@northwind.local",
+            "Northwind"
+        );
+        break;
+    case "SENDGRID":
+        // dotnet user-secrets set "Mail:SendGrid:ApiKey" "SG.xxxx"
+        builder.Services.AddCanSendGrid(o => config.GetSection("Mail:SendGrid").Bind(o));
+        break;
+    default:
+        builder.Services.AddCanMailKit(o => config.GetSection("Mail:Smtp").Bind(o));
+        break;
+}
+
+// Redis: bağlantı varsa HybridCache'in ikinci katmanı olur (birden fazla sunucu aynı önbelleği paylaşır).
+if (config["Redis:ConnectionString"] is { Length: > 0 } redis)
+{
+    builder.Services.AddCanRedisCache(o =>
+    {
+        o.ConnectionString = redis;
+        o.InstanceName = "northwind:";
+    });
+}
+
+// Arka plan işleri: Hangfire açıksa kalıcı kuyruk + cron + /hangfire dashboard; değilse bellek içi kuyruk.
+bool hangfireEnabled = config.GetValue("Hangfire:Enabled", false);
+if (hangfireEnabled)
+{
+    string hangfireDb = config.GetConnectionString("Northwind") ?? "";
+    builder.Services.AddCanHangfire(
+        c => c.UsePostgreSqlStorage(o => o.UseNpgsqlConnection(hangfireDb)),
+        o => o.WorkerCount = config.GetValue<int?>("Hangfire:WorkerCount")
+    );
+
+    // Her mağaza için günlük "yeniden sipariş" raporu (cron, Hangfire:ReorderReportCron).
+    builder.Services.AddCanHangfireRecurringJob<ReorderReportJob>(
+        config["Hangfire:ReorderReportCron"] ?? Cron.Daily(7),
+        o =>
+        {
+            o.JobId = "reorder-report";
+            o.PerTenant = true;
+        }
+    );
+}
+else
+{
+    builder.Services.AddCanRecurringJob<ReorderReportJob>(o =>
+    {
+        o.Interval = TimeSpan.FromHours(24);
+        o.RunOnStartup = false;
+        o.PerTenant = true;
+    });
+}
 
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -100,6 +154,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapNorthwindEndpoints(); // /api/...
+
+if (hangfireEnabled)
+    app.MapCanHangfireDashboard("/hangfire", Northwind.Domain.Identity.Roles.Admin); // yalnızca yöneticiler; tüm tenant'ların işlerini gösterir
 
 // API dışındaki adresler (/, /products, /admin ...) React uygulamasının yönlendiricisine bırakılır.
 app.MapFallbackToFile("index.html");
