@@ -15,9 +15,12 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
 | `Can.Core.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()` |
 | `Can.Core.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
+| `Can.Core.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
+| `Can.Core.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
 | `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
 | `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
+| `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
 | `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
 | `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
@@ -522,6 +525,7 @@ Arka plan işleri ve seed için de aynı yöntem: `await using var scope = app.S
 ```csharp
 builder.Services.AddCanMailKit(o => builder.Configuration.GetSection("Mailing:Smtp").Bind(o));   // üretim
 builder.Services.AddCanEmailPickupDirectory("mails");                                            // geliştirme: .eml dosyaları
+builder.Services.AddCanSendGrid(o => builder.Configuration.GetSection("Mailing:SendGrid").Bind(o)); // ya da SendGrid
 builder.Services.AddCanInMemoryEmail();                                                          // testler
 
 var message = new EmailMessage("Doğrulama kodun") { HtmlBody = $"<p>Kodun: <b>{code}</b></p>", TextBody = $"Kodun: {code}" };
@@ -530,6 +534,24 @@ await emailSender.SendAsync(message, ct);
 ```
 
 E-postayı istek içinde değil, domain event handler'ından (ileride arka plan işinden) göndermek önerilir.
+
+SendGrid: `ApiKey` ("Mail Send" yetkisi yeterli) secret store'dan gelmeli; `FromAddress` SendGrid'de doğrulanmış
+olmalı. `SandboxMode = true` isteği doğrular ama göndermez. Başarısız yanıt `SendGridException` (durum kodu + gövde) fırlatır.
+AB veri yerleşimi için `BaseAddress = https://api.eu.sendgrid.com/`.
+
+## Önbellek: Redis
+
+```csharp
+builder.Services.AddCanRedisCache(o =>
+{
+    o.ConnectionString = builder.Configuration["Redis:ConnectionString"]!;
+    o.InstanceName = "myapp:";
+});
+```
+
+`AddCanApplication` zaten HybridCache kullanır; Redis eklenince HybridCache onu ikinci katman olarak alır. Böylece
+birden fazla sunucu aynı önbelleği paylaşır, uygulama yeniden başlasa da önbellek ısınık kalır. Kod değişmez
+(`ICachableRequest` / `ICacheRemoverRequest` aynen çalışır).
 
 ## Logging
 
@@ -560,3 +582,32 @@ await queue.EnqueueAsync<SendWelcomeEmailJob, WelcomeEmailArgs>(new(user.Id));
 
 Kuyruk bellektedir; uygulama kapanınca bekleyen işler kaybolur. Kaybolmaması gereken işler için outbox kullan.
 Tekrarlayan işler `PerTenant = true` ile her aktif tenant için ayrı çalıştırılabilir.
+
+### Hangfire
+
+İşler kaybolmamalı, hata alınca yeniden denenmeli ya da birden fazla sunucu varsa Hangfire'a geç. İş sınıfları ve
+`IBackgroundJobQueue` kullanımı değişmez; yalnızca kayıt değişir:
+
+```csharp
+builder.Services.AddCanBackgroundJobs(typeof(Program).Assembly);
+builder.Services.AddCanHangfire(
+    c => c.UsePostgreSqlStorage(o => o.UseNpgsqlConnection(connectionString)),   // Hangfire.PostgreSql, SqlServer ...
+    o => o.WorkerCount = 4);                                                      // RunServer = false: yalnızca kuyruğa at
+
+builder.Services.AddCanHangfireRecurringJob<DailyReportJob>("0 7 * * *", o =>
+{
+    o.PerTenant = true;                                                            // her aktif tenant için ayrı iş
+    o.TimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+});
+
+app.UseAuthentication();
+...
+app.MapCanHangfireDashboard("/hangfire", "Admin");                                 // giriş + rol gerekli
+```
+
+- Kuyruğa atan isteğin tenant id'si işle saklanır; iş çalışırken `ITenantStore`'dan tenant bulunup scope'a yüklenir.
+- `PerTenant` tekrarlayan iş, çalıştığında her aktif tenant için ayrı bir iş açar: biri hata alırsa diğerleri etkilenmez,
+  her biri kendi başına yeniden denenir.
+- Tekrarlayan işler birden fazla sunucuda da tek kez çalışır; dashboard'dan elle tetiklenebilir.
+- Argümanlar (`TArgs`) JSON olarak veritabanında durur ve dashboard'da görünür: gizli bilgi koyma, id gönder.
+- Dashboard tenant'a göre filtrelenmez, tüm tenant'ların işlerini gösterir; yalnızca sistem yöneticilerine aç.

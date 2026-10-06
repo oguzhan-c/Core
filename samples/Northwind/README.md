@@ -9,7 +9,7 @@ Tek veritabanında birden fazla mağaza (tenant) çalışır: `northwind` mağaz
 
 ```bash
 cd samples/Northwind
-docker compose up -d                      # PostgreSQL (localhost:5432); Homebrew Postgres varsa gerekmez
+docker compose up -d                      # PostgreSQL (localhost:5432) + Redis (6379); Homebrew Postgres varsa gerekmez
 dotnet run --project src/Northwind.WebApi --launch-profile http
 
 # ayrı bir terminalde arayüz
@@ -28,6 +28,7 @@ o zaman her şey tek adresten (<http://localhost:5180>) çalışır. `dotnet pub
 | `/admin` | Yönetim paneli (Admin/Sales/Warehouse) |
 | `/dev/mailbox` | Geliştirme posta kutusu: doğrulama kodları ve bildirimler |
 | `/swagger`, `/scalar` | API belgesi (yalnızca Development) |
+| `/hangfire` | Arka plan işleri dashboard'u (yalnızca Admin, `Hangfire:Enabled`) |
 
 Homebrew ile kurulu Postgres kullanıyorsan veritabanı kullanıcısını bir kez oluştur:
 
@@ -101,6 +102,9 @@ Can.Core'dan kullanılanlar ve starter'daki örnekleri:
 | Dinamik sorgu | `POST /api/{products,customers,orders}/search`; panelde iç içe VE/VEYA gruplu "Filtre laboratuvarı" |
 | Mapper | `ProjectTo<SupplierDto>` adresi düzleştirerek SQL'e çevirir |
 | Arka plan işi | `ReorderReportJob`: her mağaza için günlük rapor; panelden `IBackgroundJobQueue` ile hemen çalıştırılabilir |
+| Hangfire | `Hangfire:Enabled=true` ise işler PostgreSQL'de (`hangfire` şeması) kalıcı kuyrukta; rapor cron ile (`Hangfire:ReorderReportCron`, UTC) her mağaza için ayrı iş olarak çalışır. Kapalıysa bellek içi kuyruk |
+| Önbellek | HybridCache; `Redis:ConnectionString` doluysa (ör. `localhost:6379`) Redis ikinci katman olur |
+| E-posta | `Mail:Provider`: `Pickup` (.eml klasörü), `Smtp` (MailKit) ya da `SendGrid` |
 | Outbox izleme | Panelde "Outbox & işler": bekleyen/yayınlanan/hatalı mesajlar, yeniden deneme |
 | Seed | `ReferenceDataSeeder` (host), `DemoUserSeeder` ve `NorthwindDataSeeder` (mağaza başına) |
 
@@ -156,7 +160,10 @@ sorulmaz; passkey'in sahibi seçilen mağazada değilse giriş reddedilir. Ayarl
 
 - `Security:Jwt:SigningKey` (en az 32 karakter) ve `ConnectionStrings:Northwind`'i ortam değişkeni ya da gizli
   ayarlardan ver; `Seed:DemoUserPassword`'u verme.
-- `Mail:Smtp` ayarlarını doldur (`Mail:PickupDirectory` boş olmalı).
+- `Mail:Provider`'ı seç: `Smtp` için `Mail:Smtp`, `SendGrid` için `Mail:SendGrid` (`ApiKey` user-secrets/ortam
+  değişkeninden: `dotnet user-secrets set "Mail:SendGrid:ApiKey" "SG.xxxx"`).
+- Birden fazla sunucuda `Redis:ConnectionString` ver ve `Hangfire:Enabled=true` kullan (bellek içi kuyruk ve
+  tekrarlayan işler her sunucuda ayrı çalışır).
 - `Security:Passkey:ServerDomain` sitenin alan adı, `Origins` https adresleri olmalı. Data Protection anahtarlarını
   kalıcı ve paylaşılan bir yerde sakla (birden fazla sunucuda bekleyen 2FA girişleri çözülebilsin); passkey
   challenge'ları için `IMemoryCache` yerine dağıtık önbellek kullan.
