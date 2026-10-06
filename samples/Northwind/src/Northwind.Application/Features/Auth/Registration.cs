@@ -254,20 +254,29 @@ public sealed class EmailVerification
         _timeProvider = timeProvider;
     }
 
-    public async Task<DateTimeOffset> SendCodeAsync(AppUser user, CancellationToken cancellationToken)
+    /// <summary>E-posta adresini doğrulama kodu.</summary>
+    public Task<DateTimeOffset> SendCodeAsync(AppUser user, CancellationToken cancellationToken) =>
+        SendCodeAsync(user, signIn: false, cancellationToken);
+
+    /// <param name="signIn"><see langword="true"/>: iki adımlı girişin ikinci adımı için (e-posta metni buna göre).</param>
+    public async Task<DateTimeOffset> SendCodeAsync(AppUser user, bool signIn, CancellationToken cancellationToken)
     {
         EmailAuthenticator<Guid> authenticator = await GetOrCreateAsync(user, cancellationToken);
         VerificationCode code = _codes.Generate();
         authenticator.SetCode(code);
 
-        var message = new EmailMessage($"Doğrulama kodun: {code.Code}")
+        string store = _tenantContext.Tenant?.Name ?? "Northwind";
+        string purpose = signIn ? $"{store} hesabına giriş yapmak için" : $"{store} hesabını doğrulamak için";
+
+        var message = new EmailMessage(signIn ? $"Giriş kodun: {code.Code}" : $"Doğrulama kodun: {code.Code}")
         {
             TextBody =
-                $"Merhaba {user.FirstName},\n\n{_tenantContext.Tenant?.Name ?? "Northwind"} hesabını doğrulamak için kodun: {code.Code}\n\n"
-                + "Kod 10 dakika geçerlidir. Bu isteği sen yapmadıysan bu e-postayı yok sayabilirsin.",
+                $"Merhaba {user.FirstName},\n\n{purpose} kodun: {code.Code}\n\n"
+                + "Kod 10 dakika geçerlidir. Bu isteği sen yapmadıysan bu e-postayı yok sayabilirsin"
+                + (signIn ? " ve şifreni değiştirmeni öneririz." : "."),
             HtmlBody =
                 $"<p>Merhaba {System.Net.WebUtility.HtmlEncode(user.FirstName)},</p>"
-                + $"<p>Hesabını doğrulamak için kodun:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:6px\">{code.Code}</p>"
+                + $"<p>{System.Net.WebUtility.HtmlEncode(purpose)} kodun:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:6px\">{code.Code}</p>"
                 + "<p>Kod 10 dakika geçerlidir.</p>",
         };
         message.To.Add(new EmailAddress(user.Email, $"{user.FirstName} {user.LastName}"));

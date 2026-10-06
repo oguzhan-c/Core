@@ -29,6 +29,7 @@ public static class DependencyInjection
 
         services.AddScoped<AuthTokenIssuer>();
         services.AddScoped<EmailVerification>();
+        services.AddScoped<TwoFactorCodeVerifier>();
         services.AddScoped<StoreTenant>();
         services.AddScoped<Features.Orders.OrderPlacer>();
         services.AddScoped<Features.Orders.OrderDetails>();
