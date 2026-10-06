@@ -64,6 +64,53 @@ Base sınıf istemezsen sadece arayüzü uygula: `ICreationAudited`, `IModificat
 sürpriz yaşamamak için entity'ler referans eşitliğini korur. Kimliğe göre karşılaştırma için `a.IsSameAs(b)` kullan.
 Değere göre eşitlik `ValueObject`'te var.
 
+### Result: beklenen hatalar exception değil, dönüş değeri
+
+`Result<T>` ya bir değer ya da en az bir `Error` taşır (ErrorOr tarzı, `readonly struct`). Bulunamadı, iş kuralı ihlali,
+doğrulama gibi **beklenen** hatalar böyle döner; exception'lar gerçekten beklenmeyen durumlar (bug, veritabanı çöktü)
+için kalır. Değer ve hata dönüş tipine kendiliğinden çevrilir:
+
+```csharp
+public static class ProductErrors
+{
+    public static Error NotFound(Guid id) => Error.NotFound("product.not_found", $"'{id}' ürünü bulunamadı.");
+    public static Error OutOfStock(string name) => Error.Failure("product.out_of_stock", $"'{name}' için stok yok.");
+}
+
+public Result<Success> Reserve(int quantity)
+{
+    if (quantity > UnitsInStock)
+        return ProductErrors.OutOfStock(Name);   // Error → Result
+
+    UnitsInStock -= quantity;
+    return Result.Success;                       // değersiz başarı
+}
+
+public static Result<Product> Create(string name, decimal price)
+{
+    // Tüm kontroller tek seferde: hepsinin hatası birlikte döner (null = geçti).
+    Result<Success> valid = Result.Validate(
+        string.IsNullOrWhiteSpace(name) ? Error.Validation("required", "Ad boş olamaz.", "Name") : null,
+        price < 0 ? Error.Validation("not_negative", "Fiyat negatif olamaz.", "Price") : null);
+    if (valid.IsFailure)
+        return valid.Errors;                     // başka tipteki sonucun hataları aktarılır
+
+    return new Product(name, price);             // değer → Result
+}
+```
+
+| | |
+|---|---|
+| `ErrorType` | `Failure` 400 · `Validation` 400 (alan: `Field`) · `Unauthorized` 401 · `Forbidden` 403 · `NotFound` 404 · `Conflict` 409 · `Unexpected` 500 |
+| Okuma | `IsSuccess`, `Value` (başarısızsa **exception**, sessizce `default` dönmez), `Errors`, `FirstError`, `TryGetValue(out v)`, `ValueOrDefault` |
+| Zincir | `Then` (sonraki adım da `Result` döner), `Map`, `Ensure(koşul, hata)`, `Tap`, `Else`, `MapErrors`, `ToSuccess` + `...Async` sürümleri; ilk hatada durur |
+| `Task<Result<T>>` | aynı zincirler `await` yazmadan: `await repo.GetByIdAsync(id).ToResult(ProductErrors.NotFound(id)).Then(p => p.Reserve(2))` |
+| Sonlandırma | `Match(değer => ..., hatalar => ...)`, `MatchFirst`, `Switch` |
+| Toplama | `Result.Validate(params Error?[])`, `Result.Combine(params IResultBase[])` |
+| Kaçış | `ThrowIfFailure()`: hatanın imkânsız olması gereken yerler (seed, testler) |
+| `default(Result<T>)` | başarısız sayılır (`result.uninitialized`): unutulmuş bir dönüş başarı gibi görünmez |
+| JSON | `{"isSuccess":..,"value":..}` / `{"isSuccess":false,"errors":[..]}`; önbelleğe (HybridCache) yazılabilsin diye |
+
 ## Mediator
 
 ```csharp
@@ -293,7 +340,18 @@ public sealed record GetProductsQuery(int Page) : IRequest<List<ProductDto>>, IC
 
 Sıra: `Logging → Performance → Authorization → Validation → Caching → CacheRemoving → Transaction → Handler`.
 
-**Hatalar** exception olarak fırlatılır; WebApi katmanı HTTP koduna çevirir:
+**Hatalar.** İstek `Result<T>` döndürüyorsa (`IRequest<Result<ProductDto>>`) pipeline da exception fırlatmaz:
+
+| Davranış | `Result<T>` dönen istekte |
+|---|---|
+| Authorization | `Error.Unauthorized()` / `Error.Forbidden()` döner |
+| Validation | her FluentValidation hatası `Error.Validation("validation", mesaj, alan)` olur |
+| Transaction | sonuç başarısızsa **hiçbir şey kaydedilmez, transaction geri alınır** (handler'ın ara `SaveChanges`'ları dahil) |
+| Caching | başarısız sonuç önbelleğe yazılmaz |
+| CacheRemoving | başarısız işlemde önbellek temizlenmez (veri değişmedi) |
+| Logging | başarısız sonuç hata kodlarıyla Warning olarak loglanır |
+
+`Result` dönmeyen istekler eskisi gibi exception ile çalışır (WebApi HTTP koduna çevirir):
 `ValidationException` 400 · `BusinessException` (Domain) 400 · `UnauthorizedException` 401 · `ForbiddenException` 403 ·
 `NotFoundException` 404 (`NotFoundException.For<Product>(id)`) · `ConflictException` 409.
 
@@ -317,6 +375,22 @@ app.MapGet("/me", (ISender sender, CancellationToken ct) => sender.Send(new GetM
 ```
 
 **Hatalar** RFC 9457 ProblemDetails olarak döner (`application/problem+json`). 500'lerde iç ayrıntı yalnızca Development'ta gösterilir.
+
+**Result → HTTP.** `ToHttpResult()` başarıda 200 + değer (değer `Success` ise 204), hatada exception handler ile
+**aynı biçimde** ProblemDetails döndürür (`status`, `title`, `detail`, `code`; doğrulamada alan bazında `errors`,
+birden fazla iş hatasında `details`). Durum kodunu ilk hatanın türü belirler.
+
+```csharp
+products.MapGet("/{id:guid}", (Guid id, ISender sender, CancellationToken ct) =>
+    sender.Send(new GetProductQuery(id), ct).ToHttpResult());
+
+products.MapPost("/", (CreateProductCommand command, ISender sender, CancellationToken ct) =>
+    sender.Send(command, ct).ToHttpResult(id => TypedResults.Created($"/api/products/{id}", new { id })));
+
+// handler'a gitmeden dönen hata
+if (cookie is null)
+    return AuthErrors.SessionExpired.ToProblem();
+```
 
 **Kullanıcı ve tenant yalnızca imzalı JWT'den** okunur (`sub`, `name`, `email`, `role`, `tenant_id`). Header, query string
 ya da istek gövdesinden tenant/kullanıcı bilgisi alınmaz; istemci bunları değiştiremez.

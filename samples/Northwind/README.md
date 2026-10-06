@@ -120,6 +120,18 @@ dotnet ef migrations add Initial \
 Bundan sonra uygulama açılışta migration'ları uygular (`Database:InitializeOnStartup`). Migration'lardan önce
 oluşturulmuş bir geliştirme veritabanını silip (`docker compose down -v`) yeniden başlat.
 
+## Hatalar: Result pattern
+
+Domain metotları, handler'lar ve endpoint'ler exception yerine `Result<T>` kullanır (bkz. kök README → Result):
+
+- Aggregate'ler kurallarını `Result<Success>` / `Result<T>` ile döndürür; hata katalogları aggregate'in yanında:
+  `ProductErrors`, `OrderErrors`, `CustomerErrors`, `CategoryErrors`, `AuthErrors`.
+- Alan kontrolleri (`Check.Required/Optional/Positive ...`) `Error?` döner ve `Result.Validate(...)` ile **tüm** hatalar
+  birlikte toplanır (ör. sipariş numarası, kargo ücreti ve alıcı aynı anda hatalıysa üçü de döner).
+- Her istek `IRequest<Result<T>>`; endpoint'ler `sender.Send(...).ToHttpResult()`. Başarısız komutta transaction geri
+  alınır: sepetteki ürünlerden biri stokta yoksa hiçbir ürünün stoğu düşmez.
+- Exception yalnızca beklenmeyen durumlarda: seed verisinin bozuk olması (`ThrowIfFailure()`), eksik rol gibi kurulum hataları.
+
 ## İki adımlı doğrulama ve passkey
 
 Giriş yaptıktan sonra kullanıcı menüsü → **Hesap güvenliği** (`/account/security`):
