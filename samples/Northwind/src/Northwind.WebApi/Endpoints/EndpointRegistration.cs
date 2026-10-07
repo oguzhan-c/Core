@@ -1,3 +1,6 @@
+using Can.Core.Reporting.AspNetCore;
+using Northwind.Domain.Identity;
+
 namespace Northwind.WebApi.Endpoints;
 
 internal static class EndpointRegistration
@@ -16,6 +19,7 @@ internal static class EndpointRegistration
         api.MapCustomerEndpoints();
         api.MapOrderEndpoints();
         api.MapReportEndpoints();
+        api.MapCanReporting("/reporting", o => o.AdminRole = Roles.Admin); // rapor tasarımcısı: kaynaklar, çalıştır, dışa aktar, kayıtlı raporlar
         api.MapAdminEndpoints();
         api.MapSearchExampleEndpoints();
 

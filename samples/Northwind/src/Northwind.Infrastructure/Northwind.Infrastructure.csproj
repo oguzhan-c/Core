@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Northwind.Application\Northwind.Application.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Security.EntityFrameworkCore\Can.Core.Security.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Reporting.EntityFrameworkCore\Can.Core.Reporting.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>

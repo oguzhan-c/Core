@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Northwind.Infrastructure\Northwind.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.WebApi\Can.Core.WebApi.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Reporting.AspNetCore\Can.Core.Reporting.AspNetCore.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Logging.Serilog\Can.Core.Logging.Serilog.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing.MailKit\Can.Core.Mailing.MailKit.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing.SendGrid\Can.Core.Mailing.SendGrid.csproj" />

@@ -38,6 +38,7 @@ export default defineConfig({
           state: ["@reduxjs/toolkit", "react-redux"],
           ui: ["radix-ui", "lucide-react", "sonner"],
           charts: ["recharts"],
+          reporting: ["@can-core/reporting-react"],
         },
       },
     },

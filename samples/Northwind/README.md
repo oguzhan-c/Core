@@ -206,6 +206,21 @@ değişince, satıştan kaldırılınca ya da silinince `ProductCatalogChanged` 
 kurmak için (Admin): `POST /api/admin/search/products/reindex`. Arama sonuçlarının stok ve fiyatı veritabanından
 taze okunur.
 
+## Rapor tasarımcısı
+
+Panelde **Satış → Rapor tasarımcısı** (`/admin/reports`): alanları satır, sütun ve değerlere sürükleyerek pivot rapor
+kurulur; sonuç anında hesaplanır, Excel/PDF/CSV indirilir, rapor kaydedilip mağazadaki herkesle paylaşılabilir.
+İki veri kaynağı var (`Northwind.Infrastructure/Reporting/NorthwindReporting.cs`):
+
+| Kaynak | Satır | Yetki | Varsayılan rol |
+|---|---|---|---|
+| `sales` (Satışlar) | Sipariş satırı + sipariş, müşteri, ürün, kategori, çalışan, kargo | `reports.sales` | Sales |
+| `inventory` (Stok) | Ürün + kategori, tedarikçi, stok değeri | `reports.inventory` | Warehouse |
+
+Admin ikisini de görür. Gruplama mümkünse PostgreSQL'de yapılır (GROUP BY); sonuç çubuğundaki "veritabanında
+hesaplandı" bunu gösterir. Kayıtlı raporlar `reporting.SavedReports` tablosundadır; `EnsureCreated` mevcut
+veritabanına tablo eklemediği için bu sürümden önce oluşturulmuş geliştirme veritabanını silip yeniden başlat.
+
 ## Üretim için
 
 - `Security:Jwt:SigningKey` (en az 32 karakter) ve `ConnectionStrings:Northwind`'i ortam değişkeni ya da gizli
