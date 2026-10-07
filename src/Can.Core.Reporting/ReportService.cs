@@ -122,6 +122,7 @@ public static class ReportingServiceCollectionExtensions
         }
 
         configure?.Invoke(options);
+        services.TryAddSingleton<ISavedReportStore, InMemorySavedReportStore>(); // EF deposu bunu değiştirir
         services.TryAddScoped<IReportService>(sp => new ReportService(
             sp.GetServices<IReportDataSource>(),
             sp.GetRequiredService<CanReportingOptions>(),

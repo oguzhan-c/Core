@@ -11,6 +11,7 @@ public enum ReportExportFormat
     Pdf,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<PdfPageSize>))]
 public enum PdfPageSize
 {
     A4Landscape,
