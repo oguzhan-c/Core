@@ -134,7 +134,7 @@ public static class SignalRRealtimeExtensions
 {
     /// <summary>
     /// SignalR'ı ve <see cref="IRealtimeNotifier"/>'ı kaydeder. Tek sunucu için yeterli; birden fazla sunucuda
-    /// bir backplane gerekir (ör. <c>Microsoft.AspNetCore.SignalR.StackExchangeRedis</c> ile <c>.AddStackExchangeRedis(...)</c>).
+    /// bir backplane gerekir (Can.Core.Redis.ScaleOut: <c>AddCanSignalR().AddCanRedisBackplane()</c>).
     /// </summary>
     /// <example>
     /// <code>

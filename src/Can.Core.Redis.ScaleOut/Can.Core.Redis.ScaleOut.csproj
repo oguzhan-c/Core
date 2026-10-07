@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Redis.ScaleOut</RootNamespace>
+    <Description>Uygulamayı birden çok sunucuda çalıştırmak için Redis: ortak Data Protection anahtarları, SignalR backplane, sunucular arası hız sınırlama ve dağıtık kilit. Önbellek ayrı paket (Can.Core.Caching.Redis).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.WebApi\Can.Core.WebApi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Redis.ScaleOut.Tests" />
+  </ItemGroup>
+
+</Project>
