@@ -62,6 +62,7 @@ public sealed class Product : TenantAggregateRoot
             return valid.Errors;
 
         var product = new Product(Guid.CreateVersion7()) { UnitPrice = unitPrice, UnitsInStock = unitsInStock };
+        // UpdateDetails ProductCatalogChanged'i yayınlar: yeni ürün de arama dizinine girer.
         return product.UpdateDetails(name, categoryId, supplierId, quantityPerUnit, reorderLevel).Map(_ => product);
     }
 
@@ -103,6 +104,7 @@ public sealed class Product : TenantAggregateRoot
         SupplierId = supplierId;
         QuantityPerUnit = Check.CleanOptional(quantityPerUnit);
         ReorderLevel = reorderLevel;
+        RaiseDomainEvent(new ProductCatalogChanged(Id));
         return Result.Success;
     }
 
@@ -118,6 +120,7 @@ public sealed class Product : TenantAggregateRoot
         decimal oldPrice = UnitPrice;
         UnitPrice = newPrice;
         RaiseDomainEvent(new ProductPriceChanged(Id, oldPrice, newPrice));
+        RaiseDomainEvent(new ProductCatalogChanged(Id));
         return Result.Success;
     }
 
@@ -169,7 +172,11 @@ public sealed class Product : TenantAggregateRoot
 
         IsDiscontinued = true;
         RaiseDomainEvent(new ProductDiscontinued(Id, Name));
+        RaiseDomainEvent(new ProductCatalogChanged(Id));
     }
+
+    /// <summary>Silinmeden önce çağrılır (silme repository'de yapılır): katalogdan, arama dizininden çıkar.</summary>
+    public void Remove() => RaiseDomainEvent(new ProductCatalogChanged(Id));
 }
 
 /// <summary>Ürün hataları.</summary>

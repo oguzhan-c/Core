@@ -29,5 +29,20 @@ services:
       - "18888:18888"
       - "4317:18889"
 
+  # İsteğe bağlı ürün araması: appsettings'te Search:Elasticsearch:Url = "http://localhost:9200" (yoksa bellek içi arama)
+  # Yalnızca geliştirme: güvenlik kapalı, tek düğüm.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    container_name: northwind-can-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - northwind-can-search:/usr/share/elasticsearch/data
+
 volumes:
   northwind-can-data:
+  northwind-can-search:

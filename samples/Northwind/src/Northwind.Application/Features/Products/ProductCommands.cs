@@ -161,6 +161,7 @@ public sealed class ProductCommandHandlers
         _rules.MustExistAsync(request.Id, cancellationToken)
             .Map(product =>
             {
+                product.Remove(); // arama dizininden de çıkar (ProductCatalogChanged)
                 _products.Delete(product);
                 return Result.Success;
             });
