@@ -532,7 +532,8 @@ builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarl
 
 **Entity'ler** (tek `TId` ile, türetip genişletilir): `User<TId>` (e-posta, şifre hash'i, 2FA tipi, hesap kilitleme,
 security stamp), `Role<TId>`, `UserRole<TId>`, `RefreshToken<TId>` (rotasyon ve iptal), `OtpAuthenticator<TId>`,
-`EmailAuthenticator<TId>`, `UserPasskey<TId>`, `OperationClaim<TId>` + `RoleOperationClaim<TId>` + `UserOperationClaim<TId>`.
+`EmailAuthenticator<TId>`, `UserPasskey<TId>`, `UserLogin<TId>` (bağlı Google/Microsoft/GitHub hesabı),
+`OperationClaim<TId>` + `RoleOperationClaim<TId>` + `UserOperationClaim<TId>`.
 
 Tabloları kurmak için (`Can.Core.Security.EntityFrameworkCore`):
 
@@ -564,6 +565,44 @@ Eşleşme büyük/küçük harf duyarsız; `"orders.*"` `orders.` ile başlayan 
 (`ICurrentUser.HasPermission`). Yönetici rolü (`CanApplicationOptions.AdminRole`) her şeyi geçer. Yetki listesi
 token'a (ve cookie'ye) girdiği için çok sayıda yetkiyi tek tek değil joker olarak vermek boyutu küçük tutar;
 yetki değişikliği kullanıcının bir sonraki token yenilemesinde geçerli olur.
+
+**Dış sağlayıcıyla giriş (OAuth)**: Google, Microsoft, GitHub ya da herhangi bir OAuth 2.0 sağlayıcısı. ASP.NET
+Core'un yerleşik OAuth handler'ı kullanılır, ek paket yok; PKCE açık, sağlayıcının token'ı saklanmaz. Dönüşte
+uygulamanın kendi oturumu (cookie'deki JWT) açılır.
+
+```csharp
+// anahtarlar user-secrets'ta; ClientId/ClientSecret boş olan sağlayıcı açılmaz
+builder.Services.AddCanExternalLogin(o => o
+    .AddGoogle(config["Security:External:Google:ClientId"] ?? "", config["Security:External:Google:ClientSecret"] ?? "")
+    .AddMicrosoft(config["Security:External:Microsoft:ClientId"] ?? "", config["Security:External:Microsoft:ClientSecret"] ?? "")
+    .AddGitHub(config["Security:External:GitHub:ClientId"] ?? "", config["Security:External:GitHub:ClientSecret"] ?? ""));
+
+app.UseAuthentication(); // /signin-google gibi dönüş adreslerini handler karşılar
+app.MapGroup("/api").MapCanExternalLogin("/auth/external", async (info, http) =>
+{
+    // info: Provider, ProviderKey (değişmez kimlik), Email, EmailVerified, Name, Tenant, ReturnUrl, Mode (login/link)
+    // kullanıcıyı bul/oluştur → token'ları cookie'ye yaz → Results.Redirect(info.ReturnUrl)
+});
+```
+
+| Adres | Ne yapar |
+|---|---|
+| `GET /api/auth/external/providers` | Ayarlı sağlayıcılar (giriş düğmeleri) |
+| `GET /api/auth/external/{provider}/login?tenant=..&returnUrl=..` | Sağlayıcıya yönlendirir (tam sayfa, fetch değil) |
+| `GET /api/auth/external/{provider}/link?returnUrl=..` | Giriş yapmış kullanıcının hesabına bağlar |
+| `GET /api/auth/external/callback` | Dönüş: kimlik okunur, uygulamanın callback'i çağrılır |
+
+Sağlayıcı konsolunda dönüş adresi `https://<site>/signin-{provider}` olarak kaydedilir (`/signin-google`,
+`/signin-microsoft`, `/signin-github`). Güvenlik kuralları:
+
+- Kullanıcıyı **`ProviderKey` ile** bul, e-postayla değil (e-posta değişebilir, başkası yazabilir).
+- E-postayla mevcut hesaba otomatik bağlama yalnızca `EmailVerified` ise yapılır. Google'da `email_verified`,
+  GitHub'da birincil + doğrulanmış e-posta kullanılır; Microsoft'ta iş/okul hesaplarında e-posta yöneticice
+  değiştirilebildiği için varsayılan olarak güvenilmez (`TrustEmail = false`).
+- `returnUrl` yalnızca uygulama içi göreli adres olabilir (açık yönlendirme engellenir).
+- Bağlama modunda kullanıcı ve tenant istemciden değil, sağlayıcıya giden şifreli state'ten okunur: dönüş isteği
+  siteler arası olduğu için `SameSite=Strict` oturum cookie'si gelmez.
+- Hata olursa `ErrorPath?externalError=kod` adresine dönülür (`denied`, `failed`, ya da uygulamanın hata kodu).
 
 Güvenlik notları: imza anahtarlarını koda/appsettings'e yazma (User Secrets, ortam değişkeni, Key Vault);
 `OtpAuthenticator.SecretKey`'i veritabanında şifreli sakla; refresh token yeniden kullanımı tespit edilirse
