@@ -39,6 +39,9 @@ public sealed class ReportExpression
         return new ReportExpression(text, parser.ParseAll());
     }
 
+    /// <summary>LINQ ifadesine çevirir (veritabanında hesaplanması için); çevrilemiyorsa <see langword="null"/>.</summary>
+    internal System.Linq.Expressions.Expression? Translate(LinqTranslator translator) => _root.Translate(translator);
+
     /// <summary>Satırda değerlendirir (satır değerleri alan sırasında).</summary>
     public object? Evaluate(object?[] row, TimeProvider? timeProvider = null) =>
         _root.Evaluate(new Context(row, timeProvider ?? TimeProvider.System));
@@ -50,16 +53,23 @@ public sealed class ReportExpression
     private abstract class Node
     {
         public abstract object? Evaluate(in Context context);
+
+        /// <summary>LINQ ifadesine çevirir (veritabanında çalışsın diye); çevrilemiyorsa <see langword="null"/>.</summary>
+        public abstract System.Linq.Expressions.Expression? Translate(LinqTranslator translator);
     }
 
     private sealed class Literal(object? value) : Node
     {
         public override object? Evaluate(in Context context) => value;
+
+        public override System.Linq.Expressions.Expression? Translate(LinqTranslator translator) => translator.Literal(value);
     }
 
     private sealed class Field(int index) : Node
     {
         public override object? Evaluate(in Context context) => ReportValue.Normalize(context.Row[index]);
+
+        public override System.Linq.Expressions.Expression? Translate(LinqTranslator translator) => translator.Field(index);
     }
 
     private sealed class Unary(char op, Node operand) : Node
@@ -73,6 +83,9 @@ public sealed class ReportExpression
                 _ => value is bool b ? (object)!b : null, // not
             };
         }
+
+        public override System.Linq.Expressions.Expression? Translate(LinqTranslator translator) =>
+            operand.Translate(translator) is { } inner ? translator.Unary(op, inner) : null;
     }
 
     private sealed class Binary(string op, Node left, Node right) : Node
@@ -119,6 +132,9 @@ public sealed class ReportExpression
                 _ => throw new InvalidOperationException(op),
             };
         }
+
+        public override System.Linq.Expressions.Expression? Translate(LinqTranslator translator) =>
+            left.Translate(translator) is { } a && right.Translate(translator) is { } b ? translator.Binary(op, a, b) : null;
     }
 
     private sealed class Call(string name, Node[] args) : Node
@@ -158,6 +174,19 @@ public sealed class ReportExpression
                 values[i] = args[i].Evaluate(context);
 
             return Functions.Invoke(name, values);
+        }
+
+        public override System.Linq.Expressions.Expression? Translate(LinqTranslator translator)
+        {
+            var translated = new System.Linq.Expressions.Expression[args.Length];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].Translate(translator) is not { } arg)
+                    return null;
+                translated[i] = arg;
+            }
+
+            return translator.Call(name, translated);
         }
     }
 
