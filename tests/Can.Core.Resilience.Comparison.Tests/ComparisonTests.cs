@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Xunit.Abstractions;
 using Polly; // Polly'nin AddRetry, AddTimeout ... uzantı metotları (adlar bu namespace'te önce bizim tiplere çözülür)
 using P = Polly;
 

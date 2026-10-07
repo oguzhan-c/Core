@@ -39,7 +39,7 @@ public sealed class TenantDatabaseTests : IAsyncLifetime
         _sharedTenant = new TenantInfo { Id = Guid.NewGuid().ToString(), Identifier = "shared" };
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // Bellekteki paylaşımlı SQLite veritabanı, en az bir bağlantı açık kaldıkça yaşar.
         foreach (string connectionString in new[] { _hostDb, _tenantA.ConnectionString!, _tenantB.ConnectionString! })
@@ -66,7 +66,7 @@ public sealed class TenantDatabaseTests : IAsyncLifetime
         await _provider.InitializeTenantDatabasesAsync<TestDbContext>((db, ct) => db.Database.EnsureCreatedAsync(ct));
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _provider.DisposeAsync();
         foreach (SqliteConnection connection in _keepAlive)
