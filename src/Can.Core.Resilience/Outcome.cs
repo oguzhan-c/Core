@@ -35,6 +35,10 @@ public readonly struct Outcome<T>
     }
 
     public override string ToString() => IsSuccess ? $"Result: {Result}" : $"Exception: {Exception!.GetType().Name}";
+
+    /// <summary>Başka bir sonuç tipine çevirir (exception korunur). Tipsiz seçeneklerin predicate'leri için.</summary>
+    internal Outcome<TOther> Cast<TOther>() =>
+        _exception is null ? new Outcome<TOther>((TOther?)(object?)Result, null) : new Outcome<TOther>(default, _exception);
 }
 
 public static class Outcome

@@ -130,11 +130,57 @@ internal interface ICircuitController
     void Close();
 }
 
-internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircuitController
+/// <summary>Devre durumu tektir: tipsiz pipeline'da tüm sonuç tipleri aynı controller'ı paylaşır.</summary>
+internal sealed class CircuitBreakerStrategyFactory<TOptions> : StrategyFactory<TOptions>
+{
+    private readonly CircuitBreakerOptions<TOptions> _options;
+    private readonly CircuitController<TOptions> _controller;
+
+    public CircuitBreakerStrategyFactory(CircuitBreakerOptions<TOptions> options, TimeProvider timeProvider)
+    {
+        _options = options;
+        _controller = new CircuitController<TOptions>(options, timeProvider);
+    }
+
+    protected override ResilienceStrategy<TOptions> CreateNative() => new CircuitBreakerStrategy<TOptions, TOptions>(_controller, _options.ShouldHandle);
+
+    protected override ResilienceStrategy<TResult> CreateAdapted<TResult>()
+    {
+        Func<Outcome<TOptions>, bool> shouldHandle = _options.ShouldHandle;
+        return new CircuitBreakerStrategy<TResult, TOptions>(_controller, outcome => shouldHandle(outcome.Cast<TOptions>()));
+    }
+}
+
+internal sealed class CircuitBreakerStrategy<TResult, TOptions>(CircuitController<TOptions> controller, Func<Outcome<TResult>, bool> shouldHandle)
+    : ResilienceStrategy<TResult>
+{
+    protected internal override async ValueTask<Outcome<TResult>> ExecuteCoreAsync(
+        Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
+        ResilienceContext context)
+    {
+        Exception? rejection = controller.BeforeExecute(out bool halfOpened);
+        if (rejection is not null)
+            return Outcome.FromException<TResult>(rejection);
+
+        if (halfOpened)
+            await controller.OnHalfOpenedAsync(context).ConfigureAwait(false);
+
+        Outcome<TResult> outcome = await callback(context).ConfigureAwait(false);
+
+        Func<ValueTask>? notify = controller.AfterExecute(outcome, shouldHandle(outcome), context);
+        if (notify is not null)
+            await notify().ConfigureAwait(false);
+
+        return outcome;
+    }
+}
+
+/// <summary>Devrenin durumu ve kayan pencere sayaçları (thread-safe).</summary>
+internal sealed class CircuitController<TOptions> : ICircuitController
 {
     private const int BucketCount = 10;
 
-    private readonly CircuitBreakerOptions<T> _options;
+    private readonly CircuitBreakerOptions<TOptions> _options;
     private readonly TimeProvider _timeProvider;
     private readonly object _lock = new();
     private readonly (long Start, int Successes, int Failures)[] _buckets = new (long, int, int)[BucketCount];
@@ -146,7 +192,7 @@ internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircui
     private int _halfOpenAttempts;
     private Exception? _lastException;
 
-    public CircuitBreakerStrategy(CircuitBreakerOptions<T> options, TimeProvider timeProvider)
+    public CircuitController(CircuitBreakerOptions<TOptions> options, TimeProvider timeProvider)
     {
         _options = options;
         _timeProvider = timeProvider;
@@ -167,44 +213,46 @@ internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircui
         }
     }
 
-    protected internal override async ValueTask<Outcome<T>> ExecuteCoreAsync(Func<ResilienceContext, ValueTask<Outcome<T>>> callback, ResilienceContext context)
+    /// <summary>İstek geçebilir mi; geçemezse reddetme exception'ı.</summary>
+    public Exception? BeforeExecute(out bool halfOpened)
     {
-        bool halfOpened;
+        halfOpened = false;
         lock (_lock)
         {
             DateTimeOffset now = _timeProvider.GetUtcNow();
-            halfOpened = false;
-
             switch (_state)
             {
                 case CircuitState.Isolated:
-                    return Outcome.FromException<T>(new IsolatedCircuitException());
+                    return new IsolatedCircuitException();
 
                 case CircuitState.Open when now < _blockedUntil:
-                    return Outcome.FromException<T>(Broken(_blockedUntil - now));
+                    return Broken(_blockedUntil - now);
 
                 case CircuitState.Open:
                     _state = CircuitState.HalfOpen;
                     _probeInFlight = true;
                     halfOpened = true;
-                    break;
+                    return null;
 
                 case CircuitState.HalfOpen when _probeInFlight:
-                    return Outcome.FromException<T>(Broken(TimeSpan.Zero));
+                    return Broken(TimeSpan.Zero);
 
                 case CircuitState.HalfOpen:
                     _probeInFlight = true;
-                    break;
+                    return null;
+
+                default:
+                    return null;
             }
         }
+    }
 
-        if (halfOpened && _options.OnHalfOpened is not null)
-            await _options.OnHalfOpened(new OnCircuitHalfOpenedArguments(context)).ConfigureAwait(false);
+    public ValueTask OnHalfOpenedAsync(ResilienceContext context) =>
+        _options.OnHalfOpened?.Invoke(new OnCircuitHalfOpenedArguments(context)) ?? ValueTask.CompletedTask;
 
-        Outcome<T> outcome = await InvokeAsync(callback, context).ConfigureAwait(false);
-        bool handled = _options.ShouldHandle(outcome);
-
-        Func<ValueTask>? notify = null;
+    /// <summary>Sonucu kaydeder; durum değiştiyse olay bildirimi döner (kilit dışında çağrılır).</summary>
+    public Func<ValueTask>? AfterExecute<TResult>(Outcome<TResult> outcome, bool handled, ResilienceContext context)
+    {
         lock (_lock)
         {
             DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -216,37 +264,29 @@ internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircui
                 if (handled)
                 {
                     _halfOpenAttempts++;
-                    notify = Open(outcome, context, now, failureRate: 1, failureCount: 1);
+                    return Open(outcome, context, now, failureRate: 1, failureCount: 1);
                 }
-                else if (outcome.Exception is not OperationCanceledException)
-                {
-                    notify = CloseCore(outcome, context, isManual: false);
-                }
+
                 // iptal: yoklama sayılmaz, devre yarı açık kalır
+                return outcome.Exception is OperationCanceledException ? null : CloseCore(outcome, context, isManual: false);
             }
-            else if (_state == CircuitState.Closed)
+
+            if (_state != CircuitState.Closed)
+                return null;
+
+            ref (long Start, int Successes, int Failures) bucket = ref CurrentBucket(now);
+            if (!handled)
             {
-                ref (long Start, int Successes, int Failures) bucket = ref CurrentBucket(now);
-                if (handled)
-                    bucket.Failures++;
-                else
-                    bucket.Successes++;
-
-                if (handled)
-                {
-                    (int successes, int failures) = Totals(now);
-                    int total = successes + failures;
-                    double rate = total == 0 ? 0 : (double)failures / total;
-                    if (total >= _options.MinimumThroughput && rate >= _options.FailureRatio)
-                        notify = Open(outcome, context, now, rate, failures);
-                }
+                bucket.Successes++;
+                return null;
             }
+
+            bucket.Failures++;
+            (int successes, int failures) = Totals(now);
+            int total = successes + failures;
+            double rate = (double)failures / total;
+            return total >= _options.MinimumThroughput && rate >= _options.FailureRatio ? Open(outcome, context, now, rate, failures) : null;
         }
-
-        if (notify is not null)
-            await notify().ConfigureAwait(false);
-
-        return outcome;
     }
 
     public void Isolate()
@@ -261,10 +301,10 @@ internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircui
     public void Close()
     {
         lock (_lock)
-            _ = CloseCore(default, null, isManual: true);
+            _ = CloseCore<TOptions>(default, null, isManual: true);
     }
 
-    private Func<ValueTask>? Open(Outcome<T> outcome, ResilienceContext context, DateTimeOffset now, double failureRate, int failureCount)
+    private Func<ValueTask>? Open<TResult>(Outcome<TResult> outcome, ResilienceContext context, DateTimeOffset now, double failureRate, int failureCount)
     {
         TimeSpan duration = _options.BreakDurationGenerator?.Invoke(new BreakDurationArguments(failureRate, failureCount, _halfOpenAttempts))
             ?? _options.BreakDuration;
@@ -274,10 +314,12 @@ internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircui
         _lastException = outcome.Exception;
         ResetBuckets();
 
-        return _options.OnOpened is { } onOpened ? () => onOpened(new OnCircuitOpenedArguments<T>(outcome, context, duration, IsManual: false)) : null;
+        return _options.OnOpened is { } onOpened
+            ? () => onOpened(new OnCircuitOpenedArguments<TOptions>(outcome.Cast<TOptions>(), context, duration, IsManual: false))
+            : null;
     }
 
-    private Func<ValueTask>? CloseCore(Outcome<T> outcome, ResilienceContext? context, bool isManual)
+    private Func<ValueTask>? CloseCore<TResult>(Outcome<TResult> outcome, ResilienceContext? context, bool isManual)
     {
         bool wasClosed = _state == CircuitState.Closed;
         _state = CircuitState.Closed;
@@ -289,7 +331,7 @@ internal sealed class CircuitBreakerStrategy<T> : ResilienceStrategy<T>, ICircui
         if (wasClosed || context is null || _options.OnClosed is not { } onClosed)
             return null;
 
-        return () => onClosed(new OnCircuitClosedArguments<T>(outcome, context, isManual));
+        return () => onClosed(new OnCircuitClosedArguments<TOptions>(outcome.Cast<TOptions>(), context, isManual));
     }
 
     private BrokenCircuitException Broken(TimeSpan retryAfter) =>

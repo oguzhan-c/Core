@@ -236,6 +236,21 @@ public class CircuitBreakerTests
     }
 
     [Fact]
+    public async Task Circuit_state_is_shared_across_result_types()
+    {
+        var (pipeline, _, state, _, _) = Create();
+
+        for (int i = 0; i < 4; i++)
+            await Assert.ThrowsAsync<HttpRequestException>(async () => await pipeline.ExecuteAsync<string>(_ => throw new HttpRequestException()));
+
+        Assert.Equal(CircuitState.Open, state.CircuitState);
+
+        // int dönen çağrı da aynı (açık) devreyi görür
+        await Assert.ThrowsAsync<BrokenCircuitException>(async () => await pipeline.ExecuteAsync(Ok));
+        await Assert.ThrowsAsync<BrokenCircuitException>(async () => await pipeline.ExecuteAsync(_ => ValueTask.CompletedTask));
+    }
+
+    [Fact]
     public async Task Manual_isolate_and_close()
     {
         var (pipeline, _, state, control, _) = Create();

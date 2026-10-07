@@ -26,7 +26,7 @@ internal sealed class FallbackStrategy<T>(FallbackOptions<T> options) : Resilien
 {
     protected internal override async ValueTask<Outcome<T>> ExecuteCoreAsync(Func<ResilienceContext, ValueTask<Outcome<T>>> callback, ResilienceContext context)
     {
-        Outcome<T> outcome = await InvokeAsync(callback, context).ConfigureAwait(false);
+        Outcome<T> outcome = await callback(context).ConfigureAwait(false);
         if (!options.ShouldHandle(outcome))
             return outcome;
 
