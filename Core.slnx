@@ -19,6 +19,7 @@
     <Project Path="src/Can.Core.FileStorage.S3/Can.Core.FileStorage.S3.csproj" />
     <Project Path="src/Can.Core.Localization/Can.Core.Localization.csproj" />
     <Project Path="src/Can.Core.Resilience/Can.Core.Resilience.csproj" />
+    <Project Path="src/Can.Core.Resilience.Http/Can.Core.Resilience.Http.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
     <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
     <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
