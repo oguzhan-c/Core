@@ -28,6 +28,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Resilience` | Threading.RateLimiting | Retry, circuit breaker, timeout, rate limiter/bulkhead, fallback, hedging pipeline'ları (Polly'siz) |
 | `Can.Core.Resilience.Http` | Extensions.Http | `AddCanStandardResilienceHandler()`: HttpClient için hazır dayanıklılık |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
+| `Can.Core.Sms` | Extensions.Http | `ISmsSender`, E.164 numara, GSM-7/UCS-2 parça hesabı, Türkçe karakter dönüştürme, HTTP sağlayıcı temeli |
 | `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
 | `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
 | `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
@@ -655,6 +656,61 @@ await using AsyncServiceScope scope = serviceProvider.CreateTenantScope(tenant);
 ```
 
 Arka plan işleri ve seed için de aynı yöntem: `await using var scope = app.Services.CreateTenantScope(tenant);`
+
+## SMS
+
+SMS, sağlayıcının (Netgsm, İleti Merkezi, Twilio, Vonage ...) HTTP API'sine istek atılarak gönderilir; operatörlere
+doğrudan bağlanmak için lisans gerekir. Bu paket sağlayıcıdan bağımsız altyapıdır: uygulama `ISmsSender` kullanır,
+sağlayıcı değişince yalnızca kayıt değişir.
+
+```csharp
+builder.Services.AddCanSms(o =>
+    {
+        o.DefaultSender = "NORTHWIND";   // sağlayıcıda onaylı başlık
+        o.TransliterateToGsm = true;     // ğ→g, ş→s: 70 yerine 160 karakter, daha ucuz
+        o.MaxSegments = 3;               // yanlışlıkla uzun metne karşı
+    })
+    .UsePickupDirectory("sms");          // geliştirme: her SMS bir JSON dosyası; testlerde UseInMemory()
+
+SmsSendResult result = await sms.SendAsync(new SmsMessage("0532 123 45 67", $"Doğrulama kodun: {code}"), ct);
+if (!result.Succeeded) ...               // geçersiz numara, boş/uzun metin, sağlayıcının reddi (kredi bitti ...)
+```
+
+| | |
+|---|---|
+| Numara | `PhoneNumbers.TryNormalize`: `0532 123 45 67`, `+90 532...`, `0090...`, `532...` → `+905321234567` (E.164); `Mask` loglar için |
+| Parça hesabı | `SmsText.Analyze`: GSM-7 160/153, UCS-2 70/67 karakter; `€ [ ] { }` GSM'de 2 sayılır. `ç ğ ı ş İ` GSM'de yok → metin UCS-2 olur |
+| Hatalar | Doğrulama ve sağlayıcının reddi `SmsSendResult.Failed`; ağ hatası, 5xx ve 429 `SmsException` (tekrar denenebilir) |
+| Gözlemlenebilirlik | `Can.Core.Sms` span'ı; `can.sms.messages` (sent/rejected/failed) ve maliyet için `can.sms.segments`. Numara ve metin etiketlenmez |
+
+Yeni bir sağlayıcı `HttpSmsProvider`'dan türetilir: yalnızca isteği kurmak (`CreateRequest`) ve yanıtı okumak
+(`ReadResponseAsync`) yazılır; zaman aşımı, bağlantı ve sunucu hataları temel sınıftadır.
+
+```csharp
+public sealed class AcmeSmsProvider(HttpClient http, AcmeOptions options) : HttpSmsProvider(http)
+{
+    public override string Name => "acme";
+
+    protected override HttpRequestMessage CreateRequest(SmsRequest sms) =>
+        new(HttpMethod.Post, "https://api.acme.example/v1/sms")
+        {
+            Content = JsonContent.Create(new { to = sms.To, text = sms.Text, sender = sms.From, key = options.ApiKey }),
+        };
+
+    protected override async Task<SmsSendResult> ReadResponseAsync(HttpResponseMessage response, SmsRequest sms, CancellationToken ct)
+    {
+        AcmeResponse? body = await response.Content.ReadFromJsonAsync<AcmeResponse>(ct);
+        return body?.Status == "ok"
+            ? SmsSendResult.Sent(body.Id, sms.Segments)
+            : SmsSendResult.Failed(SmsErrorCodes.Rejected, body?.Error ?? "Reddedildi.");
+    }
+}
+
+builder.Services.AddCanSms().UseHttpProvider<AcmeSmsProvider>().AddCanStandardResilienceHandler();
+```
+
+Türkiye'de toplu/ticari SMS için İYS (İleti Yönetim Sistemi) onayı gerekir; `SmsMessage.IsCommercial` sağlayıcıya
+bunu bildirmek içindir. Doğrulama kodu gibi bilgilendirme mesajları ticari değildir.
 
 ## Mailing
 
