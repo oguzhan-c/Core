@@ -4,6 +4,7 @@ using Can.Core.Mediator;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi;
 using Can.Core.WebApi.DependencyInjection;
+using Can.Core.WebApi.RateLimiting;
 using Fido2NetLib;
 using Northwind.Application.Features.Auth;
 using Northwind.WebApi.Security;
@@ -58,6 +59,7 @@ internal static class AuthEndpoints
                 });
             })
             .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
             .WithSummary("Mağaza, e-posta ve şifre ile giriş. İki adımlı doğrulama açıksa ikinci adım istenir; değilse token'lar cookie'ye yazılır.");
 
         group.MapPost("/login/two-factor", async (TwoFactorRequest body, ISender sender, IAuthCookieService cookies, TwoFactorCookie twoFactor, HttpContext http, CancellationToken ct) =>
@@ -79,6 +81,7 @@ internal static class AuthEndpoints
                 });
             })
             .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
             .WithSummary("İki adımlı girişin ikinci adımı: authenticator uygulamasındaki ya da e-postaya gelen kod.");
 
         group.MapPost("/login/two-factor/resend", async (ISender sender, TwoFactorCookie twoFactor, HttpContext http, CancellationToken ct) =>
@@ -86,6 +89,7 @@ internal static class AuthEndpoints
                     ? await sender.Send(new ResendTwoFactorCodeCommand(challenge), ct).ToHttpResult()
                     : AuthErrors.TwoFactorExpired.ToProblem())
             .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
             .WithSummary("İkinci adım e-posta ile yapılıyorsa yeni kod gönderir.");
 
         bool passkeysEnabled = app.ServiceProvider.GetService<IPasskeyService>() is not null;
@@ -127,6 +131,7 @@ internal static class AuthEndpoints
                     });
                 })
                 .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
                 .WithSummary("Passkey ile girişin ikinci adımı: cihazın imzası doğrulanır, token'lar cookie'ye yazılır.");
         }
 
@@ -135,6 +140,7 @@ internal static class AuthEndpoints
                     .Send(new RegisterCommand(body.Tenant, body.Email, body.Password, body.FirstName, body.LastName, body.CompanyName, body.Phone), ct)
                     .ToHttpResult())
             .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
             .WithSummary("Siteden müşteri kaydı; e-postaya 6 haneli doğrulama kodu gönderilir.");
 
         group.MapPost("/verify-email", async (VerifyEmailRequest body, ISender sender, IAuthCookieService cookies, HttpContext http, CancellationToken ct) =>
@@ -144,11 +150,13 @@ internal static class AuthEndpoints
                     return TypedResults.Ok(session.User);
                 }))
             .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
             .WithSummary("E-posta doğrulama; başarılıysa kullanıcı giriş yapmış olur.");
 
         group.MapPost("/resend-code", (ResendCodeRequest body, ISender sender, CancellationToken ct) =>
                 sender.Send(new ResendVerificationCodeCommand(body.Tenant, body.Email), ct).ToHttpResult())
             .AllowAnonymous()
+            .RequireRateLimiting(CanRateLimitPolicies.Auth)
             .WithSummary("Yeni doğrulama kodu gönderir.");
 
         group.MapPost("/refresh", async (ISender sender, IAuthCookieService cookies, HttpContext http, CancellationToken ct) =>
