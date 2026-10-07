@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ICurrentUser>(NullCurrentUser.Instance);
         services.TryAddSingleton<ICurrentTenant>(NullCurrentTenant.Instance);
+        services.TryAddSingleton<IDistributedLock>(sp => new Locking.InMemoryDistributedLock(sp.GetService<TimeProvider>())); // Redis: Can.Core.Redis.ScaleOut
         services.AddHybridCache();
 
         services.AddCanMediator(cfg =>
