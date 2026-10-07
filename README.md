@@ -35,7 +35,18 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 
 ```bash
 dotnet build Core.slnx
-dotnet test Core.slnx
+dotnet test --solution Core.slnx
+```
+
+Testler xUnit v3 ile yazılır ve Microsoft Testing Platform ile çalışır (`global.json` → `"test": { "runner": "Microsoft.Testing.Platform" }`).
+Her test projesi kendi kendini çalıştırabilen bir programdır; sık kullanılan komutlar:
+
+```bash
+dotnet test --project tests/Can.Core.Persistence.Tests                     # tek proje
+dotnet test --solution Core.slnx --filter-class "*SpecificationTests"      # sınıfa göre
+dotnet test --solution Core.slnx --filter-method "*Retries*"               # metoda göre
+dotnet test --project tests/Can.Core.Persistence.Tests --show-live-output on  # ITestOutputHelper çıktısı
+dotnet run --project tests/Can.Core.Persistence.Tests                      # doğrudan (xUnit'in kendi çalıştırıcısı)
 ```
 
 ## Domain
@@ -723,7 +734,8 @@ services.AddHttpClient<PaymentClient>().AddCanStandardResilienceHandler(o => o.R
 
 `tests/Can.Core.Resilience.Comparison.Tests` aynı senaryoları Polly ile de çalıştırıp davranışı karşılaştırır
 (deneme sayısı, bekleme süreleri, devre durum geçişleri, exception tipleri) ve kaba bir ek yük ölçümü yazar
-(`dotnet test --logger "console;verbosity=detailed"`). Polly yalnızca bu test projesindedir.
+(ölçümü anlamlı yapmak için Release: `dotnet test --project tests/Can.Core.Resilience.Comparison.Tests -c Release --show-live-output on`).
+Polly yalnızca bu test projesindedir.
 
 Strateji sırası önemlidir: ilk eklenen en dıştadır. Timeout iyimserdir: iş, verilen `CancellationToken`'a uymalı.
 Retry'da HTTP isteği aynı nesneyle yeniden gönderilir; gövde tekrar okunabilir olmalı (`StringContent`, `JsonContent`).
