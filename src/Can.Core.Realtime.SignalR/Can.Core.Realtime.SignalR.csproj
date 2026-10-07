@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Realtime.SignalR</RootNamespace>
+    <Description>IRealtimeNotifier'ın SignalR implementasyonu: kimliği doğrulanmış bağlantıları tenant / kullanıcı / rol gruplarına otomatik ekleyen hub. SignalR sunucusu ASP.NET Core'un içindedir; ek paket yok.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Realtime\Can.Core.Realtime.csproj" />
+    <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Realtime.Tests" />
+  </ItemGroup>
+
+</Project>
