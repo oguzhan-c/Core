@@ -16,6 +16,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()` |
 | `Can.Core.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
 | `Can.Core.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
+| `Can.Core.Redis.ScaleOut` | StackExchange.Redis, SignalR.StackExchangeRedis | Çok sunucu: ortak Data Protection anahtarları, SignalR backplane, sunucular arası hız sınırı, dağıtık kilit |
 | `Can.Core.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
 | `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı; outbox ile birlikte çalışır |
 | `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
@@ -745,6 +746,45 @@ builder.Services.AddCanRedisCache(o =>
 birden fazla sunucu aynı önbelleği paylaşır, uygulama yeniden başlasa da önbellek ısınık kalır. Kod değişmez
 (`ICachableRequest` / `ICacheRemoverRequest` aynen çalışır).
 
+
+## Çok sunucu: Redis (scale-out)
+
+Uygulama birden çok sunucuda (ya da konteynerde) çalışınca belleğinde tuttuğu bazı şeyler ortak olmalı. Önbellek
+`Can.Core.Caching.Redis`'te; geri kalanı `Can.Core.Redis.ScaleOut`'ta (tek Redis bağlantısı paylaşılır, özellikler tek tek açılır):
+
+```csharp
+builder.Services.AddCanRedisScaleOut(o =>
+    {
+        o.ConnectionString = builder.Configuration["Redis:ConnectionString"]!;
+        o.ApplicationName = "northwind";          // anahtar öneki; tüm sunucularda aynı
+    })
+    .PersistDataProtectionKeys()                  // şifreli cookie'ler her sunucuda çözülür
+    .UseForRateLimiting()                         // AddCanRateLimiting sınırları ortak sayılır
+    .UseForDistributedLocks();                    // IDistributedLock sunucular arası
+
+builder.Services.AddCanSignalR().AddCanRedisBackplane(); // bildirim, kullanıcı hangi sunucudaysa ona gider
+```
+
+| Özellik | Olmazsa ne olur | Nasıl |
+|---|---|---|
+| Data Protection anahtarları | Bir sunucunun şifrelediği 2FA / OAuth / passkey cookie'sini diğeri çözemez; kullanıcı ikinci adımda hata alır | Anahtarlar Redis listesinde (kendi `IXmlRepository`'miz) |
+| SignalR backplane | Bildirim yalnızca aynı sunucuya bağlı kullanıcılara gider | Microsoft'un SignalR Redis paketi (yazması büyük iş), bizim bağlantımızla |
+| Hız sınırı | Her sunucu ayrı sayar: 3 sunucuda giriş sınırı fiilen 3 katı | Redis'te sabit/kayan pencere, tek Lua çağrısı; Redis düşerse istekler geçirilir (site durmaz) ve uyarı loglanır |
+| Dağıtık kilit | Aynı iş iki sunucuda aynı anda çalışabilir | `SET NX PX` + jetonla bırakma; süre dolunca kendiliğinden düşer |
+
+`IDistributedLock` (Application.Abstractions) uygulama kodunda kullanılır; Redis yoksa tek süreçlik bellek içi
+uygulaması çalışır:
+
+```csharp
+await using IAsyncDisposable? handle = await locks.TryAcquireAsync($"reorder-report:{tenantId}", TimeSpan.FromMinutes(5), cancellationToken: ct);
+if (handle is null)
+    return; // başka bir sunucu çalıştırıyor
+```
+
+StackExchange.Redis 3.x çıktı, ancak Microsoft'un Redis paketleri (önbellek, SignalR) 2.x'e göre derlendiği için en son
+2.x (2.13) kullanılıyor; Microsoft 3.x'e geçince yükseltilir. Gerçek Redis'e karşı testler:
+`CAN_REDIS_URL=localhost:6379 dotnet test --project tests/Can.Core.Redis.ScaleOut.Tests`.
+
 ## Localization
 
 Metinler JSON dosyalarında: `Localization/tr.json`, `Localization/en.json` (çıktıya kopyala) ya da gömülü
@@ -890,7 +930,7 @@ await connection.start();
   `IRealtimeSubscriptionAuthorizer`'dadır (varsayılan: hiçbiri).
 - SignalR kurulu değilse `IRealtimeNotifier` hiçbir şey yapmaz (`AddCanRealtimeDefaults`); Application kodu her ortamda çalışır.
 - Mesaj taşıyıcıdır, depolama değil: istemci bağlı değilse kaybolur. Birden fazla sunucuda backplane gerekir
-  (`Microsoft.AspNetCore.SignalR.StackExchangeRedis` ile `AddCanSignalR().AddStackExchangeRedis(...)`).
+  (`Can.Core.Redis.ScaleOut`: `AddCanSignalR().AddCanRedisBackplane()`).
 
 ## Dayanıklılık (resilience)
 
