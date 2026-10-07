@@ -21,6 +21,8 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
 | `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
 | `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
+| `Can.Core.Resilience` | Threading.RateLimiting | Retry, circuit breaker, timeout, rate limiter/bulkhead, fallback, hedging pipeline'ları (Polly'siz) |
+| `Can.Core.Resilience.Http` | Extensions.Http | `AddCanStandardResilienceHandler()`: HttpClient için hazır dayanıklılık |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
 | `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
 | `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
@@ -678,6 +680,48 @@ Uri? link = await storage.GetTemporaryUrlAsync(path, TimeSpan.FromMinutes(10), c
 - S3: AWS SDK yok; `HttpClient` + Signature V4. MinIO/R2 için `ForcePathStyle = true` (varsayılan), R2'de
   `Region = "auto"`. `Overwrite = false` iken `If-None-Match: *` ile yazar. Gövde imzalanmaz (`UNSIGNED-PAYLOAD`,
   HTTPS gerekir); anahtarlar user-secrets'ta.
+
+## Dayanıklılık (resilience)
+
+Dış servislere (ödeme, SMS, e-posta, başka bir API) yapılan çağrılar bazen yavaşlar ya da geçici hata verir.
+Polly'nin stratejileri dış paket olmadan:
+
+| Strateji | Ne yapar |
+|---|---|
+| Retry | Geçici hatada bekleyip tekrar dener: sabit / doğrusal / üstel bekleme, ±%25 jitter, üst sınır, `DelayGenerator` (Retry-After) |
+| Circuit breaker | Kayan pencerede hata oranı eşiği aşınca devreyi açar, bir süre denemeden reddeder (`BrokenCircuitException`), sonra tek istekle yoklar; durum okuma ve elle izole/kapatma |
+| Timeout | İşe süre sınırı; token'ı iptal eder, `TimeoutRejectedException` |
+| Rate limiter / bulkhead | `System.Threading.RateLimiting` ile sınırlar; `AddConcurrencyLimiter(n)` yavaş bir bağımlılığın tüm kaynakları tüketmesini önler |
+| Fallback | Hata olursa yedek sonuç (önbellek, varsayılan) |
+| Hedging | Yanıt gecikirse aynı işi paralel başlatır, ilk iyi sonuç kazanır (idempotent işler için) |
+
+```csharp
+ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
+    .AddTimeout(TimeSpan.FromSeconds(30))                       // toplam (en dış)
+    .AddRetry(new RetryOptions { MaxRetryAttempts = 3, BackoffType = DelayBackoffType.Exponential, UseJitter = true })
+    .AddCircuitBreaker(new CircuitBreakerOptions { FailureRatio = 0.5, MinimumThroughput = 20 })
+    .AddTimeout(TimeSpan.FromSeconds(5))                        // deneme başına (en iç)
+    .Build();
+
+Order order = await pipeline.ExecuteAsync(ct => client.GetOrderAsync(id, ct), cancellationToken);
+
+// Sonuca bakan pipeline: ShouldHandle ile hangi sonuçların "hata" olduğu belirlenir
+new ResiliencePipelineBuilder<HttpResponseMessage>()
+    .AddRetry(new RetryOptions<HttpResponseMessage>
+    {
+        ShouldHandle = new PredicateBuilder<HttpResponseMessage>().Handle<HttpRequestException>().HandleResult(r => (int)r.StatusCode >= 500),
+    });
+
+// Adı verilmiş, paylaşılan pipeline (circuit breaker durumu uygulama genelinde tek)
+services.AddCanResiliencePipeline("payments", (b, sp) => b.AddRetry(new RetryOptions()).AddCircuitBreaker(new CircuitBreakerOptions()));
+provider.GetPipeline("payments");
+
+// HttpClient: bulkhead → toplam süre → retry (5xx/408/429, Retry-After) → circuit breaker → deneme süresi
+services.AddHttpClient<PaymentClient>().AddCanStandardResilienceHandler(o => o.Retry.MaxRetryAttempts = 5);
+```
+
+Strateji sırası önemlidir: ilk eklenen en dıştadır. Timeout iyimserdir: iş, verilen `CancellationToken`'a uymalı.
+Retry'da HTTP isteği aynı nesneyle yeniden gönderilir; gövde tekrar okunabilir olmalı (`StringContent`, `JsonContent`).
 
 ## Sağlık kontrolleri
 
