@@ -20,6 +20,9 @@
     <PackageVersion Include="Microsoft.Extensions.Localization.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.12" />
+    <!-- Yalnızca Can.Core.Observability.OpenTelemetry: telemetriyi dışa aktarmak için -->
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
     <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
     <!-- Hangfire.Core 11.0.1 çekiyor (GHSA-5crp-9r3c-p9vr); en son sürüme sabitlenir. -->
