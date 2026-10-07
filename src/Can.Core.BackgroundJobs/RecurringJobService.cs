@@ -73,9 +73,12 @@ internal sealed partial class RecurringJobService<TJob> : BackgroundService
     {
         try
         {
-            await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-            JobTenantScope.Apply(scope.ServiceProvider, tenant?.Id, tenant);
-            await scope.ServiceProvider.GetRequiredService<TJob>().ExecuteAsync(stoppingToken).ConfigureAwait(false);
+            await BackgroundJobsTelemetry.RunAsync(typeof(TJob).Name, tenant?.Id, async () =>
+            {
+                await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+                JobTenantScope.Apply(scope.ServiceProvider, tenant?.Id, tenant);
+                await scope.ServiceProvider.GetRequiredService<TJob>().ExecuteAsync(stoppingToken).ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

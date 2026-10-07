@@ -16,7 +16,7 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <remarks>
     /// Behavior sırası (dıştan içe):
-    /// <c>Logging → Performance → Authorization → Validation → Caching → CacheRemoving → Transaction → Handler</c>.
+    /// <c>Telemetry → Logging → Performance → Authorization → Validation → Caching → CacheRemoving → Transaction → Handler</c>.
     /// Yetkisiz istekler doğrulama hatalarını görmez; önbellekten yalnızca yetkili ve geçerli isteklere yanıt verilir;
     /// önbellek ancak transaction commit edildikten sonra temizlenir.
     /// </remarks>
@@ -46,6 +46,7 @@ public static class ServiceCollectionExtensions
         {
             cfg.RegisterServicesFromAssemblies(assemblies);
 
+            cfg.AddOpenBehavior(typeof(TelemetryBehavior<,>));
             cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
             cfg.AddOpenBehavior(typeof(PerformanceBehavior<,>));
             cfg.AddOpenBehavior(typeof(AuthorizationBehavior<,>));

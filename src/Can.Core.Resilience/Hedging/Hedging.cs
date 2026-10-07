@@ -114,6 +114,8 @@ internal sealed class HedgingStrategy<T>(HedgingOptions<T> options, TimeProvider
         async ValueTask StartAsync()
         {
             int attempt = started++;
+            if (attempt > 0)
+                ResilienceTelemetry.Report("hedging", "hedging", context);
             if (attempt > 0 && options.OnHedging is not null)
                 await options.OnHedging(new OnHedgingArguments(context, attempt)).ConfigureAwait(false);
 

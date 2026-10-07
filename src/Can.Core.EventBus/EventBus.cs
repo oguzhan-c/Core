@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Can.Core.Domain.Events;
 using Can.Core.MultiTenancy;
@@ -24,19 +25,34 @@ internal sealed class DefaultEventBus : IEventBus
         _tenantContext = services.GetService<TenantContext>();
     }
 
-    public Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(integrationEvent);
 
         Type type = integrationEvent.GetType();
+        string eventName = _registry.GetName(type);
+
+        using Activity? activity = EventBusTelemetry.StartPublish(eventName);
         var envelope = new EventEnvelope(
             integrationEvent.EventId,
-            _registry.GetName(type),
+            eventName,
             JsonSerializer.Serialize(integrationEvent, type, EventJson.Options),
             _tenantContext?.TenantId,
             integrationEvent.OccurredAt
-        );
+        )
+        {
+            Headers = EventBusTelemetry.CreateHeaders(),
+        };
 
-        return _transport.SendAsync(envelope, cancellationToken);
+        try
+        {
+            await _transport.SendAsync(envelope, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            activity?.AddException(exception);
+            throw;
+        }
     }
 }

@@ -38,6 +38,33 @@ public class RetryTests
     }
 
     [Fact]
+    public async Task Retries_are_reported_as_metrics()
+    {
+        int retries = 0;
+        using var meterListener = new System.Diagnostics.Metrics.MeterListener();
+        meterListener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == ResilienceTelemetry.Name)
+                l.EnableMeasurementEvents(instrument);
+        };
+        meterListener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            if (tags.ToArray().Any(t => t.Key == "can.resilience.operation" && (string?)t.Value == "metrik-testi"))
+                Interlocked.Add(ref retries, (int)value);
+        });
+        meterListener.Start();
+
+        int calls = 0;
+        ResiliencePipeline pipeline = new ResiliencePipelineBuilder().AddRetry(new RetryOptions { MaxRetryAttempts = 3, Delay = TimeSpan.Zero }).Build();
+        await pipeline.ExecuteAsync(
+            _ => ++calls < 3 ? throw new InvalidOperationException() : ValueTask.FromResult(1),
+            new ResilienceContext(operationKey: "metrik-testi")
+        );
+
+        Assert.Equal(2, retries);
+    }
+
+    [Fact]
     public async Task Gives_up_after_max_attempts_and_rethrows_original()
     {
         int calls = 0;

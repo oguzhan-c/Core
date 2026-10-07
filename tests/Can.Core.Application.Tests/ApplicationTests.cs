@@ -100,6 +100,52 @@ public class ApplicationTests
         Assert.Equal(expected, PermissionMatcher.Covers(granted, required));
     }
 
+    // ---------------------------------------------------------------- telemetri
+
+    [Fact]
+    public async Task Requests_produce_spans_and_duration_metrics()
+    {
+        var spans = new System.Collections.Concurrent.ConcurrentQueue<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = s => s.Name == Can.Core.Application.Behaviors.ApplicationTelemetry.Name,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+                System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = spans.Enqueue,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        var measurements = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var meterListener = new System.Diagnostics.Metrics.MeterListener();
+        meterListener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Name == "can.request.duration")
+                l.EnableMeasurementEvents(instrument);
+        };
+        meterListener.SetMeasurementEventCallback<double>((_, _, tags, _) =>
+        {
+            string tagText = string.Join(",", tags.ToArray().Select(t => $"{t.Key}={t.Value}"));
+            if (tagText.Contains("CreateProductCommand", StringComparison.Ordinal))
+                measurements.Enqueue(tagText);
+        });
+        meterListener.Start();
+
+        var host = new Host();
+        host.User.RoleList.Add("Admin");
+        await host.Sender.Send(ValidCommand);
+
+        host.User.RoleList.Clear();
+        await Assert.ThrowsAsync<ForbiddenException>(() => host.Sender.Send(ValidCommand));
+
+        System.Diagnostics.Activity[] mine = spans.Where(a => a.OperationName == "CreateProductCommand").ToArray();
+        Assert.True(mine.Length >= 2); // paralel çalışan diğer testler de aynı komutu gönderebilir
+        Assert.Contains(mine, a => (string?)a.GetTagItem("can.outcome") == "success");
+        Assert.Contains(mine, a => (string?)a.GetTagItem("can.outcome") == "exception" && a.Status == System.Diagnostics.ActivityStatusCode.Error);
+
+        Assert.Contains("can.request=CreateProductCommand,can.outcome=success", measurements);
+        Assert.Contains("can.request=CreateProductCommand,can.outcome=exception", measurements);
+    }
+
     // ---------------------------------------------------------------- doğrulama
 
     [Fact]

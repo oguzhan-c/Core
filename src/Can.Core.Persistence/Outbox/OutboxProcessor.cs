@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Can.Core.BackgroundJobs;
 using Can.Core.Domain.Events;
 using Can.Core.EventBus;
@@ -113,6 +114,13 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
             return false;
 
         OutboxMessage message = await messages.AsNoTracking().SingleAsync(m => m.Id == id, cancellationToken).ConfigureAwait(false);
+        string eventName = ShortTypeName(message.Type);
+
+        using Activity? activity = OutboxTelemetry.Source.StartActivity($"outbox {eventName}", ActivityKind.Producer);
+        activity?.SetTag("can.event", eventName);
+        activity?.SetTag("can.outbox.attempt", message.Attempts + 1);
+        if (message.TenantId is not null)
+            activity?.SetTag("can.tenant", message.TenantId);
 
         try
         {
@@ -120,6 +128,10 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            activity?.AddException(exception);
+            OutboxTelemetry.Messages.Add(1, new KeyValuePair<string, object?>("can.event", eventName), new KeyValuePair<string, object?>("can.outcome", "failed"));
+
             LogPublishFailed(exception, message.Id, message.Type, message.Attempts + 1);
             string error = exception.ToString();
             if (error.Length > MaxErrorLength)
@@ -137,6 +149,7 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
             return false;
         }
 
+        OutboxTelemetry.Messages.Add(1, new KeyValuePair<string, object?>("can.event", eventName), new KeyValuePair<string, object?>("can.outcome", "published"));
         DateTime processedAt = UtcNow();
         await messages
             .Where(m => m.Id == id)
@@ -193,6 +206,14 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
     }
 
     private DateTime UtcNow() => _timeProvider.GetUtcNow().UtcDateTime;
+
+    /// <summary><c>Namespace.Tip, Assembly</c> → <c>Tip</c> (etiketlerde kısa ad).</summary>
+    private static string ShortTypeName(string typeName)
+    {
+        string name = typeName.Split(',')[0];
+        int dot = name.LastIndexOf('.');
+        return dot < 0 ? name : name[(dot + 1)..];
+    }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Outbox mesajı {MessageId} ({EventType}) yayınlanamadı; deneme {Attempt}.")]
     private partial void LogPublishFailed(Exception exception, Guid messageId, string eventType, int attempt);

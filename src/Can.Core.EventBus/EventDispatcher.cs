@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Can.Core.Domain.Events;
 using Can.Core.Mediator;
@@ -37,15 +38,25 @@ public sealed partial class EventDispatcher
             return false;
         }
 
-        var integrationEvent = (IIntegrationEvent?)JsonSerializer.Deserialize(envelope.Payload, type, EventJson.Options)
-            ?? throw new InvalidOperationException($"'{envelope.EventName}' event'i okunamadı (boş içerik).");
+        using Activity? activity = EventBusTelemetry.StartProcess(envelope);
+        try
+        {
+            var integrationEvent = (IIntegrationEvent?)JsonSerializer.Deserialize(envelope.Payload, type, EventJson.Options)
+                ?? throw new InvalidOperationException($"'{envelope.EventName}' event'i okunamadı (boş içerik).");
 
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        IServiceProvider services = scope.ServiceProvider;
+            await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+            IServiceProvider services = scope.ServiceProvider;
 
-        await RestoreTenantAsync(services, envelope.TenantId, cancellationToken).ConfigureAwait(false);
-        await services.GetRequiredService<IPublisher>().Publish(integrationEvent, cancellationToken).ConfigureAwait(false);
-        return true;
+            await RestoreTenantAsync(services, envelope.TenantId, cancellationToken).ConfigureAwait(false);
+            await services.GetRequiredService<IPublisher>().Publish(integrationEvent, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            activity?.AddException(exception);
+            throw;
+        }
     }
 
     private static async Task RestoreTenantAsync(IServiceProvider services, string? tenantId, CancellationToken cancellationToken)

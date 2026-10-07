@@ -68,7 +68,10 @@ public sealed class MailKitEmailSender : IEmailSender
         _options = options;
     }
 
-    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) =>
+        MailingTelemetry.InstrumentAsync("smtp", message, () => SendCoreAsync(message, cancellationToken));
+
+    private async Task SendCoreAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
 
@@ -115,7 +118,10 @@ public sealed class PickupDirectoryEmailSender : IEmailSender
         _defaultFrom = defaultFrom;
     }
 
-    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) =>
+        MailingTelemetry.InstrumentAsync("pickup", message, () => SendCoreAsync(message, cancellationToken));
+
+    private async Task SendCoreAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
 

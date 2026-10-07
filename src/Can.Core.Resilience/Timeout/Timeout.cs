@@ -68,6 +68,7 @@ internal sealed class TimeoutStrategy<T>(TimeoutOptions options, TimeProvider ti
 
         if (timedOut && outcome.Exception is OperationCanceledException canceled)
         {
+            ResilienceTelemetry.Report("timeout", "timeout", context);
             if (options.OnTimeout is not null)
                 await options.OnTimeout(new OnTimeoutArguments(context, timeout)).ConfigureAwait(false);
 

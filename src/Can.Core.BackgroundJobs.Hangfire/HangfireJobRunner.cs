@@ -29,11 +29,12 @@ public sealed class HangfireJobRunner<TJob>
 
     /// <summary>İşi <paramref name="tenantId"/> adına çalıştırır.</summary>
     [JobDisplayName("{0} · tenant: {1}")]
-    public async Task RunAsync(string jobName, string? tenantId, CancellationToken cancellationToken)
-    {
-        await HangfireTenantScope.RestoreAsync(_services, tenantId, cancellationToken).ConfigureAwait(false);
-        await ActivatorUtilities.GetServiceOrCreateInstance<TJob>(_services).ExecuteAsync(cancellationToken).ConfigureAwait(false);
-    }
+    public Task RunAsync(string jobName, string? tenantId, CancellationToken cancellationToken) =>
+        BackgroundJobsTelemetry.RunAsync(jobName, tenantId, async () =>
+        {
+            await HangfireTenantScope.RestoreAsync(_services, tenantId, cancellationToken).ConfigureAwait(false);
+            await ActivatorUtilities.GetServiceOrCreateInstance<TJob>(_services).ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        });
 
     /// <summary>
     /// Her aktif tenant için ayrı bir iş kuyruğa atar. Böylece bir tenant'taki hata diğerlerini etkilemez ve
@@ -66,11 +67,12 @@ public sealed class HangfireJobRunner<TJob, TArgs>
 
     /// <summary>İşi <paramref name="tenantId"/> adına, verilen argümanlarla çalıştırır.</summary>
     [JobDisplayName("{0} · tenant: {1}")]
-    public async Task RunAsync(string jobName, string? tenantId, TArgs args, CancellationToken cancellationToken)
-    {
-        await HangfireTenantScope.RestoreAsync(_services, tenantId, cancellationToken).ConfigureAwait(false);
-        await ActivatorUtilities.GetServiceOrCreateInstance<TJob>(_services).ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
-    }
+    public Task RunAsync(string jobName, string? tenantId, TArgs args, CancellationToken cancellationToken) =>
+        BackgroundJobsTelemetry.RunAsync(jobName, tenantId, async () =>
+        {
+            await HangfireTenantScope.RestoreAsync(_services, tenantId, cancellationToken).ConfigureAwait(false);
+            await ActivatorUtilities.GetServiceOrCreateInstance<TJob>(_services).ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
+        });
 }
 
 internal static class HangfireTenantScope

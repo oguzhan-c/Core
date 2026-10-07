@@ -47,6 +47,7 @@ internal sealed class RateLimiterStrategy<T>(RateLimiter limiter, RateLimiterStr
             if (!lease.IsAcquired)
             {
                 TimeSpan? retryAfter = lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan value) ? value : null;
+                ResilienceTelemetry.Report("rate_limiter", "rejected", context);
                 if (options.OnRejected is not null)
                     await options.OnRejected(new OnRateLimiterRejectedArguments(context, retryAfter)).ConfigureAwait(false);
 
