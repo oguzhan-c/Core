@@ -80,6 +80,38 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
 
     public ICollection<UserRole<TId>> UserRoles { get; protected set; } = [];
 
+    /// <summary>Bağlı dış hesaplar (Google, Microsoft, GitHub ...).</summary>
+    public ICollection<UserLogin<TId>> Logins { get; protected set; } = [];
+
+    /// <summary>Dış hesabı bağlar; sağlayıcıda zaten bir hesap bağlıysa <see langword="false"/> (önce kaldırılmalı).</summary>
+    public bool AddLogin(string loginProvider, string providerKey, string? providerDisplayName, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(loginProvider);
+        string provider = loginProvider.Trim().ToLowerInvariant();
+
+        if (Logins.Any(l => l.LoginProvider == provider))
+            return false;
+
+        Logins.Add(new UserLogin<TId>(Id, provider, providerKey, providerDisplayName, now));
+        RotateSecurityStamp();
+        return true;
+    }
+
+    /// <summary>Dış hesabın bağlantısını kaldırır.</summary>
+    public bool RemoveLogin(string loginProvider)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(loginProvider);
+        string provider = loginProvider.Trim().ToLowerInvariant();
+
+        UserLogin<TId>? login = Logins.FirstOrDefault(l => l.LoginProvider == provider);
+        if (login is null)
+            return false;
+
+        Logins.Remove(login);
+        RotateSecurityStamp();
+        return true;
+    }
+
     /// <summary>Rolden bağımsız, doğrudan verilen yetkiler.</summary>
     public ICollection<UserOperationClaim<TId>> OperationClaims { get; protected set; } = [];
 

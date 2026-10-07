@@ -30,7 +30,7 @@ public static class SecurityModelBuilderExtensions
     /// </example>
     /// <remarks>
     /// <para>
-    /// Yapılandırılan tablolar: Users, Roles, UserRoles, OperationClaims, RoleOperationClaims, UserOperationClaims,
+    /// Yapılandırılan tablolar: Users, Roles, UserRoles, UserLogins, OperationClaims, RoleOperationClaims, UserOperationClaims,
     /// RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys.
     /// </para>
     /// <para>
@@ -69,6 +69,20 @@ public static class SecurityModelBuilderExtensions
 
             b.HasMany(u => u.UserRoles).WithOne().HasForeignKey(ur => ur.UserId).OnDelete(DeleteBehavior.Cascade);
             b.HasMany(u => u.OperationClaims).WithOne().HasForeignKey(uc => uc.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(u => u.Logins).WithOne().HasForeignKey(l => l.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserLogin<TId>>(b =>
+        {
+            b.ToTable(Table("UserLogins"), options.Schema);
+            b.HasKey(l => l.Id);
+            b.Property(l => l.LoginProvider).HasMaxLength(UserLogin<TId>.ProviderMaxLength).IsRequired();
+            b.Property(l => l.ProviderKey).HasMaxLength(UserLogin<TId>.ProviderKeyMaxLength).IsRequired();
+            b.Property(l => l.ProviderDisplayName).HasMaxLength(128);
+            // Kullanıcılar tenant'a ait olabileceği için aynı dış hesap farklı tenant'larda farklı kullanıcılara bağlanabilir;
+            // tenant içindeki tekliği uygulama kontrol eder.
+            b.HasIndex(l => new { l.LoginProvider, l.ProviderKey });
+            b.HasIndex(l => new { l.UserId, l.LoginProvider }).IsUnique();
         });
 
         modelBuilder.Entity<Role<TId>>(b =>
