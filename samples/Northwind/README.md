@@ -104,6 +104,7 @@ Can.Core'dan kullanılanlar ve starter'daki örnekleri:
 | Arka plan işi | `ReorderReportJob`: her mağaza için günlük rapor; panelden `IBackgroundJobQueue` ile hemen çalıştırılabilir |
 | Yetkiler | Roller + ince taneli yetkiler: `orders.create`, `orders.cancel` (Sales), `orders.ship`, `products.stock` (Warehouse). Kargo/iptal/stok komutları ve panel düğmeleri yetkiye göre |
 | Hangfire | `Hangfire:Enabled=true` ise işler PostgreSQL'de (`hangfire` şeması) kalıcı kuyrukta; rapor cron ile (`Hangfire:ReorderReportCron`, UTC) her mağaza için ayrı iş olarak çalışır. Kapalıysa bellek içi kuyruk |
+| İzleme | `OpenTelemetry:Enabled=true` ise istekler, SQL (Npgsql), domain event'ler, outbox, işler, e-posta ve dış HTTP çağrıları tek iz olarak `docker compose up -d dashboard` → <http://localhost:18888> |
 | Önbellek | HybridCache; `Redis:ConnectionString` doluysa (ör. `localhost:6379`) Redis ikinci katman olur |
 | E-posta | `Mail:Provider`: `Pickup` (.eml klasörü), `Smtp` (MailKit) ya da `SendGrid` |
 | Outbox izleme | Panelde "Outbox & işler": bekleyen/yayınlanan/hatalı mesajlar, yeniden deneme |

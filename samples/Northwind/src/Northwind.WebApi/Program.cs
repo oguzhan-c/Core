@@ -5,6 +5,7 @@ using Can.Core.Caching.Redis;
 using Can.Core.Logging.Serilog;
 using Can.Core.Mailing.MailKit;
 using Can.Core.Mailing.SendGrid;
+using Can.Core.Observability.OpenTelemetry;
 using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
@@ -27,6 +28,20 @@ builder.AddCanSerilog(o =>
     o.ApplicationName = "Northwind";
     o.FilePath = builder.Configuration["Logs:FilePath"];
 });
+
+// İz ve metrikler (OTLP): docker compose up -d dashboard → http://localhost:18888
+if (config.GetValue("OpenTelemetry:Enabled", false))
+{
+    builder.Services.AddCanOpenTelemetry(o =>
+    {
+        o.ServiceName = "northwind";
+        o.ServiceVersion = typeof(Program).Assembly.GetName().Version?.ToString();
+        if (config["OpenTelemetry:Endpoint"] is { Length: > 0 } endpoint)
+            o.OtlpEndpoint = new Uri(endpoint);
+        o.AdditionalSources.Add("Npgsql"); // SQL komutları span olarak
+        o.AdditionalMeters.Add("Npgsql");
+    });
+}
 
 builder.Services.AddNorthwindInfrastructure(config);
 builder.Services.AddNorthwindApplication(o => config.GetSection("Notifications").Bind(o));

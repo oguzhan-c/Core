@@ -19,5 +19,15 @@ services:
     ports:
       - "6379:6379"
 
+  # İz/metrik görüntüleyici (OTLP alıcısı 4317, arayüz http://localhost:18888): appsettings'te OpenTelemetry:Enabled = true
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    container_name: northwind-can-dashboard
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "18888:18888"
+      - "4317:18889"
+
 volumes:
   northwind-can-data:
