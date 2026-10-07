@@ -23,6 +23,8 @@ export default defineConfig({
       "/hangfire": backend,
       // SignalR: WebSocket bağlantısı da aktarılsın
       "/hubs": { target: backend, ws: true },
+      // Dış giriş dönüşü (/signin-google ...). Host başlığı korunur: sağlayıcıya verilen dönüş adresi 5173 olur.
+      "/signin-": backend,
     },
   },
   build: {

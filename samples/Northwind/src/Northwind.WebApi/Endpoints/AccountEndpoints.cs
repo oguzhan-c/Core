@@ -46,6 +46,11 @@ internal static class AccountEndpoints
                 sender.Send(new DisableTwoFactorCommand(body.Password), ct).ToHttpResult())
             .WithSummary("İki adımlı doğrulamayı kapatır (şifre gerekir).");
 
+        // Dış hesap bağlamak sağlayıcıya yönlendirme gerektirir: GET /api/auth/external/{provider}/link
+        group.MapDelete("/external-logins/{provider}", (string provider, ISender sender, CancellationToken ct) =>
+                sender.Send(new UnlinkExternalLoginCommand(provider), ct).ToHttpResult())
+            .WithSummary("Bağlı dış hesabı (Google, Microsoft, GitHub) kaldırır; hesaba girmenin tek yolu buysa kaldırılmaz.");
+
         // ---------------------------------------------------------------- passkey'ler
 
         if (app.ServiceProvider.GetService<IPasskeyService>() is null)

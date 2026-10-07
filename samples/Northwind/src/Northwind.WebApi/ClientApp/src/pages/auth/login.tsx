@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { ArrowLeftIcon, FingerprintIcon, LogInIcon, ShieldCheckIcon } from "lucide-react";
+import { ArrowLeftIcon, ExternalLinkIcon, FingerprintIcon, LogInIcon, ShieldCheckIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field } from "@/components/common/field";
@@ -10,12 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { errorMessage, isApiError } from "@/lib/api";
 import { staffRoles, useAuth } from "@/lib/auth";
+import { externalErrorMessage, externalLoginUrl } from "@/lib/external-login";
 import { useStore } from "@/lib/store";
 import type { TwoFactorPrompt, UserProfile } from "@/lib/types";
 import { passkeyErrorMessage, passkeysSupported } from "@/lib/webauthn";
 import { AuthCard } from "@/pages/auth/auth-card";
 import { TenantSelect } from "@/pages/auth/tenant-select";
-import { useGetAuthFeaturesQuery } from "@/services/auth";
+import { useGetAuthFeaturesQuery, useGetExternalProvidersQuery } from "@/services/auth";
 
 const demoAccounts = [
   { email: "admin", role: "Yönetici — her şey" },
@@ -33,12 +34,24 @@ export function LoginPage() {
   const [tenant, setTenantValue] = useState(storeTenant);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // Dış sağlayıcıdan dönüşte sunucu hata kodunu ya da ikinci adım bilgisini adrese ekler.
+  const [error, setError] = useState<string | null>(() => externalErrorMessage(params.get("externalError")));
   const [pending, setPending] = useState(false);
-  const [twoFactor, setTwoFactor] = useState<TwoFactorPrompt | null>(null);
+  const [twoFactor, setTwoFactor] = useState<TwoFactorPrompt | null>(() => {
+    const method = params.get("twoFactor");
+    return method === "Email" || method === "Otp" ? { method, destination: params.get("destination") } : null;
+  });
 
   const features = useGetAuthFeaturesQuery();
   const canUsePasskey = !!features.data?.passkeys && passkeysSupported();
+  const externalProviders = useGetExternalProvidersQuery().data ?? [];
+
+  function signInWith(provider: string) {
+    // Tam sayfa yönlendirme: sağlayıcıya gidilir, dönüşte oturum cookie'leri yazılmış olur.
+    setTenant(tenant);
+    setPending(true);
+    window.location.assign(externalLoginUrl(provider, tenant, params.get("returnUrl")));
+  }
 
   function finish(user: UserProfile) {
     setTenant(tenant);
@@ -151,18 +164,23 @@ export function LoginPage() {
         <Button type="submit" disabled={pending}>
           <LogInIcon /> Giriş yap
         </Button>
-        {canUsePasskey && (
-          <>
-            <div className="text-muted-foreground flex items-center gap-3 text-xs">
-              <span className="bg-border h-px flex-1" />
-              veya
-              <span className="bg-border h-px flex-1" />
-            </div>
-            <Button type="button" variant="outline" disabled={pending} onClick={signInWithPasskey}>
-              <FingerprintIcon /> Passkey ile giriş yap
-            </Button>
-          </>
+        {(canUsePasskey || externalProviders.length > 0) && (
+          <div className="text-muted-foreground flex items-center gap-3 text-xs">
+            <span className="bg-border h-px flex-1" />
+            veya
+            <span className="bg-border h-px flex-1" />
+          </div>
         )}
+        {canUsePasskey && (
+          <Button type="button" variant="outline" disabled={pending} onClick={signInWithPasskey}>
+            <FingerprintIcon /> Passkey ile giriş yap
+          </Button>
+        )}
+        {externalProviders.map((p) => (
+          <Button key={p.name} type="button" variant="outline" disabled={pending || !tenant} onClick={() => signInWith(p.name)}>
+            <ExternalLinkIcon /> {p.displayName} ile giriş yap
+          </Button>
+        ))}
         <p className="text-muted-foreground text-center text-sm">
           Hesabın yok mu?{" "}
           <Link to="/register" className="text-primary hover:underline">

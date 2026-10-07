@@ -57,6 +57,18 @@ export interface AuthFeatures {
   passkeys: boolean;
 }
 
+/** Sunucuda ayarlı dış giriş sağlayıcısı (Google, Microsoft, GitHub). */
+export interface ExternalProvider {
+  name: string;
+  displayName: string;
+}
+
+export interface ExternalLoginInfo {
+  provider: string;
+  displayName?: string | null;
+  createdAt: string;
+}
+
 export interface PasskeyInfo {
   id: string;
   name: string;
@@ -68,9 +80,11 @@ export interface PasskeyInfo {
 export interface AccountSecurity {
   email: string;
   emailConfirmed: boolean;
+  hasPassword: boolean;
   twoFactor: TwoFactorMethod;
   passkeysEnabled: boolean;
   passkeys: PasskeyInfo[];
+  externalLogins: ExternalLoginInfo[];
 }
 
 export interface OtpSetup {

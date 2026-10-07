@@ -24,7 +24,7 @@ o zaman her şey tek adresten (<http://localhost:5180>) çalışır. `dotnet pub
 | Adres | |
 |---|---|
 | `/` | Mağaza: katalog, sepet, kayıt + e-posta doğrulama, siparişlerim |
-| `/account/security` | Hesap güvenliği: iki adımlı doğrulama (authenticator / e-posta), passkey'ler |
+| `/account/security` | Hesap güvenliği: iki adımlı doğrulama (authenticator / e-posta), passkey'ler, bağlı hesaplar |
 | `/admin` | Yönetim paneli (Admin/Sales/Warehouse) |
 | `/dev/mailbox` | Geliştirme posta kutusu: doğrulama kodları ve bildirimler |
 | `/swagger`, `/scalar` | API belgesi (yalnızca Development) |
@@ -158,6 +158,38 @@ Passkey'de her akış iki adımdır (`/options` → tamamla). Challenge sunucu �
 yalnızca rastgele anahtarı HttpOnly cookie ile verilir ve bir kez kullanılabilir. Passkey ile girişte kullanıcı adı
 sorulmaz; passkey'in sahibi seçilen mağazada değilse giriş reddedilir. Ayarlar `Security:Passkey` (`ServerDomain`,
 `Origins`); bölüm yoksa passkey endpoint'leri açılmaz. Tarayıcılar http'yi yalnızca `localhost` için kabul eder.
+
+## Google / Microsoft / GitHub ile giriş
+
+Anahtar girilen sağlayıcının düğmesi giriş sayfasında görünür (hiçbiri yoksa düğme de yok). Anahtarlar user-secrets'ta:
+
+```bash
+cd samples/Northwind/src/Northwind.WebApi
+dotnet user-secrets set "Security:External:Google:ClientId" "....apps.googleusercontent.com"
+dotnet user-secrets set "Security:External:Google:ClientSecret" "GOCSPX-..."
+dotnet user-secrets set "Security:External:GitHub:ClientId" "Ov23li..."
+dotnet user-secrets set "Security:External:GitHub:ClientSecret" "..."
+dotnet user-secrets set "Security:External:Microsoft:ClientId" "<application (client) id>"
+dotnet user-secrets set "Security:External:Microsoft:ClientSecret" "..."
+```
+
+| Sağlayıcı | Nereden | Dönüş adresi (geliştirme) |
+|---|---|---|
+| Google | Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application) | `http://localhost:5173/signin-google` |
+| GitHub | GitHub → Settings → Developer settings → OAuth Apps → New OAuth App | `http://localhost:5173/signin-github` |
+| Microsoft | Azure portal → Microsoft Entra ID → App registrations → New registration (Web) | `http://localhost:5173/signin-microsoft` |
+
+`npm run dev` ile çalışırken dönüş adresi 5173'tür (Vite `/signin-*` isteklerini API'ye aktarır); yalnızca .NET
+uygulamasıyla çalışırken `http://localhost:5180/signin-...`. İkisini de kaydedebilirsin.
+
+Akış: giriş sayfasında mağaza seçilir → sağlayıcı → `/signin-google` → `/api/auth/external/callback`. Kullanıcı
+önce bağlı dış hesapla (sağlayıcının değişmez kimliği) aranır; yoksa sağlayıcı e-postayı **doğrulanmış** verdiyse
+aynı e-postalı hesaba bağlanır; o da yoksa şifresiz yeni müşteri hesabı açılır. Microsoft iş/okul hesaplarında
+e-postaya güvenilmediği için Microsoft ile yalnızca önceden bağlanmış hesaplar girebilir: şifrenle gir →
+**Hesap güvenliği → Bağlı hesaplar → Microsoft bağla**. İki adımlı doğrulama açıksa dış girişte de kod istenir.
+Hesaba girmenin tek yolu olan dış hesap kaldırılamaz (önce passkey ya da başka bir hesap bağla).
+
+Yeni tablo (`UserLogins`) için geliştirme veritabanını sıfırla: `docker compose down -v && docker compose up -d`.
 
 ## Üretim için
 

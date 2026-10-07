@@ -24,15 +24,24 @@ public sealed record PasskeyDto(Guid Id, string Name, DateTimeOffset CreatedAt, 
         new(passkey.Id, passkey.Name, passkey.CreatedAt, passkey.LastUsedAt, passkey.IsBackedUp);
 }
 
+/// <summary>Hesaba bağlı dış hesap (Google, Microsoft, GitHub ...).</summary>
+public sealed record ExternalLoginDto(string Provider, string? DisplayName, DateTimeOffset CreatedAt)
+{
+    public static ExternalLoginDto From(UserLogin<Guid> login) => new(login.LoginProvider, login.ProviderDisplayName, login.CreatedAt);
+}
+
 /// <summary>Hesap güvenliği sayfasının özeti.</summary>
+/// <param name="HasPassword">Şifresi var mı (dış sağlayıcıyla açılan hesapların şifresi olmayabilir).</param>
 /// <param name="TwoFactor">Girişte şifreden sonra istenen ikinci adım (<c>None</c>, <c>Email</c>, <c>Otp</c>).</param>
 /// <param name="PasskeysEnabled">Sunucuda passkey ayarlı mı (<c>Security:Passkey</c>).</param>
 public sealed record AccountSecurityDto(
     string Email,
     bool EmailConfirmed,
+    bool HasPassword,
     AuthenticatorType TwoFactor,
     bool PasskeysEnabled,
-    IReadOnlyList<PasskeyDto> Passkeys);
+    IReadOnlyList<PasskeyDto> Passkeys,
+    IReadOnlyList<ExternalLoginDto> ExternalLogins);
 
 /// <summary>Authenticator uygulamasına eklenecek bilgiler: QR kodu (<see cref="ProvisioningUri"/>) ya da elle girilecek anahtar.</summary>
 public sealed record OtpSetupDto(string Secret, string ProvisioningUri);
@@ -63,17 +72,20 @@ public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountS
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<AppUser, Guid> _users;
     private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+    private readonly IRepository<UserLogin<Guid>, Guid> _logins;
     private readonly IServiceProvider _services;
 
     public GetAccountSecurityQueryHandler(
         ICurrentUser currentUser,
         IRepository<AppUser, Guid> users,
         IRepository<UserPasskey<Guid>, Guid> passkeys,
+        IRepository<UserLogin<Guid>, Guid> logins,
         IServiceProvider services)
     {
         _currentUser = currentUser;
         _users = users;
         _passkeys = passkeys;
+        _logins = logins;
         _services = services;
     }
 
@@ -91,12 +103,20 @@ public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountS
             .OrderBy(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
 
+        List<UserLogin<Guid>> logins = await _logins
+            .Query(enableTracking: false)
+            .Where(l => l.UserId == user.Id)
+            .OrderBy(l => l.LoginProvider)
+            .ToListAsync(cancellationToken);
+
         return new AccountSecurityDto(
             user.Email,
             user.EmailConfirmed,
+            user.PasswordHash is not null,
             user.AuthenticatorType,
             _services.GetService<IPasskeyService>() is not null,
-            passkeys.Select(PasskeyDto.From).ToList()
+            passkeys.Select(PasskeyDto.From).ToList(),
+            logins.Select(ExternalLoginDto.From).ToList()
         );
     }
 }
@@ -481,4 +501,51 @@ public sealed class DeletePasskeyCommandHandler : IRequestHandler<DeletePasskeyC
                 _passkeys.Delete(passkey, permanent: true);
                 return Result.Success;
             });
+}
+
+// ---------------------------------------------------------------- dış hesaplar
+
+/// <summary>
+/// Bağlı dış hesabı kaldırır. Hesaba girmenin tek yolu buysa (şifre, passkey ya da başka dış hesap yok) kaldırılmaz.
+/// Bağlama, sağlayıcıya yönlendirme gerektirdiği için WebApi'deki <c>/api/auth/external/{provider}/link</c> ile yapılır.
+/// </summary>
+public sealed record UnlinkExternalLoginCommand(string Provider) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+
+public sealed class UnlinkExternalLoginCommandHandler : IRequestHandler<UnlinkExternalLoginCommand, Result<Success>>
+{
+    private readonly ICurrentUser _currentUser;
+    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+
+    public UnlinkExternalLoginCommandHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users, IRepository<UserPasskey<Guid>, Guid> passkeys)
+    {
+        _currentUser = currentUser;
+        _users = users;
+        _passkeys = passkeys;
+    }
+
+    public async Task<Result<Success>> Handle(UnlinkExternalLoginCommand request, CancellationToken cancellationToken)
+    {
+        Result<Guid> userId = AccountUsers.CurrentId(_currentUser);
+        if (userId.IsFailure)
+            return userId.Errors;
+
+        AppUser? user = await _users.GetAsync(u => u.Id == userId.Value, include: q => q.Include(u => u.Logins), cancellationToken: cancellationToken);
+        if (user is null)
+            return Error.Unauthorized();
+
+        string provider = request.Provider.Trim().ToLowerInvariant();
+        if (user.Logins.All(l => l.LoginProvider != provider))
+            return AuthErrors.ExternalLoginNotFound;
+
+        bool hasOtherWay =
+            user.PasswordHash is not null
+            || user.Logins.Count > 1
+            || await _passkeys.AnyAsync(p => p.UserId == user.Id, cancellationToken: cancellationToken);
+        if (!hasOtherWay)
+            return AuthErrors.LastSignInMethod;
+
+        user.RemoveLogin(provider);
+        return Result.Success;
+    }
 }
