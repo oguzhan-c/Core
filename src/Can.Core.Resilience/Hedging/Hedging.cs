@@ -118,9 +118,7 @@ internal sealed class HedgingStrategy<T>(HedgingOptions<T> options, TimeProvider
                 await options.OnHedging(new OnHedgingArguments(context, attempt)).ConfigureAwait(false);
 
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
-            var attemptContext = new ResilienceContext(cancellation.Token, context.OperationKey) { AttemptNumber = attempt };
-            foreach (KeyValuePair<string, object?> property in context.Properties)
-                attemptContext.Properties[property.Key] = property.Value;
+            ResilienceContext attemptContext = context.CloneForAttempt(cancellation.Token, attempt);
 
             Func<ValueTask<Outcome<T>>> action = attempt > 0 && options.ActionGenerator is not null
                 ? options.ActionGenerator(new HedgingActionArguments<T>(attemptContext, attempt, callback))
