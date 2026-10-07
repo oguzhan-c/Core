@@ -71,4 +71,46 @@ public class HealthAndRateLimitTests
         // Başka uç noktalar yalnızca genel sınıra tabi.
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/free")).StatusCode);
     }
+
+    [Fact]
+    public async Task Distributed_factory_replaces_in_memory_counters()
+    {
+        var factory = new CountingFactory();
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddCanWebApi();
+        builder.Services.AddCanRateLimiting(o => o.Auth = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(1) });
+        builder.Services.AddSingleton<IDistributedRateLimiterFactory>(factory);
+
+        await using WebApplication app = builder.Build();
+        app.UseCanExceptionHandler();
+        app.UseCanRateLimiting();
+        app.MapPost("/login", () => TypedResults.Ok()).RequireRateLimiting(CanRateLimitPolicies.Auth);
+        await app.StartAsync();
+        HttpClient client = app.GetTestClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/login", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.PostAsync("/login", null)).StatusCode);
+
+        // Hem genel hem giriş sınırı dağıtık sınırlayıcıdan geldi (sayaçlar sunucunun belleğinde değil).
+        Assert.Contains(factory.Keys, k => k.StartsWith("global:", StringComparison.Ordinal));
+        Assert.Contains(factory.Keys, k => k.StartsWith("auth:", StringComparison.Ordinal));
+    }
+
+    /// <summary>Dağıtık sınırlayıcı yerine: bölüm başına sabit pencere (yalnızca hangi anahtarların istendiğini görmek için).</summary>
+    private sealed class CountingFactory : IDistributedRateLimiterFactory
+    {
+        public System.Collections.Concurrent.ConcurrentBag<string> Keys { get; } = [];
+
+        public System.Threading.RateLimiting.RateLimiter Create(string partitionKey, RateLimitRule rule)
+        {
+            Keys.Add(partitionKey);
+            return new System.Threading.RateLimiting.FixedWindowRateLimiter(new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rule.PermitLimit,
+                Window = rule.Window,
+                QueueLimit = 0,
+            });
+        }
+    }
 }
