@@ -31,6 +31,17 @@ public sealed class RateLimitRule
     public int SegmentsPerWindow { get; set; } = 1;
 }
 
+/// <summary>
+/// Sınırları sunucular arasında paylaşan sınırlayıcı (ör. Redis: <c>Can.Core.Redis.ScaleOut</c>). Kayıtlıysa her bölüm
+/// için bu kullanılır; değilse sayaçlar sunucunun belleğindedir (her sunucu ayrı sayar).
+/// </summary>
+public interface IDistributedRateLimiterFactory
+{
+    /// <param name="partitionKey">Bölüm anahtarı (politika + kullanıcı/IP + tenant).</param>
+    /// <param name="rule">Sınır.</param>
+    RateLimiter Create(string partitionKey, RateLimitRule rule);
+}
+
 public sealed class CanRateLimitOptions
 {
     /// <summary>Tüm istekler için: kullanıcı (yoksa IP) + tenant başına.</summary>
@@ -89,6 +100,9 @@ public static class CanRateLimitingExtensions
     {
         string tenant = context.RequestServices.GetService<TenantContext>()?.TenantId ?? "-";
         string partitionKey = $"{key}:{tenant}";
+
+        if (context.RequestServices.GetService<IDistributedRateLimiterFactory>() is { } distributed)
+            return RateLimitPartition.Get(partitionKey, k => distributed.Create(k, rule));
 
         return rule.SegmentsPerWindow > 1
             ? RateLimitPartition.GetSlidingWindowLimiter(partitionKey, _ => new SlidingWindowRateLimiterOptions
