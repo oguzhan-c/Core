@@ -720,6 +720,10 @@ provider.GetPipeline("payments");
 services.AddHttpClient<PaymentClient>().AddCanStandardResilienceHandler(o => o.Retry.MaxRetryAttempts = 5);
 ```
 
+`tests/Can.Core.Resilience.Comparison.Tests` aynı senaryoları Polly ile de çalıştırıp davranışı karşılaştırır
+(deneme sayısı, bekleme süreleri, devre durum geçişleri, exception tipleri) ve kaba bir ek yük ölçümü yazar
+(`dotnet test --logger "console;verbosity=detailed"`). Polly yalnızca bu test projesindedir.
+
 Strateji sırası önemlidir: ilk eklenen en dıştadır. Timeout iyimserdir: iş, verilen `CancellationToken`'a uymalı.
 Retry'da HTTP isteği aynı nesneyle yeniden gönderilir; gövde tekrar okunabilir olmalı (`StringContent`, `JsonContent`).
 

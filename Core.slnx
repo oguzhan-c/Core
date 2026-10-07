@@ -42,6 +42,7 @@
     <Project Path="tests/Can.Core.FileStorage.Tests/Can.Core.FileStorage.Tests.csproj" />
     <Project Path="tests/Can.Core.Localization.Tests/Can.Core.Localization.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Tests/Can.Core.Resilience.Tests.csproj" />
+    <Project Path="tests/Can.Core.Resilience.Comparison.Tests/Can.Core.Resilience.Comparison.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
     <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />
