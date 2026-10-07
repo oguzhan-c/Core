@@ -7,12 +7,14 @@ using Can.Core.Mailing.MailKit;
 using Can.Core.Mailing.SendGrid;
 using Can.Core.Observability.OpenTelemetry;
 using Can.Core.Realtime.SignalR;
+using Can.Core.Redis.ScaleOut;
 using Can.Core.Search;
 using Can.Core.Search.Elasticsearch;
 using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
 using Can.Core.WebApi.ExternalLogin;
+using Can.Core.WebApi.RateLimiting;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Northwind.Application;
@@ -102,15 +104,30 @@ switch (mailProvider.ToUpperInvariant())
         break;
 }
 
-// Redis: bağlantı varsa HybridCache'in ikinci katmanı olur (birden fazla sunucu aynı önbelleği paylaşır).
-if (config["Redis:ConnectionString"] is { Length: > 0 } redis)
+// Redis: bağlantı varsa uygulama birden çok sunucuda çalışabilir:
+// önbellek ortak (HybridCache'in ikinci katmanı), Data Protection anahtarları ortak (2FA/OAuth/passkey çerezleri her
+// sunucuda çözülür), hız sınırları ortak sayılır, dağıtık kilit ve SignalR backplane (aşağıda).
+string? redis = config["Redis:ConnectionString"] is { Length: > 0 } value ? value : null;
+if (redis is not null)
 {
     builder.Services.AddCanRedisCache(o =>
     {
         o.ConnectionString = redis;
         o.InstanceName = "northwind:";
     });
+
+    builder.Services.AddCanRedisScaleOut(o =>
+        {
+            o.ConnectionString = redis;
+            o.ApplicationName = "northwind";
+        })
+        .PersistDataProtectionKeys()
+        .UseForRateLimiting()
+        .UseForDistributedLocks();
 }
+
+// Hız sınırı: genel (kullanıcı/IP başına) + giriş uç noktalarında sıkı sınır (kaba kuvvet denemelerine karşı).
+builder.Services.AddCanRateLimiting(o => config.GetSection("RateLimiting").Bind(o));
 
 // Arka plan işleri: Hangfire açıksa kalıcı kuyruk + cron + /hangfire dashboard; değilse bellek içi kuyruk.
 bool hangfireEnabled = config.GetValue("Hangfire:Enabled", false);
@@ -148,7 +165,9 @@ if (config["Search:Elasticsearch:Url"] is { Length: > 0 })
     builder.Services.AddCanSearch().UseElasticsearch(o => config.GetSection("Search:Elasticsearch").Bind(o));
 
 // Anlık bildirimler (SignalR): sipariş/stok olayları panel ve mağazaya gider. Kimlik cookie'deki JWT'den.
-builder.Services.AddCanSignalR();
+var signalR = builder.Services.AddCanSignalR();
+if (redis is not null)
+    signalR.AddCanRedisBackplane();
 
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -182,6 +201,7 @@ if (!app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseCanTenantResolution();
 app.UseCanLogEnrichment(); // loglara UserId / TenantId
+app.UseCanRateLimiting();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
