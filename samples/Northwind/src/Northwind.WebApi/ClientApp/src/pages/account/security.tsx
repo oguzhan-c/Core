@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { useSearchParams } from "react-router";
 import {
+  ExternalLinkIcon,
   FingerprintIcon,
   KeyRoundIcon,
+  LinkIcon,
   MailIcon,
   PencilIcon,
   PlusIcon,
@@ -25,7 +28,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { AccountSecurity, PasskeyInfo, TwoFactorMethod } from "@/lib/types";
+import { externalErrorMessage, externalLinkUrl } from "@/lib/external-login";
+import type { AccountSecurity, ExternalLoginInfo, PasskeyInfo, TwoFactorMethod } from "@/lib/types";
 import { createPasskey, passkeyErrorMessage, passkeysSupported } from "@/lib/webauthn";
 import {
   useAddPasskeyMutation,
@@ -37,7 +41,9 @@ import {
   useGetAccountSecurityQuery,
   usePasskeyRegistrationOptionsMutation,
   useRenamePasskeyMutation,
+  useUnlinkExternalLoginMutation,
 } from "@/services/account";
+import { useGetExternalProvidersQuery } from "@/services/auth";
 
 const methodLabels: Record<TwoFactorMethod, string> = {
   None: "Kapalı",
@@ -61,6 +67,7 @@ export function AccountSecurityPage() {
         <>
           <TwoFactorCard security={security.data} />
           <PasskeysCard security={security.data} />
+          <ExternalLoginsCard security={security.data} />
         </>
       )}
     </div>
@@ -543,5 +550,108 @@ function PasskeyNameDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- dış hesaplar
+
+/** Bağlı Google / Microsoft / GitHub hesapları. Bağlama sağlayıcıya tam sayfa yönlendirmedir. */
+function ExternalLoginsCard({ security }: { security: AccountSecurity }) {
+  const providers = useGetExternalProvidersQuery().data ?? [];
+  const [unlink] = useUnlinkExternalLoginMutation();
+  const [removing, setRemoving] = useState<ExternalLoginInfo | null>(null);
+  const [params, setParams] = useSearchParams();
+
+  // Sağlayıcıdan dönüş: ?externalLinked=google ya da ?externalError=kod
+  useEffect(() => {
+    const linked = params.get("externalLinked");
+    const error = params.get("externalError");
+    if (!linked && !error) return;
+    if (linked) toast.success(`${displayName(linked)} hesabın bağlandı.`, { id: "external-login" });
+    if (error) toast.error(externalErrorMessage(error), { id: "external-login" });
+    setParams({}, { replace: true });
+  }, [params, setParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function displayName(provider: string): string {
+    return (
+      providers.find((p) => p.name === provider)?.displayName ??
+      security.externalLogins.find((l) => l.provider === provider)?.displayName ??
+      provider
+    );
+  }
+
+  // Hesaba girmenin tek yolu buysa kaldırılamaz (sunucu da kontrol eder).
+  const onlyWay = !security.hasPassword && security.passkeys.length === 0 && security.externalLogins.length === 1;
+  const linkable = providers.filter((p) => !security.externalLogins.some((l) => l.provider === p.name));
+
+  async function remove(login: ExternalLoginInfo) {
+    try {
+      await unlink(login.provider).unwrap();
+      toast.success(`${displayName(login.provider)} bağlantısı kaldırıldı.`);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }
+
+  if (providers.length === 0 && security.externalLogins.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LinkIcon className="size-5" /> Bağlı hesaplar
+        </CardTitle>
+        <CardDescription>
+          Google, Microsoft ya da GitHub hesabınla şifresiz giriş yap. Sağlayıcının şifren ya da token'ı saklanmaz; yalnızca hesabın kimliği
+          kaydedilir.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {security.externalLogins.length === 0 ? (
+          <p className="text-muted-foreground text-sm">Henüz bağlı hesap yok.</p>
+        ) : (
+          <ul className="divide-y rounded-lg border">
+            {security.externalLogins.map((l) => (
+              <li key={l.provider} className="flex items-center gap-3 p-3">
+                <ExternalLinkIcon className="text-muted-foreground size-5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{displayName(l.provider)}</div>
+                  <div className="text-muted-foreground text-xs">Bağlandı: {formatDateTime(l.createdAt)}</div>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title={onlyWay ? "Hesabına girmenin tek yolu bu; önce passkey ya da başka bir hesap ekle." : "Bağlantıyı kaldır"}
+                  disabled={onlyWay}
+                  onClick={() => setRemoving(l)}
+                >
+                  <Trash2Icon />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {linkable.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {linkable.map((p) => (
+              <Button key={p.name} variant="outline" onClick={() => window.location.assign(externalLinkUrl(p.name, window.location.pathname))}>
+                <PlusIcon /> {p.displayName} bağla
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="Bağlantıyı kaldır"
+        description={`${removing ? displayName(removing.provider) : ""} hesabınla artık giriş yapılamaz. İstediğinde yeniden bağlayabilirsin.`}
+        confirmText="Kaldır"
+        destructive
+        onConfirm={() => (removing ? remove(removing) : undefined)}
+      />
+    </Card>
   );
 }

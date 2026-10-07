@@ -1,7 +1,7 @@
 import type { ThunkDispatch, UnknownAction } from "@reduxjs/toolkit";
 
 import { baseApi, isApiError, userScopedTags, type ApiError } from "@/lib/api";
-import type { AuthFeatures, LoginResponse, RegisterResult, UserProfile } from "@/lib/types";
+import type { AuthFeatures, ExternalProvider, LoginResponse, RegisterResult, UserProfile } from "@/lib/types";
 import type { RequestOptionsJson } from "@/lib/webauthn";
 
 export interface LoginRequest {
@@ -40,6 +40,11 @@ export const authApi = baseApi.injectEndpoints({
 
     getAuthFeatures: build.query<AuthFeatures, void>({
       query: () => "/api/auth/features",
+      keepUnusedDataFor: 3600,
+    }),
+
+    getExternalProviders: build.query<ExternalProvider[], void>({
+      query: () => "/api/auth/external/providers",
       keepUnusedDataFor: 3600,
     }),
 
@@ -120,6 +125,7 @@ async function signInWhenFulfilled(_arg: unknown, { dispatch, queryFulfilled }: 
 export const {
   useGetMeQuery,
   useGetAuthFeaturesQuery,
+  useGetExternalProvidersQuery,
   useLoginMutation,
   useCompleteTwoFactorMutation,
   useResendTwoFactorCodeMutation,

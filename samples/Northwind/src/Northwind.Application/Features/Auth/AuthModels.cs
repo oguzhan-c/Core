@@ -79,6 +79,10 @@ public static class AuthErrorCodes
     public const string InvalidTwoFactorCode = "invalid_two_factor_code";
     public const string TwoFactorExpired = "two_factor_expired";
     public const string PasskeyFailed = "passkey_failed";
+    public const string ExternalEmailNotVerified = "external_email_not_verified";
+    public const string ExternalAlreadyLinked = "external_already_linked";
+    public const string ExternalProviderLinked = "external_provider_linked";
+    public const string LastSignInMethod = "last_sign_in_method";
 }
 
 /// <summary>Kimlik doğrulama hataları. Kodlar istemciyle sözleşmedir (ProblemDetails <c>code</c>).</summary>
@@ -106,6 +110,24 @@ public static class AuthErrors
     public static readonly Error SessionExpired = Error.Unauthorized("session_expired", "Oturumun süresi doldu; tekrar giriş yap.");
 
     public static readonly Error EmailTaken = Error.Conflict("email_taken", "Bu e-posta adresiyle kayıtlı bir hesap var.");
+
+    public static readonly Error ExternalEmailNotVerified = Error.Forbidden(
+        AuthErrorCodes.ExternalEmailNotVerified,
+        "Sağlayıcı doğrulanmış bir e-posta vermedi. Şifrenle giriş yapıp hesabı Hesap güvenliği sayfasından bağlayabilirsin."
+    );
+
+    public static readonly Error ExternalAlreadyLinked =
+        Error.Conflict(AuthErrorCodes.ExternalAlreadyLinked, "Bu dış hesap bu mağazada başka bir kullanıcıya bağlı.");
+
+    public static readonly Error ExternalProviderLinked =
+        Error.Conflict(AuthErrorCodes.ExternalProviderLinked, "Bu sağlayıcıda zaten bağlı bir hesabın var; önce onu kaldır.");
+
+    public static readonly Error ExternalLoginNotFound = Error.NotFound("external_login.not_found", "Bağlı dış hesap bulunamadı.");
+
+    public static readonly Error LastSignInMethod = Error.Conflict(
+        AuthErrorCodes.LastSignInMethod,
+        "Bu, hesabına girmenin tek yolu. Kaldırmadan önce bir passkey ya da başka bir dış hesap ekle."
+    );
 }
 
 internal static class EmailMask

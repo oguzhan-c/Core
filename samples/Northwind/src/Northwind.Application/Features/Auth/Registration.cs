@@ -116,15 +116,22 @@ public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Re
         return new RegisterResult(user.Email, expiresAt);
     }
 
+    private Task<Result<string>> NewCustomerCodeAsync(string companyName, CancellationToken cancellationToken) =>
+        CustomerCodes.NewAsync(_customers, companyName, cancellationToken);
+}
+
+/// <summary>Müşteri kodu üretimi (siteden kayıt ve dış sağlayıcıyla ilk giriş).</summary>
+internal static class CustomerCodes
+{
     /// <summary>Firma adından 3 harf + 2 rakam (ör. "ACM07"); mağaza içinde benzersiz.</summary>
-    private async Task<Result<string>> NewCustomerCodeAsync(string companyName, CancellationToken cancellationToken)
+    public static async Task<Result<string>> NewAsync(IRepository<Customer, Guid> customers, string companyName, CancellationToken cancellationToken)
     {
         string letters = new string(companyName.ToUpperInvariant().Where(c => c is >= 'A' and <= 'Z').Take(3).ToArray()).PadRight(3, 'X');
 
         for (int attempt = 0; attempt < 20; attempt++)
         {
             string code = letters + RandomNumberGenerator.GetInt32(0, 100).ToString("00", System.Globalization.CultureInfo.InvariantCulture);
-            if (!await _customers.AnyAsync(c => c.Code == code, withDeleted: true, cancellationToken: cancellationToken))
+            if (!await customers.AnyAsync(c => c.Code == code, withDeleted: true, cancellationToken: cancellationToken))
                 return code;
         }
 

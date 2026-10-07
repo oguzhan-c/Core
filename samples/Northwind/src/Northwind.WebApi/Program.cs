@@ -10,6 +10,7 @@ using Can.Core.Realtime.SignalR;
 using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
+using Can.Core.WebApi.ExternalLogin;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Northwind.Application;
@@ -62,6 +63,13 @@ builder.Services.AddCanSecurity(o =>
 builder.Services.AddCanWebApi();
 builder.Services.AddCanJwtAuthentication(o => config.GetSection("Security:Cookies").Bind(o));
 builder.Services.AddAuthorization();
+
+// Google / Microsoft / GitHub ile giriş. Anahtarı boş olan sağlayıcı açılmaz; anahtarlar user-secrets'ta:
+// dotnet user-secrets set "Security:External:Google:ClientId" "..." (ClientSecret de aynı şekilde)
+builder.Services.AddCanExternalLogin(o => o
+    .AddGoogle(config["Security:External:Google:ClientId"] ?? "", config["Security:External:Google:ClientSecret"] ?? "")
+    .AddMicrosoft(config["Security:External:Microsoft:ClientId"] ?? "", config["Security:External:Microsoft:ClientSecret"] ?? "")
+    .AddGitHub(config["Security:External:GitHub:ClientId"] ?? "", config["Security:External:GitHub:ClientSecret"] ?? ""));
 
 // İki adımlı girişte bekleyen giriş şifreli cookie'de; passkey challenge'ları sunucu önbelleğinde.
 builder.Services.AddDataProtection();

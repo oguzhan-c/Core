@@ -44,6 +44,11 @@ export const accountApi = baseApi.injectEndpoints({
       invalidatesTags: ["Security"],
     }),
 
+    unlinkExternalLogin: build.mutation<void, string>({
+      query: (provider) => ({ url: `/api/account/external-logins/${encodeURIComponent(provider)}`, method: "DELETE" }),
+      invalidatesTags: ["Security"],
+    }),
+
     deletePasskey: build.mutation<void, string>({
       query: (id) => ({ url: `/api/account/passkeys/${id}`, method: "DELETE" }),
       invalidatesTags: ["Security"],
@@ -61,4 +66,5 @@ export const {
   useAddPasskeyMutation,
   useRenamePasskeyMutation,
   useDeletePasskeyMutation,
+  useUnlinkExternalLoginMutation,
 } = accountApi;

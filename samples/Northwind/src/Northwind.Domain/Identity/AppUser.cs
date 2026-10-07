@@ -50,6 +50,24 @@ public sealed class AppUser : User<Guid>, IMultiTenant<Guid>
         return user;
     }
 
+    /// <summary>
+    /// Dış sağlayıcıyla (Google, GitHub ...) ilk girişte oluşturulan kullanıcı: şifresi yoktur, e-postası sağlayıcı
+    /// tarafından doğrulanmıştır. Sonradan şifre ya da passkey eklenebilir.
+    /// </summary>
+    public static Result<AppUser> RegisterExternal(string email, string firstName, string lastName)
+    {
+        Result<Success> valid = Result.Validate(
+            Check.Required(firstName, "Ad", NameMaxLength),
+            Check.Required(lastName, "Soyad", NameMaxLength)
+        );
+        if (valid.IsFailure)
+            return valid.Errors;
+
+        var user = new AppUser(email, firstName, lastName);
+        user.ConfirmEmail();
+        return user;
+    }
+
     public void AddRole(Role<Guid> role)
     {
         ArgumentNullException.ThrowIfNull(role);
