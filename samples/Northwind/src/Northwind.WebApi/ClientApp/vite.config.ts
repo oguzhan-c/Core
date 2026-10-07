@@ -21,6 +21,8 @@ export default defineConfig({
       "/swagger": backend,
       "/scalar": backend,
       "/hangfire": backend,
+      // SignalR: WebSocket bağlantısı da aktarılsın
+      "/hubs": { target: backend, ws: true },
     },
   },
   build: {
