@@ -23,6 +23,8 @@
     <Project Path="src/Can.Core.Realtime/Can.Core.Realtime.csproj" />
     <Project Path="src/Can.Core.Realtime.SignalR/Can.Core.Realtime.SignalR.csproj" />
     <Project Path="src/Can.Core.Reporting/Can.Core.Reporting.csproj" />
+    <Project Path="src/Can.Core.Reporting.EntityFrameworkCore/Can.Core.Reporting.EntityFrameworkCore.csproj" />
+    <Project Path="src/Can.Core.Reporting.AspNetCore/Can.Core.Reporting.AspNetCore.csproj" />
     <Project Path="src/Can.Core.Search/Can.Core.Search.csproj" />
     <Project Path="src/Can.Core.Search.Elasticsearch/Can.Core.Search.Elasticsearch.csproj" />
     <Project Path="src/Can.Core.Resilience/Can.Core.Resilience.csproj" />
@@ -53,6 +55,7 @@
     <Project Path="tests/Can.Core.Observability.Tests/Can.Core.Observability.Tests.csproj" />
     <Project Path="tests/Can.Core.Realtime.Tests/Can.Core.Realtime.Tests.csproj" />
     <Project Path="tests/Can.Core.Reporting.Tests/Can.Core.Reporting.Tests.csproj" />
+    <Project Path="tests/Can.Core.Reporting.AspNetCore.Tests/Can.Core.Reporting.AspNetCore.Tests.csproj" />
     <Project Path="tests/Can.Core.Search.Tests/Can.Core.Search.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Tests/Can.Core.Resilience.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Comparison.Tests/Can.Core.Resilience.Comparison.Tests.csproj" />

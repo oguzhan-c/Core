@@ -23,6 +23,9 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
 | `Can.Core.Search` | yok | `ISearchIndex<T>`: tam metin arama, filtre, sıralama, vurgulama, toplama, tenant yalıtımı; bellek içi motor |
 | `Can.Core.Search.Elasticsearch` | Extensions.Http | Elasticsearch / OpenSearch motoru; resmî istemci yerine HttpClient + Query DSL |
+| `Can.Core.Reporting` | DI.Abstractions | Pivot rapor motoru: satır/sütun gruplama, ara/genel toplam, 14 özet (ortanca, yüzdelik, std. sapma ...), yüzde/kümülatif/fark/sıra gösterimleri, Top N + "Diğer", ifade dili, veritabanında GROUP BY, CSV/Excel/PDF (paketsiz) |
+| `Can.Core.Reporting.EntityFrameworkCore` | EF Core | Kaydedilmiş raporlar tablosu ve deposu: `ApplyCanReportingModel()`, `UseEntityFrameworkStore<TContext>()` |
+| `Can.Core.Reporting.AspNetCore` | ASP.NET Core | `MapCanReporting()`: kaynaklar, çalıştır, dışa aktar, kayıtlı raporlar; yetki ve tenant denetimi |
 | `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
 | `Can.Core.Realtime` | yok | `IRealtimeNotifier`: kullanıcıya / role / tenant'a / gruba anlık mesaj (Application katmanı kullanır) |
 | `Can.Core.Realtime.SignalR` | ASP.NET Core | Bildirimleri SignalR ile ileten hub; bağlantılar tenant/kullanıcı/rol gruplarına otomatik girer |
@@ -878,6 +881,87 @@ ile de çalışsın diye).
 
 Gerçek sunucuya karşı entegrasyon testi:
 `CAN_ELASTICSEARCH_URL=http://localhost:9200 dotnet test --project tests/Can.Core.Search.Tests`.
+
+## Raporlama
+
+Son kullanıcının kendi raporunu kurduğu pivot raporlama (DevExpress PivotGrid / Excel PivotTable benzeri). Üç .NET
+paketi ve bir React paketi: motor (`Can.Core.Reporting`), kaydedilmiş raporlar (`.EntityFrameworkCore`), HTTP uçları
+(`.AspNetCore`) ve arayüz (`clients/reporting-react`, npm adı `@can-core/reporting-react`). Dış paket yok: Excel
+(OpenXML) ve PDF dosyaları elle yazılır.
+
+```csharp
+// veri kaynakları: herhangi bir IQueryable (EF sorgusu: tenant filtresi kendiliğinden uygulanır)
+builder.Services.AddCanReporting()
+    .AddSource("sales", sp => sp.GetRequiredService<AppDbContext>().SalesRows, o =>
+    {
+        o.Caption = "Satışlar";
+        o.Permission = "reports.sales";          // yetkisi olmayan kaynağı göremez/çalıştıramaz (Admin hepsini)
+        o.Field("lineTotal", "Tutar", "N2").Hide("tenantId");
+    })
+    .UseEntityFrameworkStore<AppDbContext>();     // kayıtlı raporlar; DbContext'te modelBuilder.ApplyCanReportingModel()
+
+app.MapCanReporting("/api/reporting", o => o.AdminRole = "Admin");
+```
+
+Kod içinden (arka plan işi, e-posta eki):
+
+```csharp
+ReportResult result = await reports.RunAsync(new ReportDefinition
+{
+    DataSource = "sales",
+    CalculatedFields = { new("margin", "[lineTotal] - [cost]") },
+    Filters = { ReportFilter.Between("orderDate", new DateTime(2025, 1, 1), new DateTime(2025, 12, 31)) },
+    Rows = { new ReportDimension("category"), new ReportDimension("product") { Top = 5, Sort = DimensionSort.MeasureDescending, SortByMeasure = "revenue" } },
+    Columns = { new ReportDimension("orderDate") { DateGrouping = DateGrouping.Quarter } },
+    Measures =
+    {
+        new ReportMeasure("lineTotal", ReportAggregate.Sum) { Name = "revenue", Caption = "Ciro", Format = "N2" },
+        new ReportMeasure("lineTotal", ReportAggregate.Sum) { Name = "share", Display = MeasureDisplay.PercentOfColumnTotal },
+    },
+}, ct);
+byte[] xlsx = ReportExporter.Export(result, ReportExportFormat.Xlsx, new() { Title = "Çeyreklik satış" });
+```
+
+| Uç | |
+|---|---|
+| `GET /sources`, `GET /sources/{name}` | Kullanıcının erişebildiği kaynaklar ve alanları (ad, başlık, tip, biçim) |
+| `POST /run` | `ReportDefinition` → `ReportResult` (satır/sütun başlıkları, değerler, `mode`: `database`/`memory`) |
+| `POST /export` | `{ definition, format: Xlsx/Pdf/Csv, title, subtitle, pdfPageSize }` → dosya |
+| `GET/POST /saved`, `GET/PUT/DELETE /saved/{id}` | Kayıtlı raporlar: kendi raporların + tenant'ta paylaşılanlar; değiştirme/silme sahibe (paylaşılanı Admin de silebilir) |
+
+Hatalar ProblemDetails: 400 `report.invalid` (ifade hatası, bilinmeyen alan ...), 403 `report.forbidden`, 404
+`report.not_found`. Başka tenant'ın ya da başkasının paylaşılmamış raporu 404 döner (varlığı bile sızmaz).
+Seçenekler: `Permission` (raporlamaya genel yetki), `SharePermission` (paylaşma yetkisi), `MaxSavedReportsPerUser`.
+
+**Nasıl hesaplanır.** DevExpress'in pivot motoru incelenerek aynı iş akışı kuruldu: alanlar dört bölgeye (filtre,
+satır, sütun, değer) yerleşir; önce filtreler, sonra gruplama ve özet, en sonda gösterim dönüşümleri (yüzde, kümülatif,
+sıra) ve Top N uygulanır.
+
+- *Veritabanı modu* (DevExpress "Server Mode"): filtreler WHERE'e, tarih aralıkları ve hesaplanmış alanlar SQL
+  ifadelerine, gruplar GROUP BY'a çevrilir; her grup için yalnızca n, Σx, Σx², min, max gelir. Ara ve genel toplamlar
+  bu kısmi özetlerin birleştirilmesiyle bulunur (varyans dahil; Chan'in birleştirme formülü). Milyonlarca satır
+  belleğe hiç gelmez.
+- *Bellek modu*: ortanca, yüzdelik, farklı değer sayısı, ISO hafta gibi SQL'e çevrilemeyen tanımlar kendiliğinden
+  satırları okuyup tek geçişte hesaplar. Her satır, satır yolunun ve sütun yolunun tüm öneklerine eklenir; ara toplamlar
+  ham veriden gelir (ortalama ortalamaların ortalaması değildir). Varyans Welford ile sayısal olarak kararlıdır.
+- İki modun sonucu aynıdır; hangisinin kullanıldığı `result.Mode`'da.
+
+**Arayüz.** `clients/reporting-react` her React projesinde kullanılır; bağımlılığı yalnızca React:
+
+```tsx
+import { createReportingClient, ReportDesigner } from "@can-core/reporting-react";
+import "@can-core/reporting-react/styles.css";
+
+const client = createReportingClient({ baseUrl: "/api/reporting" }); // bileşen dışında bir kez
+<ReportDesigner client={client} locale="tr-TR" onNotify={(m, kind) => toast[kind](m)} />
+```
+
+Sürükle-bırak tasarımcı (alan listesi, dört bölge, öğe ayarları, hesaplanmış alan), ara toplamlı ve daraltılabilir
+tablo, SVG grafikler (sütun, çizgi, pasta), Excel/PDF/CSV, kaydet/paylaş. `PivotTable` ve `ReportChart` tek başına da
+kullanılır (ör. panoda kayıtlı bir raporun sonucu). Metinler `labels` ile çevrilir; renkler `--cr-*` CSS
+değişkenleriyle uygulamanın temasına bağlanır (örnek: Northwind `index.css`). Kurulum: uygulamanın `package.json`'ına
+`"@can-core/reporting-react": "file:<yol>/clients/reporting-react"` ve `.npmrc`'ye `install-links=true` (paket kopya
+olarak kurulur, React tek kopya kalır). Paket değişince `npm install @can-core/reporting-react`.
 
 ## Dosya depolama
 
