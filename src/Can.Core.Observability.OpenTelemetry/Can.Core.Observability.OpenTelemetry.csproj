@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Observability.OpenTelemetry</RootNamespace>
+    <Description>Can.Core paketlerinin ve .NET'in yerleşik telemetrisini (ASP.NET Core, HttpClient, runtime) OpenTelemetry ile OTLP üzerinden dışa aktarır (Grafana, Jaeger, Seq, Aspire Dashboard, Datadog ...).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+  </ItemGroup>
+
+</Project>
