@@ -31,11 +31,21 @@ internal sealed class TimeoutStrategy<T>(TimeoutOptions options, TimeProvider ti
             return await InvokeAsync(callback, context).ConfigureAwait(false);
 
         CancellationToken outer = context.CancellationToken;
-        using var timeoutSource = new CancellationTokenSource(timeout, timeProvider);
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(outer, timeoutSource.Token);
 
-        context.CancellationToken = linked.Token;
+        // Sistem saatinde CancellationTokenSource havuzdan alınır ve dış token'a kayıtla bağlanır (bellek ayırmadan);
+        // sahte saatte (testler) TimeProvider'lı kaynak kullanılır.
+        bool pooled = timeProvider == TimeProvider.System;
+        CancellationTokenSource source = pooled ? CancellationTokenSourcePool.Rent() : new CancellationTokenSource(timeout, timeProvider);
+        if (pooled)
+            source.CancelAfter(timeout);
+
+        CancellationTokenRegistration registration = outer.CanBeCanceled
+            ? outer.UnsafeRegister(static state => ((CancellationTokenSource)state!).Cancel(), source)
+            : default;
+
+        context.CancellationToken = source.Token;
         Outcome<T> outcome;
+        bool timedOut;
         try
         {
             outcome = await InvokeAsync(callback, context).ConfigureAwait(false);
@@ -43,9 +53,15 @@ internal sealed class TimeoutStrategy<T>(TimeoutOptions options, TimeProvider ti
         finally
         {
             context.CancellationToken = outer;
+            await registration.DisposeAsync().ConfigureAwait(false);
+            timedOut = source.IsCancellationRequested && !outer.IsCancellationRequested;
+            if (pooled)
+                CancellationTokenSourcePool.Return(source);
+            else
+                source.Dispose();
         }
 
-        if (timeoutSource.IsCancellationRequested && !outer.IsCancellationRequested && outcome.Exception is OperationCanceledException canceled)
+        if (timedOut && outcome.Exception is OperationCanceledException canceled)
         {
             if (options.OnTimeout is not null)
                 await options.OnTimeout(new OnTimeoutArguments(context, timeout)).ConfigureAwait(false);
