@@ -190,6 +190,41 @@ public sealed class SecurityModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task External_logins_round_trip_and_unlink_deletes_the_row()
+    {
+        var user = new AppUser("ada@test.local", "Ada Lovelace");
+        string stamp = user.SecurityStamp;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        Assert.True(user.AddLogin("Google", "g-123", "Google", now));
+        Assert.False(user.AddLogin("google", "g-456", "Google", now)); // sağlayıcı başına tek hesap
+        Assert.True(user.AddLogin("github", "42", "GitHub", now));
+        Assert.NotEqual(stamp, user.SecurityStamp); // bağlama eski oturumları geçersiz kılabilsin
+
+        await using (AuthDbContext db = Create())
+        {
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        await using (AuthDbContext db = Create())
+        {
+            AppUser found = await db.Users.Include(u => u.Logins).SingleAsync(u => u.Logins.Any(l => l.LoginProvider == "google" && l.ProviderKey == "g-123"));
+            Assert.Equal(user.Id, found.Id);
+            Assert.Equal(new[] { "github", "google" }, found.Logins.Select(l => l.LoginProvider).Order().ToArray());
+
+            Assert.True(found.RemoveLogin("GOOGLE"));
+            Assert.False(found.RemoveLogin("google"));
+            await db.SaveChangesAsync();
+        }
+
+        await using (AuthDbContext db = Create())
+        {
+            Assert.Equal(1, await db.Set<UserLogin<Guid>>().CountAsync());
+        }
+    }
+
+    [Fact]
     public void Table_prefix_and_schema_are_applied()
     {
         using var db = new PrefixedAuthDbContext(new DbContextOptionsBuilder<PrefixedAuthDbContext>().UseSqlite(_connection).Options);
