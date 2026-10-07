@@ -2,10 +2,12 @@ using Can.Core.Application.DependencyInjection;
 using Can.Core.BackgroundJobs;
 using Can.Core.Mapping.DependencyInjection;
 using Can.Core.Realtime;
+using Can.Core.Search;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Northwind.Application.Common;
 using Northwind.Application.Features.Auth;
+using Northwind.Application.Features.Products;
 using Northwind.Domain.Identity;
 
 namespace Northwind.Application;
@@ -36,6 +38,10 @@ public static class DependencyInjection
         services.AddScoped<Features.Orders.OrderPlacer>();
         services.AddScoped<Features.Orders.OrderDetails>();
         services.AddScoped<Features.Store.CurrentCustomer>();
+
+        // Ürün araması: motor verilmezse bellek içi (WebApi Elasticsearch'ü seçebilir: Search:Elasticsearch:Url).
+        services.AddCanSearch().AddProductSearchIndex();
+        services.AddScoped<Features.Products.ProductSearchIndexer>();
         return services;
     }
 }

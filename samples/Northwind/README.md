@@ -191,6 +191,21 @@ Hesaba girmenin tek yolu olan dış hesap kaldırılamaz (önce passkey ya da ba
 
 Yeni tablo (`UserLogins`) için geliştirme veritabanını sıfırla: `docker compose down -v && docker compose up -d`.
 
+## Ürün araması
+
+Mağaza sitesindeki arama kutusu arama dizinini kullanır: yazım hatası toleransı (`cikolata` → Çikolata), yazarken
+arama (`çik`), ad + kategori + tedarikçi + birimde arama. Varsayılan bellek içi motordur; Elasticsearch ile:
+
+```bash
+docker compose up -d elasticsearch     # http://localhost:9200 (yalnızca geliştirme: güvenlik kapalı)
+```
+
+sonra `appsettings.Development.json` → `"Search": { "Elasticsearch": { "Url": "http://localhost:9200" } }`.
+Açılışta dizin oluşturulur ve ürünler yeniden yüklenir (`Search:ReindexOnStartup`). Ürün eklenince, adı/fiyatı
+değişince, satıştan kaldırılınca ya da silinince `ProductCatalogChanged` event'i dizini günceller. Elle yeniden
+kurmak için (Admin): `POST /api/admin/search/products/reindex`. Arama sonuçlarının stok ve fiyatı veritabanından
+taze okunur.
+
 ## Üretim için
 
 - `Security:Jwt:SigningKey` (en az 32 karakter) ve `ConnectionStrings:Northwind`'i ortam değişkeni ya da gizli

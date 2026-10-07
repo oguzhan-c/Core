@@ -7,6 +7,8 @@ using Can.Core.Mailing.MailKit;
 using Can.Core.Mailing.SendGrid;
 using Can.Core.Observability.OpenTelemetry;
 using Can.Core.Realtime.SignalR;
+using Can.Core.Search;
+using Can.Core.Search.Elasticsearch;
 using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
@@ -140,6 +142,11 @@ else
     });
 }
 
+// Ürün araması: Search:Elasticsearch:Url verilirse Elasticsearch, yoksa bellek içi motor (AddNorthwindApplication kurar).
+// docker compose up -d elasticsearch → "Search:Elasticsearch:Url": "http://localhost:9200"
+if (config["Search:Elasticsearch:Url"] is { Length: > 0 })
+    builder.Services.AddCanSearch().UseElasticsearch(o => config.GetSection("Search:Elasticsearch").Bind(o));
+
 // Anlık bildirimler (SignalR): sipariş/stok olayları panel ve mağazaya gider. Kimlik cookie'deki JWT'den.
 builder.Services.AddCanSignalR();
 
@@ -150,8 +157,15 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 
 WebApplication app = builder.Build();
 
+// Arama dizinleri veriden ÖNCE eşlemesiyle kurulur (yoksa ilk yazma dizini tahmini eşlemeyle açar).
+// Arama motoruna ulaşılamazsa uygulama yine açılır; yalnızca arama çalışmaz.
+bool searchReady = await TryAsync(() => app.Services.EnsureCanSearchIndexesAsync());
+
 if (config.GetValue("Database:InitializeOnStartup", true))
     await app.Services.InitializeNorthwindDatabaseAsync();
+
+if (searchReady && config.GetValue("Search:ReindexOnStartup", true))
+    await TryAsync(() => app.Services.ReindexProductSearchAsync());
 
 // İstek özeti en dışta: hata işleyicinin verdiği gerçek durum kodunu (401, 404 ...) loglar.
 app.UseCanRequestLogging();
@@ -190,6 +204,20 @@ if (hangfireEnabled)
 app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
+
+async Task<bool> TryAsync(Func<Task> action)
+{
+    try
+    {
+        await action();
+        return true;
+    }
+    catch (SearchException ex)
+    {
+        app.Logger.LogWarning(ex, "Arama dizini kurulamadı; ürün araması çalışmayabilir.");
+        return false;
+    }
+}
 
 /// <summary>Entegrasyon testleri için (<c>WebApplicationFactory&lt;Program&gt;</c>).</summary>
 public partial class Program;

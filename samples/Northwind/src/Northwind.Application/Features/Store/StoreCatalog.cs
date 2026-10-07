@@ -3,9 +3,11 @@ using Can.Core.Mediator;
 using Can.Core.MultiTenancy;
 using Can.Core.Persistence.Paging;
 using Can.Core.Persistence.Repositories;
+using Can.Core.Search;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Northwind.Application.Common;
+using Northwind.Application.Features.Products;
 using Northwind.Domain.Catalog;
 
 namespace Northwind.Application.Features.Store;
@@ -54,6 +56,11 @@ public sealed class GetStoreProductsQueryValidator : AbstractValidator<GetStoreP
         RuleFor(q => q.Tenant).NotEmpty().MaximumLength(64);
         RuleFor(q => q.Page).ValidPage();
         RuleFor(q => q.Search).MaximumLength(100);
+        RuleFor(q => (q.Page.Index + 1L) * q.Page.Size)
+            .LessThanOrEqualTo(SearchQuery.MaxResultWindow)
+            .When(q => !string.IsNullOrWhiteSpace(q.Search))
+            .OverridePropertyName("Page")
+            .WithMessage($"Aramada en fazla ilk {SearchQuery.MaxResultWindow} sonuca gidilebilir; aramayı daralt.");
     }
 }
 
@@ -68,19 +75,22 @@ public sealed class StoreCatalogHandlers
     private readonly IRepository<Product, Guid> _products;
     private readonly IRepository<Category, Guid> _categories;
     private readonly IRepository<Supplier, Guid> _suppliers;
+    private readonly ISearchIndex<ProductSearchDocument> _search;
 
     public StoreCatalogHandlers(
         ITenantStore tenantStore,
         StoreTenant storeTenant,
         IRepository<Product, Guid> products,
         IRepository<Category, Guid> categories,
-        IRepository<Supplier, Guid> suppliers)
+        IRepository<Supplier, Guid> suppliers,
+        ISearchIndex<ProductSearchDocument> search)
     {
         _tenantStore = tenantStore;
         _storeTenant = storeTenant;
         _products = products;
         _categories = categories;
         _suppliers = suppliers;
+        _search = search;
     }
 
     public async Task<Result<IReadOnlyList<StoreTenantDto>>> Handle(GetStoreTenantsQuery request, CancellationToken cancellationToken) =>
@@ -114,16 +124,14 @@ public sealed class StoreCatalogHandlers
         if (store.IsFailure)
             return store.Errors;
 
+        // Metin varsa arama dizini: yazım hatası toleransı, Türkçe kökler, ad + kategori + tedarikçi + birim.
+        if (!string.IsNullOrWhiteSpace(request.Search))
+            return Result.Ok(await SearchAsync(request, cancellationToken));
+
         IQueryable<Product> query = OnSale();
 
         if (request.CategoryId is { } categoryId)
             query = query.Where(p => p.CategoryId == categoryId);
-
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            string pattern = $"%{request.Search.Trim().ToUpperInvariant()}%";
-            query = query.Where(p => EF.Functions.Like(p.Name.ToUpper(), pattern));
-        }
 
         query = request.Sort switch
         {
@@ -142,6 +150,35 @@ public sealed class StoreCatalogHandlers
             return store.Errors;
 
         return await Project(OnSale().Where(p => p.Id == request.Id)).FirstOrDefaultAsync(cancellationToken).ToResult(ProductErrors.NotFound(request.Id));
+    }
+
+    private async Task<IPaginate<StoreProductDto>> SearchAsync(GetStoreProductsQuery request, CancellationToken cancellationToken)
+    {
+        var query = new SearchQuery
+        {
+            Text = request.Search,
+            Fields = { "name^3", "categoryName^2", "supplierName", "quantityPerUnit" },
+            Prefix = true, // yazarken: "çik" → "çikolata"
+            Filters = { SearchFilter.Equal("discontinued", false) },
+            Page = request.Page.Index,
+            Size = request.Page.Size,
+        };
+        if (request.CategoryId is { } categoryId)
+            query.Filters.Add(SearchFilter.Equal("categoryId", categoryId.ToString()));
+        if (request.Sort == StoreProductSort.PriceAsc)
+            query.Sort.Add(SearchSort.Asc("unitPrice"));
+        else if (request.Sort == StoreProductSort.PriceDesc)
+            query.Sort.Add(SearchSort.Desc("unitPrice"));
+        // StoreProductSort.Name: metin aramasında alaka sırası daha anlamlı
+
+        SearchResult<ProductSearchDocument> result = await _search.SearchAsync(query, cancellationToken);
+
+        // Stok ve fiyat dizinde eski kalmış olabilir: ürünler veritabanından taze okunur, arama sırası korunur.
+        Guid[] ids = result.Documents.Select(d => Guid.Parse(d.Id)).ToArray();
+        Dictionary<Guid, StoreProductDto> products = await Project(OnSale().Where(p => ids.Contains(p.Id))).ToDictionaryAsync(p => p.Id, cancellationToken);
+        StoreProductDto[] items = ids.Where(products.ContainsKey).Select(id => products[id]).ToArray();
+
+        return new Paginate<StoreProductDto>(items, request.Page.Index, request.Page.Size, (int)Math.Min(result.Total, int.MaxValue));
     }
 
     private IQueryable<Product> OnSale() => _products.Query(enableTracking: false).Where(p => !p.IsDiscontinued);

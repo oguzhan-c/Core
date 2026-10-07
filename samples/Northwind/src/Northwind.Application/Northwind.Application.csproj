@@ -7,6 +7,7 @@
     <ProjectReference Include="..\..\..\..\src\Can.Core.Persistence\Can.Core.Persistence.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Mailing\Can.Core.Mailing.csproj" />
     <ProjectReference Include="..\..\..\..\src\Can.Core.Realtime\Can.Core.Realtime.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Can.Core.Search\Can.Core.Search.csproj" />
   </ItemGroup>
 
   <ItemGroup>

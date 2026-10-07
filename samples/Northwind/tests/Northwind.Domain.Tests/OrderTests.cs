@@ -11,8 +11,12 @@ public class OrderTests
     private static readonly DateTimeOffset Now = new(2026, 10, 5, 12, 0, 0, TimeSpan.Zero);
     private static readonly Address Address = Address.Create("Obere Str. 57", "Berlin", null, "12209", "Germany").Value;
 
-    private static Product Chai(int stock = 10, int reorderLevel = 2) =>
-        Product.Create("Chai", null, null, "10 boxes x 20 bags", 18m, stock, reorderLevel).Value;
+    private static Product Chai(int stock = 10, int reorderLevel = 2)
+    {
+        Product product = Product.Create("Chai", null, null, "10 boxes x 20 bags", 18m, stock, reorderLevel).Value;
+        product.ClearDomainEvents(); // oluşturma event'i (ProductCatalogChanged) bu testlerin konusu değil
+        return product;
+    }
 
     private static Order NewOrder() => Order.Place(10249, Guid.NewGuid(), null, "Alfreds Futterkiste", Address, null, 5m, Now).Value;
 
@@ -120,12 +124,13 @@ public class CatalogTests
     public void Price_change_raises_event_only_when_price_changes()
     {
         Product product = Product.Create("Chang", null, null, null, 19m, 17, 25).Value;
+        product.ClearDomainEvents();
 
         product.ChangePrice(19m);
         Assert.Empty(product.DomainEvents);
 
         product.ChangePrice(21.5m);
-        var changed = Assert.IsType<ProductPriceChanged>(Assert.Single(product.DomainEvents));
+        var changed = Assert.Single(product.DomainEvents.OfType<ProductPriceChanged>());
         Assert.Equal((19m, 21.5m), (changed.OldPrice, changed.NewPrice));
 
         Assert.Equal("not_negative", product.ChangePrice(-1m).FirstError.Code);
@@ -141,7 +146,26 @@ public class CatalogTests
         product.Discontinue();
 
         Assert.True(product.IsDiscontinued);
-        Assert.IsType<ProductDiscontinued>(Assert.Single(product.DomainEvents));
+        Assert.Single(product.DomainEvents.OfType<ProductDiscontinued>());
+    }
+
+    [Fact]
+    public void Catalog_changes_are_announced_for_the_search_index()
+    {
+        Product product = Product.Create("Chang", null, null, null, 19m, 17, 25).Value;
+        Assert.IsType<ProductCatalogChanged>(Assert.Single(product.DomainEvents)); // oluşturma
+        product.ClearDomainEvents();
+
+        product.Restock(5);
+        Assert.Empty(product.DomainEvents); // stok katalog bilgisi değil
+
+        product.UpdateDetails("Chang Birası", null, null, null, 25);
+        product.ChangePrice(20m);
+        product.Discontinue();
+        product.Remove();
+
+        Assert.Equal(4, product.DomainEvents.OfType<ProductCatalogChanged>().Count());
+        Assert.All(product.DomainEvents.OfType<ProductCatalogChanged>(), e => Assert.Equal(product.Id, e.ProductId));
     }
 
     [Fact]

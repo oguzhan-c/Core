@@ -2,6 +2,7 @@ using Can.Core.Mediator;
 using Can.Core.WebApi;
 using MimeKit;
 using Northwind.Application.Features.Admin;
+using Northwind.Application.Features.Products;
 
 namespace Northwind.WebApi.Endpoints;
 
@@ -37,6 +38,10 @@ internal static class AdminEndpoints
                 return await sender.Send(new RunReorderReportCommand(), ct).ToHttpResult(_ => TypedResults.Accepted((string?)null));
             })
             .WithSummary("Yeniden sipariş raporunu arka planda hemen çalıştırır.");
+
+        admin.MapPost("/search/products/reindex", async (ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ReindexProductSearchCommand(), ct)).ToHttpResult(count => TypedResults.Ok(new { indexed = count })))
+            .WithSummary("Mağazanın ürün arama dizinini veritabanından yeniden kurar.");
     }
 
     /// <summary>
