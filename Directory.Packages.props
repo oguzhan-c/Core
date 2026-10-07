@@ -45,6 +45,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
     <!-- xUnit v3: test projeleri kendi kendini çalıştıran exe'lerdir; Microsoft Testing Platform (global.json) ile çalışır -->
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
     <PackageVersion Include="Hangfire.InMemory" Version="1.0.0" />
