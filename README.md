@@ -21,6 +21,8 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
 | `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
 | `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
+| `Can.Core.Realtime` | yok | `IRealtimeNotifier`: kullanıcıya / role / tenant'a / gruba anlık mesaj (Application katmanı kullanır) |
+| `Can.Core.Realtime.SignalR` | ASP.NET Core | Bildirimleri SignalR ile ileten hub; bağlantılar tenant/kullanıcı/rol gruplarına otomatik girer |
 | `Can.Core.Resilience` | Threading.RateLimiting | Retry, circuit breaker, timeout, rate limiter/bulkhead, fallback, hedging pipeline'ları (Polly'siz) |
 | `Can.Core.Resilience.Http` | Extensions.Http | `AddCanStandardResilienceHandler()`: HttpClient için hazır dayanıklılık |
 | `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
@@ -692,6 +694,38 @@ Uri? link = await storage.GetTemporaryUrlAsync(path, TimeSpan.FromMinutes(10), c
 - S3: AWS SDK yok; `HttpClient` + Signature V4. MinIO/R2 için `ForcePathStyle = true` (varsayılan), R2'de
   `Region = "auto"`. `Overwrite = false` iken `If-None-Match: *` ile yazar. Gövde imzalanmaz (`UNSIGNED-PAYLOAD`,
   HTTPS gerekir); anahtarlar user-secrets'ta.
+
+## Anlık bildirim (SignalR)
+
+```csharp
+builder.Services.AddCanSignalR();            // SignalR ASP.NET Core'un içinde: ek paket yok
+app.UseAuthentication();
+app.MapCanRealtimeHub();                     // /hubs/notifications, yalnızca giriş yapmış kullanıcılar
+
+// Application katmanı yalnızca soyutlamayı bilir (Can.Core.Realtime)
+public sealed class NotifyWarehouse(IRealtimeNotifier realtime) : INotificationHandler<OrderPlaced>
+{
+    public Task Handle(OrderPlaced e, CancellationToken ct) =>
+        realtime.SendToRoleAsync("Warehouse", new RealtimeMessage("order.placed", new { e.OrderId }), ct);
+}
+```
+
+```ts
+// istemci (npm i @microsoft/signalr): kimlik HttpOnly cookie'deki JWT ile gider
+const connection = new HubConnectionBuilder().withUrl("/hubs/notifications").withAutomaticReconnect().build();
+connection.on("notify", (m) => { /* m.type, m.data, m.createdAt */ });
+await connection.start();
+```
+
+- Bağlantı açılınca kullanıcı otomatik olarak gruplara girer: tenant'ı, kendisi ve her rolü. Tüm grup adları tenant
+  ile başlar; bir mağazanın bildirimi başka mağazaya gitmez (aynı kullanıcı id'si başka tenant'ta olsa bile).
+- `SendToUserAsync` / `SendToRoleAsync` / `SendToTenantAsync` / `SendToGroupAsync` her zaman AKTİF tenant'a gider;
+  arka plan işlerinde ve outbox handler'larında tenant zaten işin tenant'ıdır.
+- Özel gruplar (`order:42`): istemci `invoke("Subscribe", "order:42")` ile katılmak ister; izin
+  `IRealtimeSubscriptionAuthorizer`'dadır (varsayılan: hiçbiri).
+- SignalR kurulu değilse `IRealtimeNotifier` hiçbir şey yapmaz (`AddCanRealtimeDefaults`); Application kodu her ortamda çalışır.
+- Mesaj taşıyıcıdır, depolama değil: istemci bağlı değilse kaybolur. Birden fazla sunucuda backplane gerekir
+  (`Microsoft.AspNetCore.SignalR.StackExchangeRedis` ile `AddCanSignalR().AddStackExchangeRedis(...)`).
 
 ## Dayanıklılık (resilience)
 
