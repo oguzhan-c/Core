@@ -160,10 +160,16 @@ internal sealed class CircuitBreakerStrategy<TResult, TOptions>(CircuitControlle
     {
         Exception? rejection = controller.BeforeExecute(out bool halfOpened);
         if (rejection is not null)
+        {
+            ResilienceTelemetry.Report("circuit_breaker", "rejected", context);
             return Outcome.FromException<TResult>(rejection);
+        }
 
         if (halfOpened)
+        {
+            ResilienceTelemetry.Report("circuit_breaker", "half_opened", context);
             await controller.OnHalfOpenedAsync(context).ConfigureAwait(false);
+        }
 
         Outcome<TResult> outcome = await callback(context).ConfigureAwait(false);
 
@@ -311,6 +317,7 @@ internal sealed class CircuitController<TOptions> : ICircuitController
 
         _state = CircuitState.Open;
         _blockedUntil = now + duration;
+        ResilienceTelemetry.Report("circuit_breaker", "opened", context);
         _lastException = outcome.Exception;
         ResetBuckets();
 
@@ -327,6 +334,9 @@ internal sealed class CircuitController<TOptions> : ICircuitController
         _halfOpenAttempts = 0;
         _lastException = null;
         ResetBuckets();
+
+        if (!wasClosed)
+            ResilienceTelemetry.Report("circuit_breaker", "closed", context);
 
         if (wasClosed || context is null || _options.OnClosed is not { } onClosed)
             return null;

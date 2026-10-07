@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Can.Core.Mediator.Internal;
 
 namespace Can.Core.Mediator;
@@ -118,9 +119,31 @@ public class Mediator : IMediator
         foreach (NotificationHandlerWrapper wrapper in wrappers)
             wrapper.CollectExecutors(_serviceProvider, executors);
 
-        return executors.Count == 0
-            ? Task.CompletedTask
+        if (executors.Count == 0)
+            return Task.CompletedTask;
+
+        return MediatorTelemetry.Source.HasListeners()
+            ? PublishWithActivityAsync(executors, notification, cancellationToken)
             : _publisher.Publish(executors, notification, cancellationToken);
+    }
+
+    // Ayrı async metot: span (Activity.Current) çağırana sızmasın.
+    private async Task PublishWithActivityAsync(List<NotificationHandlerExecutor> executors, object notification, CancellationToken cancellationToken)
+    {
+        using Activity? activity = MediatorTelemetry.Source.StartActivity($"publish {notification.GetType().Name}");
+        activity?.SetTag("can.event", notification.GetType().Name);
+        activity?.SetTag("can.handlers", executors.Count);
+
+        try
+        {
+            await _publisher.Publish(executors, notification, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            activity?.AddException(exception);
+            throw;
+        }
     }
 
     /// <summary>

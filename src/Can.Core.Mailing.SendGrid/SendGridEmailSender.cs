@@ -73,7 +73,10 @@ public sealed class SendGridEmailSender : IEmailSender
         _options = options;
     }
 
-    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) =>
+        MailingTelemetry.InstrumentAsync("sendgrid", message, () => SendCoreAsync(message, cancellationToken));
+
+    private async Task SendCoreAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
         message.Validate();

@@ -45,9 +45,12 @@ internal sealed partial class BackgroundJobWorker : BackgroundService
     {
         try
         {
-            await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-            JobTenantScope.Apply(scope.ServiceProvider, job.TenantId, job.Tenant);
-            await job.Execute(scope.ServiceProvider, stoppingToken).ConfigureAwait(false);
+            await BackgroundJobsTelemetry.RunAsync(job.Name, job.TenantId, async () =>
+            {
+                await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+                JobTenantScope.Apply(scope.ServiceProvider, job.TenantId, job.Tenant);
+                await job.Execute(scope.ServiceProvider, stoppingToken).ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

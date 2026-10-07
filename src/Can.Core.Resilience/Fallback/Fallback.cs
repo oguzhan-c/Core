@@ -30,6 +30,7 @@ internal sealed class FallbackStrategy<T>(FallbackOptions<T> options) : Resilien
         if (!options.ShouldHandle(outcome))
             return outcome;
 
+        ResilienceTelemetry.Report("fallback", "fallback", context);
         if (options.OnFallback is not null)
             await options.OnFallback(new OnFallbackArguments<T>(outcome, context)).ConfigureAwait(false);
 

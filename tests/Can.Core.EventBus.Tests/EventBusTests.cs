@@ -98,6 +98,44 @@ public class EventBusTests
     }
 
     [Fact]
+    public async Task Trace_context_flows_from_publisher_to_consumer()
+    {
+        var spans = new System.Collections.Concurrent.ConcurrentQueue<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = s => s.Name is EventBusTelemetry.Name or "test.parent",
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+                System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = spans.Enqueue,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+        using var parentSource = new System.Diagnostics.ActivitySource("test.parent");
+
+        var transport = new RecordingTransport();
+        await using ServiceProvider provider = Build(s => s.AddSingleton<IEventTransport>(transport));
+
+        System.Diagnostics.ActivityTraceId traceId;
+        using (System.Diagnostics.Activity parent = parentSource.StartActivity("istek")!)
+        {
+            traceId = parent.TraceId;
+            await using AsyncServiceScope scope = provider.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IEventBus>().PublishAsync(new OrderShipped(1, "a@test.local"));
+        }
+
+        EventEnvelope envelope = Assert.Single(transport.Sent);
+        Assert.Contains(traceId.ToHexString(), envelope.Headers[EventBusTelemetry.TraceParentHeader], StringComparison.Ordinal);
+
+        // Başka bir serviste (İz yok) işlenir: consumer span'ı aynı ize bağlanır.
+        System.Diagnostics.Activity.Current = null;
+        await provider.GetRequiredService<EventDispatcher>().DispatchAsync(envelope);
+
+        System.Diagnostics.Activity consumer = Assert.Single(spans, a => a.OperationName == "process sales.order-shipped");
+        Assert.Equal(traceId, consumer.TraceId);
+        Assert.Equal(System.Diagnostics.ActivityKind.Consumer, consumer.Kind);
+        Assert.Contains(spans, a => a.OperationName == "publish sales.order-shipped" && a.Kind == System.Diagnostics.ActivityKind.Producer);
+    }
+
+    [Fact]
     public async Task Unknown_events_are_skipped()
     {
         await using ServiceProvider provider = Build();

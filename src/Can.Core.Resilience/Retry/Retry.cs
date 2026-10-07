@@ -105,6 +105,7 @@ internal sealed class RetryStrategy<T>(RetryOptions<T> options, TimeProvider tim
 
             TimeSpan delay = options.DelayGenerator?.Invoke(new RetryDelayArguments<T>(outcome, context, attempt)) ?? CalculateDelay(attempt);
 
+            ResilienceTelemetry.Report("retry", "retry", context);
             if (options.OnRetry is not null)
                 await options.OnRetry(new OnRetryArguments<T>(outcome, context, attempt, delay)).ConfigureAwait(false);
 
