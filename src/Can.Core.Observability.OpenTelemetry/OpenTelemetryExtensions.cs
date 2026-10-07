@@ -17,6 +17,7 @@ public static class CanTelemetrySources
         "Can.Core.Persistence",     // outbox
         "Can.Core.EventBus",        // yayın / işleme (traceparent ile servisler arası)
         "Can.Core.Mailing",         // e-posta gönderimi
+        "Can.Core.Search",          // arama / dizinleme
     ];
 
     /// <summary>Metrik (Meter) adları.</summary>

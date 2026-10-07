@@ -21,6 +21,8 @@
     <Project Path="src/Can.Core.Observability.OpenTelemetry/Can.Core.Observability.OpenTelemetry.csproj" />
     <Project Path="src/Can.Core.Realtime/Can.Core.Realtime.csproj" />
     <Project Path="src/Can.Core.Realtime.SignalR/Can.Core.Realtime.SignalR.csproj" />
+    <Project Path="src/Can.Core.Search/Can.Core.Search.csproj" />
+    <Project Path="src/Can.Core.Search.Elasticsearch/Can.Core.Search.Elasticsearch.csproj" />
     <Project Path="src/Can.Core.Resilience/Can.Core.Resilience.csproj" />
     <Project Path="src/Can.Core.Resilience.Http/Can.Core.Resilience.Http.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
@@ -46,6 +48,7 @@
     <Project Path="tests/Can.Core.Localization.Tests/Can.Core.Localization.Tests.csproj" />
     <Project Path="tests/Can.Core.Observability.Tests/Can.Core.Observability.Tests.csproj" />
     <Project Path="tests/Can.Core.Realtime.Tests/Can.Core.Realtime.Tests.csproj" />
+    <Project Path="tests/Can.Core.Search.Tests/Can.Core.Search.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Tests/Can.Core.Resilience.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Comparison.Tests/Can.Core.Resilience.Comparison.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />

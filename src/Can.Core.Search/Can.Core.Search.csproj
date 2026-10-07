@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Search</RootNamespace>
+    <Description>Tam metin arama soyutlaması (ISearchIndex): sorgu, filtre, sıralama, vurgulama, toplama ve tenant yalıtımı. Bellek içi motor dahil; Elasticsearch/OpenSearch ayrı paket (Can.Core.Search.Elasticsearch).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Search.Elasticsearch" />
+    <InternalsVisibleTo Include="Can.Core.Search.Tests" />
+  </ItemGroup>
+
+</Project>
