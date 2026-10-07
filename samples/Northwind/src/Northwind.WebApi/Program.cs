@@ -6,6 +6,7 @@ using Can.Core.Logging.Serilog;
 using Can.Core.Mailing.MailKit;
 using Can.Core.Mailing.SendGrid;
 using Can.Core.Observability.OpenTelemetry;
+using Can.Core.Realtime.SignalR;
 using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
@@ -131,6 +132,9 @@ else
     });
 }
 
+// Anlık bildirimler (SignalR): sipariş/stok olayları panel ve mağazaya gider. Kimlik cookie'deki JWT'den.
+builder.Services.AddCanSignalR();
+
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -169,6 +173,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapNorthwindEndpoints(); // /api/...
+app.MapCanRealtimeHub("/hubs/notifications");
 
 if (hangfireEnabled)
     app.MapCanHangfireDashboard("/hangfire", Northwind.Domain.Identity.Roles.Admin); // yalnızca yöneticiler; tüm tenant'ların işlerini gösterir

@@ -1,6 +1,7 @@
 using Can.Core.Application.DependencyInjection;
 using Can.Core.BackgroundJobs;
 using Can.Core.Mapping.DependencyInjection;
+using Can.Core.Realtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Northwind.Application.Common;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddCanApplication(o => o.AdminRole = Roles.Admin, assembly);
         services.AddCanMapping(assembly);
         services.AddCanBackgroundJobs(assembly);
+        services.AddCanRealtimeDefaults(); // WebApi SignalR'ı kurar; diğer ortamlarda bildirim gönderilmez
 
         var options = new NotificationOptions();
         notifications?.Invoke(options);
