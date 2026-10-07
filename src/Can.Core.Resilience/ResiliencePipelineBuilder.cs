@@ -6,7 +6,7 @@ namespace Can.Core.Resilience;
 public abstract class ResiliencePipelineBuilderBase<TSelf, T>
     where TSelf : ResiliencePipelineBuilderBase<TSelf, T>
 {
-    private readonly List<Func<TimeProvider, ResilienceStrategy<T>>> _factories = [];
+    private readonly List<Func<TimeProvider, IStrategyFactory>> _factories = [];
 
     /// <summary>Beklemeler ve süreler için saat (testlerde sahte saat verilebilir).</summary>
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
@@ -18,22 +18,21 @@ public abstract class ResiliencePipelineBuilderBase<TSelf, T>
     public TSelf AddStrategy(Func<TimeProvider, ResilienceStrategy<T>> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
-        _factories.Add(factory);
-        return (TSelf)this;
+        return AddFactory(time => new CustomStrategyFactory<T>(factory(time)));
     }
 
     public TSelf AddRetry(RetryOptions<T> options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return AddStrategy(time => new RetryStrategy<T>(options, time));
+        return AddFactory(time => new RetryStrategyFactory<T>(options, time));
     }
 
     public TSelf AddCircuitBreaker(CircuitBreakerOptions<T> options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return AddStrategy(time => new CircuitBreakerStrategy<T>(options, time));
+        return AddFactory(time => new CircuitBreakerStrategyFactory<T>(options, time));
     }
 
     public TSelf AddTimeout(TimeSpan timeout) => AddTimeout(new TimeoutOptions { Timeout = timeout });
@@ -42,7 +41,7 @@ public abstract class ResiliencePipelineBuilderBase<TSelf, T>
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return AddStrategy(time => new TimeoutStrategy<T>(options, time));
+        return AddFactory(time => new TimeoutStrategyFactory(options, time));
     }
 
     /// <summary>Bulkhead: aynı anda en fazla <paramref name="permitLimit"/> iş, <paramref name="queueLimit"/> kadarı sıra bekler.</summary>
@@ -54,7 +53,7 @@ public abstract class ResiliencePipelineBuilderBase<TSelf, T>
     public TSelf AddRateLimiter(RateLimiterStrategyOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return AddStrategy(_ =>
+        return AddFactory(_ =>
         {
             RateLimiter limiter = options.RateLimiter ?? new ConcurrencyLimiter(
                 new ConcurrencyLimiterOptions
@@ -64,11 +63,18 @@ public abstract class ResiliencePipelineBuilderBase<TSelf, T>
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 }
             );
-            return new RateLimiterStrategy<T>(limiter, options);
+            return new RateLimiterStrategyFactory(limiter, options);
         });
     }
 
-    private protected IEnumerable<ResilienceStrategy<T>> CreateStrategies() => _factories.Select(f => f(TimeProvider)).ToArray();
+    private protected TSelf AddFactory(Func<TimeProvider, IStrategyFactory> factory)
+    {
+        _factories.Add(factory);
+        return (TSelf)this;
+    }
+
+    /// <summary>Fabrikaları (ve durumlu stratejilerin ortak durumunu) bir kez oluşturur.</summary>
+    private protected IStrategyFactory[] CreateFactories() => _factories.Select(f => f(TimeProvider)).ToArray();
 }
 
 /// <summary>
@@ -95,18 +101,18 @@ public sealed class ResiliencePipelineBuilder<T> : ResiliencePipelineBuilderBase
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return AddStrategy(_ => new FallbackStrategy<T>(options));
+        return AddFactory(_ => new TypedStrategyFactory<T>(new FallbackStrategy<T>(options)));
     }
 
     public ResiliencePipelineBuilder<T> AddHedging(HedgingOptions<T> options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return AddStrategy(time => new HedgingStrategy<T>(options, time));
+        return AddFactory(time => new TypedStrategyFactory<T>(new HedgingStrategy<T>(options, time)));
     }
 
     /// <summary>Her çağrı yeni (durumu ayrı) bir pipeline üretir; durumlu stratejiler için tek örneği paylaş.</summary>
-    public ResiliencePipeline<T> Build() => new(CreateStrategies());
+    public ResiliencePipeline<T> Build() => new(CreateFactories().Select(f => f.Create<T>()));
 }
 
 /// <summary>Dönüş tipinden bağımsız (yalnızca exception'lara bakan) pipeline kurucusu.</summary>
@@ -122,5 +128,14 @@ public sealed class ResiliencePipelineBuilder<T> : ResiliencePipelineBuilderBase
 /// </example>
 public sealed class ResiliencePipelineBuilder : ResiliencePipelineBuilderBase<ResiliencePipelineBuilder, object?>
 {
-    public ResiliencePipeline Build() => new(new ResiliencePipeline<object?>(CreateStrategies()));
+    public ResiliencePipeline Build() => new(CreateFactories());
+}
+
+/// <summary>Yalnızca kendi tipinde çalışan strateji (fallback, hedging: tipli kurucuya özel).</summary>
+internal sealed class TypedStrategyFactory<T>(ResilienceStrategy<T> strategy) : StrategyFactory<T>
+{
+    protected override ResilienceStrategy<T> CreateNative() => strategy;
+
+    protected override ResilienceStrategy<TResult> CreateAdapted<TResult>() =>
+        throw new NotSupportedException($"{strategy.GetType().Name} yalnızca {typeof(T).Name} sonuçlarıyla kullanılabilir.");
 }

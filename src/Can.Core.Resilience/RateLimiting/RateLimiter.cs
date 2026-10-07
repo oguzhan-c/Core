@@ -22,6 +22,12 @@ public sealed class RateLimiterStrategyOptions
     public Func<OnRateLimiterRejectedArguments, ValueTask>? OnRejected { get; set; }
 }
 
+/// <summary>Sınırlayıcı tek: tüm sonuç tipleri aynı kotayı paylaşır.</summary>
+internal sealed class RateLimiterStrategyFactory(RateLimiter limiter, RateLimiterStrategyOptions options) : IStrategyFactory
+{
+    public ResilienceStrategy<TResult> Create<TResult>() => new RateLimiterStrategy<TResult>(limiter, options);
+}
+
 internal sealed class RateLimiterStrategy<T>(RateLimiter limiter, RateLimiterStrategyOptions options) : ResilienceStrategy<T>
 {
     protected internal override async ValueTask<Outcome<T>> ExecuteCoreAsync(Func<ResilienceContext, ValueTask<Outcome<T>>> callback, ResilienceContext context)
@@ -47,7 +53,7 @@ internal sealed class RateLimiterStrategy<T>(RateLimiter limiter, RateLimiterStr
                 return Outcome.FromException<T>(new RateLimiterRejectedException(retryAfter));
             }
 
-            return await InvokeAsync(callback, context).ConfigureAwait(false);
+            return await callback(context).ConfigureAwait(false);
         }
     }
 }

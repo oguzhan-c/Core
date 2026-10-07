@@ -61,6 +61,34 @@ public class RetryOptions<T>
 /// <inheritdoc />
 public sealed class RetryOptions : RetryOptions<object?>;
 
+internal sealed class RetryStrategyFactory<TOptions>(RetryOptions<TOptions> options, TimeProvider timeProvider) : StrategyFactory<TOptions>
+{
+    protected override ResilienceStrategy<TOptions> CreateNative() => new RetryStrategy<TOptions>(options, timeProvider);
+
+    protected override ResilienceStrategy<TResult> CreateAdapted<TResult>()
+    {
+        RetryOptions<TOptions> o = options;
+        var adapted = new RetryOptions<TResult>
+        {
+            MaxRetryAttempts = o.MaxRetryAttempts,
+            Delay = o.Delay,
+            MaxDelay = o.MaxDelay,
+            BackoffType = o.BackoffType,
+            UseJitter = o.UseJitter,
+            Randomizer = o.Randomizer,
+            ShouldHandle = outcome => o.ShouldHandle(outcome.Cast<TOptions>()),
+            DelayGenerator = o.DelayGenerator is { } generator
+                ? args => generator(new RetryDelayArguments<TOptions>(args.Outcome.Cast<TOptions>(), args.Context, args.AttemptNumber))
+                : null,
+            OnRetry = o.OnRetry is { } onRetry
+                ? args => onRetry(new OnRetryArguments<TOptions>(args.Outcome.Cast<TOptions>(), args.Context, args.AttemptNumber, args.RetryDelay))
+                : null,
+        };
+
+        return new RetryStrategy<TResult>(adapted, timeProvider);
+    }
+}
+
 internal sealed class RetryStrategy<T>(RetryOptions<T> options, TimeProvider timeProvider) : ResilienceStrategy<T>
 {
     private static readonly TimeSpan MaxSupportedDelay = TimeSpan.FromDays(1);
@@ -70,7 +98,7 @@ internal sealed class RetryStrategy<T>(RetryOptions<T> options, TimeProvider tim
         for (int attempt = 0; ; attempt++)
         {
             context.AttemptNumber = attempt;
-            Outcome<T> outcome = await InvokeAsync(callback, context).ConfigureAwait(false);
+            Outcome<T> outcome = await callback(context).ConfigureAwait(false);
 
             if (attempt >= options.MaxRetryAttempts || context.CancellationToken.IsCancellationRequested || !options.ShouldHandle(outcome))
                 return outcome;

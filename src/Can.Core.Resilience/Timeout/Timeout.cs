@@ -22,13 +22,18 @@ public sealed class TimeoutOptions
     }
 }
 
+internal sealed class TimeoutStrategyFactory(TimeoutOptions options, TimeProvider timeProvider) : IStrategyFactory
+{
+    public ResilienceStrategy<TResult> Create<TResult>() => new TimeoutStrategy<TResult>(options, timeProvider);
+}
+
 internal sealed class TimeoutStrategy<T>(TimeoutOptions options, TimeProvider timeProvider) : ResilienceStrategy<T>
 {
     protected internal override async ValueTask<Outcome<T>> ExecuteCoreAsync(Func<ResilienceContext, ValueTask<Outcome<T>>> callback, ResilienceContext context)
     {
         TimeSpan timeout = options.TimeoutGenerator?.Invoke(context) ?? options.Timeout;
         if (timeout <= TimeSpan.Zero || timeout == System.Threading.Timeout.InfiniteTimeSpan)
-            return await InvokeAsync(callback, context).ConfigureAwait(false);
+            return await callback(context).ConfigureAwait(false);
 
         CancellationToken outer = context.CancellationToken;
 
@@ -48,7 +53,7 @@ internal sealed class TimeoutStrategy<T>(TimeoutOptions options, TimeProvider ti
         bool timedOut;
         try
         {
-            outcome = await InvokeAsync(callback, context).ConfigureAwait(false);
+            outcome = await callback(context).ConfigureAwait(false);
         }
         finally
         {
