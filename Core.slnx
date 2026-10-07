@@ -26,6 +26,7 @@
     <Project Path="src/Can.Core.Resilience/Can.Core.Resilience.csproj" />
     <Project Path="src/Can.Core.Resilience.Http/Can.Core.Resilience.Http.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
+    <Project Path="src/Can.Core.Sms/Can.Core.Sms.csproj" />
     <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
     <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
     <Project Path="src/Can.Core.Logging.Serilog/Can.Core.Logging.Serilog.csproj" />
@@ -52,6 +53,7 @@
     <Project Path="tests/Can.Core.Resilience.Tests/Can.Core.Resilience.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Comparison.Tests/Can.Core.Resilience.Comparison.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
+    <Project Path="tests/Can.Core.Sms.Tests/Can.Core.Sms.Tests.csproj" />
     <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />
   </Folder>

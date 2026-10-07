@@ -18,6 +18,7 @@ public static class CanTelemetrySources
         "Can.Core.EventBus",        // yayın / işleme (traceparent ile servisler arası)
         "Can.Core.Mailing",         // e-posta gönderimi
         "Can.Core.Search",          // arama / dizinleme
+        "Can.Core.Sms",             // SMS gönderimi
     ];
 
     /// <summary>Metrik (Meter) adları.</summary>
@@ -27,6 +28,7 @@ public static class CanTelemetrySources
         "Can.Core.BackgroundJobs",  // can.job.duration
         "Can.Core.Persistence",     // can.outbox.messages
         "Can.Core.Mailing",         // can.email.messages
+        "Can.Core.Sms",             // can.sms.messages, can.sms.segments
         "Can.Core.Resilience",      // can.resilience.events
     ];
 }
