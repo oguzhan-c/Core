@@ -29,6 +29,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
 | `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
+| `Can.Core.Observability.OpenTelemetry` | OpenTelemetry | Can.Core ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
 | `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
 | `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
 
@@ -726,6 +727,34 @@ services.AddHttpClient<PaymentClient>().AddCanStandardResilienceHandler(o => o.R
 
 Strateji sırası önemlidir: ilk eklenen en dıştadır. Timeout iyimserdir: iş, verilen `CancellationToken`'a uymalı.
 Retry'da HTTP isteği aynı nesneyle yeniden gönderilir; gövde tekrar okunabilir olmalı (`StringContent`, `JsonContent`).
+
+## Gözlemlenebilirlik (observability)
+
+Paketler telemetriyi .NET'in kendi API'leriyle (`ActivitySource`, `Meter`) üretir; ek paket yok, dinleyen yoksa maliyet
+yok denecek kadar az. Dışa aktarmak için tek satır:
+
+```csharp
+builder.Services.AddCanOpenTelemetry(o =>
+{
+    o.ServiceName = "myapp";
+    o.OtlpEndpoint = new Uri("http://localhost:4317");   // Aspire Dashboard, Jaeger, Grafana Tempo/Mimir, Seq, Datadog ...
+    o.AdditionalSources.Add("Npgsql");                   // SQL komutları
+});
+```
+
+| Kaynak | Span | Metrik |
+|---|---|---|
+| Application | her mediator isteği (`can.outcome`: success / failure / exception, `can.error.code`) | `can.request.duration` |
+| Mediator | `publish {Event}` (domain event yayını) | |
+| BackgroundJobs | `job {İş}` (bellek içi, tekrarlayan, Hangfire) | `can.job.duration` |
+| Persistence | `outbox {Event}` | `can.outbox.messages` (published / failed) |
+| EventBus | `publish` (producer) → `process` (consumer); `traceparent` zarfla taşınır, servisler arası tek iz | |
+| Mailing | `email send {sağlayıcı}` (adres/konu yazılmaz) | `can.email.messages` |
+| Resilience | o anki span'a olay (`resilience.retry.retry` ...) | `can.resilience.events` |
+| .NET | ASP.NET Core istekleri, HttpClient çağrıları | Kestrel, routing, rate limiting, HttpClient, runtime (GC, thread pool) |
+
+Instrumentation paketlerine gerek yok: .NET 10'da ASP.NET Core, HttpClient ve runtime telemetriyi zaten üretiyor,
+`AddCanOpenTelemetry` yalnızca dinler. Serilog logları `TraceId`/`SpanId` içerir (log ↔ iz eşleşir).
 
 ## Sağlık kontrolleri
 
