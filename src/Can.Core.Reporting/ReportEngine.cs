@@ -41,12 +41,36 @@ public sealed class ReportEngine
 
     public ReportEngine(ReportEngineOptions? options = null) => _options = options ?? new ReportEngineOptions();
 
+    public ReportEngineOptions Options => _options;
+
     public ReportResult Run(ReportDefinition definition, ReportDataSet data)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(data);
         return new Execution(definition, data, _options).Run();
     }
+
+    /// <summary>
+    /// Veritabanında en ince düzeyde (tüm satır + sütun grupları) özetlenmiş gruplardan rapor kurar; ara ve genel
+    /// toplamlar bu parçaların birleştirilmesiyle bulunur. Yalnızca birleştirilebilir fonksiyonlar (Sum, Count, Average,
+    /// Min, Max, StdDev, Var).
+    /// </summary>
+    /// <param name="definition">Tanım.</param>
+    /// <param name="schema">Alanlar (satırlar kullanılmaz).</param>
+    /// <param name="groups">Gruplar: anahtarlar tanımdaki satır/sütun sırasında, gruplama uygulanmış.</param>
+    /// <param name="sourceRows">Kaynakta filtreye uyan satır sayısı (bilgi için).</param>
+    internal ReportResult RunAggregated(ReportDefinition definition, ReportDataSet schema, IEnumerable<AggregatedGroup> groups, long sourceRows)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(schema);
+        ArgumentNullException.ThrowIfNull(groups);
+        return new Execution(definition, schema, _options).RunAggregated(groups, sourceRows);
+    }
+
+    /// <summary>Veritabanında hesaplanabilen fonksiyonlar (gruplar birleştirilebilir).</summary>
+    public static bool IsDecomposable(ReportAggregate aggregate) =>
+        aggregate is ReportAggregate.Sum or ReportAggregate.Count or ReportAggregate.Average or ReportAggregate.Min or ReportAggregate.Max
+            or ReportAggregate.StdDev or ReportAggregate.StdDevP or ReportAggregate.Var or ReportAggregate.VarP;
 
     // ================================================================ çalıştırma
 
@@ -123,8 +147,8 @@ public sealed class ReportEngine
             long matched = 0;
             int rowDepth = _rowDims.Length;
             int colDepth = _colDims.Length;
-            var rowIds = new int[rowDepth + 1];
-            var colIds = new int[colDepth + 1];
+            var rowKeys = new object?[rowDepth];
+            var colKeys = new object?[colDepth];
             var values = new object?[_measures.Length];
             int totalFields = _fields.Count;
 
@@ -144,33 +168,81 @@ public sealed class ReportEngine
                     continue;
                 matched++;
 
-                AxisNode node = _rows.Root;
                 for (int d = 0; d < rowDepth; d++)
-                {
-                    node = _rows.Child(node, _rowDims[d].KeyOf(row));
-                    rowIds[d + 1] = node.Id;
-                }
-
-                node = _columns.Root;
+                    rowKeys[d] = _rowDims[d].KeyOf(row);
                 for (int d = 0; d < colDepth; d++)
-                {
-                    node = _columns.Child(node, _colDims[d].KeyOf(row));
-                    colIds[d + 1] = node.Id;
-                }
-
+                    colKeys[d] = _colDims[d].KeyOf(row);
                 for (int m = 0; m < _measures.Length; m++)
                     values[m] = _measureFields[m] < 0 ? null : ReportValue.Normalize(row[_measureFields[m]]);
 
-                for (int i = 0; i <= rowDepth; i++)
+                foreach (Accumulator[] accumulators in Cells(rowKeys, colKeys))
                 {
-                    for (int j = 0; j <= colDepth; j++)
+                    for (int m = 0; m < accumulators.Length; m++)
+                        accumulators[m].Add(values[m]);
+                }
+            }
+
+            return Finish(source, matched, "memory");
+        }
+
+        public ReportResult RunAggregated(IEnumerable<AggregatedGroup> groups, long sourceRows)
+        {
+            foreach (ReportMeasure measure in _measures)
+            {
+                if (!IsDecomposable(measure.Aggregate))
+                    throw new ReportDefinitionException($"{measure.Aggregate} veritabanında özetlenemez.");
+            }
+
+            long matched = 0;
+            foreach (AggregatedGroup group in groups)
+            {
+                matched += group.Rows;
+                foreach (Accumulator[] accumulators in Cells(group.RowKeys, group.ColumnKeys))
+                {
+                    for (int m = 0; m < accumulators.Length; m++)
                     {
-                        Accumulator[] accumulators = Cell(rowIds[i], colIds[j]);
-                        for (int m = 0; m < accumulators.Length; m++)
-                            accumulators[m].Add(values[m]);
+                        MeasurePartial part = group.Measures[m];
+                        accumulators[m].AddPartial(group.Rows, part.Count, part.Sum, part.SumOfSquares, part.Min, part.Max);
                     }
                 }
             }
+
+            return Finish(Math.Max(sourceRows, matched), matched, "database");
+        }
+
+        /// <summary>Satır ve sütun yolunun her öneki için hücre (ara ve genel toplamlar dahil).</summary>
+        private IEnumerable<Accumulator[]> Cells(object?[] rowKeys, object?[] colKeys)
+        {
+            int rowDepth = _rowDims.Length;
+            int colDepth = _colDims.Length;
+            var rowIds = new int[rowDepth + 1];
+            var colIds = new int[colDepth + 1];
+
+            AxisNode node = _rows.Root;
+            for (int d = 0; d < rowDepth; d++)
+            {
+                node = _rows.Child(node, rowKeys[d]);
+                rowIds[d + 1] = node.Id;
+            }
+
+            node = _columns.Root;
+            for (int d = 0; d < colDepth; d++)
+            {
+                node = _columns.Child(node, colKeys[d]);
+                colIds[d + 1] = node.Id;
+            }
+
+            for (int i = 0; i <= rowDepth; i++)
+            {
+                for (int j = 0; j <= colDepth; j++)
+                    yield return Cell(rowIds[i], colIds[j]);
+            }
+        }
+
+        private ReportResult Finish(long source, long matched, string mode)
+        {
+            int rowDepth = _rowDims.Length;
+            int colDepth = _colDims.Length;
 
             ApplyHaving();
             Arrange(_rows, _rows.Root, _rowDims, isRowAxis: true);
@@ -206,7 +278,10 @@ public sealed class ReportEngine
                 table,
                 source,
                 matched
-            );
+            )
+            {
+                Mode = mode,
+            };
         }
 
         // ------------------------------------------------------------ alanlar ve filtreler
@@ -651,6 +726,8 @@ public sealed class ReportEngine
                 if (value is null)
                     return null;
 
+                if (Definition.DateGrouping == DateGrouping.Date)
+                    return ReportValue.ToDate(value)?.Date;
                 if (Definition.DateGrouping != DateGrouping.None)
                     return ReportValue.ToDate(value) is { } date ? DateKey(date, Definition.DateGrouping) : null;
 

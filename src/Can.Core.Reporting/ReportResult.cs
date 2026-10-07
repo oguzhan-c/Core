@@ -57,6 +57,9 @@ public sealed record ReportResult(
     long SourceRowCount,
     long MatchedRowCount)
 {
+    /// <summary>Nerede hesaplandı: <c>memory</c> (satırlar okunup bellekte) ya da <c>database</c> (GROUP BY ile).</summary>
+    public string Mode { get; init; } = "memory";
+
     public object? Value(int row, int column, int measure) => Values[row][(column * Measures.Count) + measure];
 
     /// <summary>Adı verilen değerin hücresi.</summary>

@@ -91,6 +91,53 @@ internal sealed class Accumulator
 
     private long _welfordCount;
 
+    /// <summary>
+    /// Veritabanında özetlenmiş bir grubu ekler (sunucu modu): satır sayısı, boş olmayan değer sayısı, toplam, kareler
+    /// toplamı, en küçük, en büyük. Varyans, (n, Σx, Σx²)'den ortalama ve kare farkları toplamına çevrilip birleştirilir.
+    /// </summary>
+    public void AddPartial(long rows, long count, decimal? sum, decimal? sumOfSquares, object? min, object? max)
+    {
+        _rows += rows;
+        switch (_kind)
+        {
+            case ReportAggregate.Sum or ReportAggregate.Average:
+                if (count > 0 && sum is { } s)
+                {
+                    _sum += s;
+                    _count += count;
+                }
+
+                break;
+            case ReportAggregate.Count:
+                _count += count;
+                break;
+            case ReportAggregate.Min:
+                if (min is not null && (_min is null || ReportValue.Compare(min, _min) < 0))
+                    _min = min;
+                break;
+            case ReportAggregate.Max:
+                if (max is not null && (_max is null || ReportValue.Compare(max, _max) > 0))
+                    _max = max;
+                break;
+            case ReportAggregate.StdDev or ReportAggregate.StdDevP or ReportAggregate.Var or ReportAggregate.VarP:
+                if (count > 0 && sum is { } total && sumOfSquares is { } squares)
+                {
+                    double mean = (double)total / count;
+                    var part = new Accumulator(_kind, false)
+                    {
+                        _welfordCount = count,
+                        _mean = mean,
+                        _m2 = Math.Max(0, (double)squares - (count * mean * mean)),
+                    };
+                    Merge(part);
+                }
+
+                break;
+            default:
+                throw new InvalidOperationException($"{_kind} veritabanında özetlenemez.");
+        }
+    }
+
     /// <summary>Başka bir hücrenin özetini ekler (aynı fonksiyon).</summary>
     public void Merge(Accumulator other)
     {

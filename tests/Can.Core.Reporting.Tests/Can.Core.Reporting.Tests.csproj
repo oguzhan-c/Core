@@ -4,4 +4,9 @@
     <ProjectReference Include="..\..\src\Can.Core.Reporting\Can.Core.Reporting.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
 </Project>
