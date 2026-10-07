@@ -18,6 +18,7 @@
     <Project Path="src/Can.Core.FileStorage/Can.Core.FileStorage.csproj" />
     <Project Path="src/Can.Core.FileStorage.S3/Can.Core.FileStorage.S3.csproj" />
     <Project Path="src/Can.Core.Localization/Can.Core.Localization.csproj" />
+    <Project Path="src/Can.Core.Resilience/Can.Core.Resilience.csproj" />
     <Project Path="src/Can.Core.Mailing/Can.Core.Mailing.csproj" />
     <Project Path="src/Can.Core.Mailing.MailKit/Can.Core.Mailing.MailKit.csproj" />
     <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
@@ -39,6 +40,7 @@
     <Project Path="tests/Can.Core.EventBus.Tests/Can.Core.EventBus.Tests.csproj" />
     <Project Path="tests/Can.Core.FileStorage.Tests/Can.Core.FileStorage.Tests.csproj" />
     <Project Path="tests/Can.Core.Localization.Tests/Can.Core.Localization.Tests.csproj" />
+    <Project Path="tests/Can.Core.Resilience.Tests/Can.Core.Resilience.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
     <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />
