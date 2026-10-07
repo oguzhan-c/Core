@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Polly yalnızca bu test projesinde: üretim paketleri Polly'ye bağımlı değildir. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Can.Core.Resilience\Can.Core.Resilience.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Polly.Core" />
+    <PackageReference Include="Polly.RateLimiting" />
+  </ItemGroup>
+
+</Project>
