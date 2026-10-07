@@ -20,6 +20,8 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı; outbox ile birlikte çalışır |
 | `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
 | `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
+| `Can.Core.Search` | yok | `ISearchIndex<T>`: tam metin arama, filtre, sıralama, vurgulama, toplama, tenant yalıtımı; bellek içi motor |
+| `Can.Core.Search.Elasticsearch` | Extensions.Http | Elasticsearch / OpenSearch motoru; resmî istemci yerine HttpClient + Query DSL |
 | `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
 | `Can.Core.Realtime` | yok | `IRealtimeNotifier`: kullanıcıya / role / tenant'a / gruba anlık mesaj (Application katmanı kullanır) |
 | `Can.Core.Realtime.SignalR` | ASP.NET Core | Bildirimleri SignalR ile ileten hub; bağlantılar tenant/kullanıcı/rol gruplarına otomatik girer |
@@ -712,6 +714,74 @@ app.UseCanExceptionHandler();
   için tr/en metinler WebApi paketinde gömülü gelir; uygulama dosyaları hepsini ezer.
 - FluentValidation mesajları zaten isteğin diline göre gelir (kendi çevirileri var).
 - Kültür zinciri: `en-GB` → `en` → varsayılan kültür; hiç yoksa anahtarın kendisi döner (`ResourceNotFound`).
+
+## Arama (Elasticsearch)
+
+Tam metin arama için `ISearchIndex<TDocument>`. Motor seçilmezse bellek içi motor çalışır (geliştirme/test);
+`UseElasticsearch` ile Elasticsearch 8/9 ya da OpenSearch 2+. Resmî istemci kullanılmaz: REST API HttpClient ve
+System.Text.Json ile çağrılır.
+
+```csharp
+public sealed record ProductDocument(string Id, string Name, string Category, decimal Price, bool Discontinued) : ISearchDocument;
+
+builder.Services.AddCanSearch()
+    .AddIndex<ProductDocument>("products", m => m
+        .Text("name", "turkish", withKeyword: true)   // Türkçe kök bulma; name.keyword: sıralama/filtre
+        .Keyword("category")                          // filtre ve toplama
+        .Double("price"))
+    .UseElasticsearch(o => builder.Configuration.GetSection("Search:Elasticsearch").Bind(o)); // Url, ApiKey, IndexPrefix
+
+await app.Services.EnsureCanSearchIndexesAsync(); // dizinleri (yoksa) eşlemesiyle oluştur
+
+// yazma
+await products.IndexAsync(new ProductDocument(p.Id.ToString(), p.Name, category, p.UnitPrice, false), ct);
+await products.IndexManyAsync(allDocuments, ct);   // _bulk, 500'lük paketler; başarısızlar sonuçta döner
+await products.DeleteAsync(id, ct);
+
+// arama
+SearchResult<ProductDocument> result = await products.SearchAsync(new SearchQuery
+{
+    Text = "cikolata",                       // bulanık: "çikolata" da bulunur
+    Fields = { "name^3", "category" },       // ^3: addaki eşleşme 3 kat önemli
+    Prefix = true,                           // yazarken arama: "çik" → "çikolata"
+    Filters = { SearchFilter.Equal("discontinued", false), SearchFilter.Range("price", lte: 50) },
+    Sort = { SearchSort.Desc("price") },     // boşsa alaka skoru
+    Highlight = { "name" },                  // hit.Highlights["name"] → "Bitter <em>Çikolata</em>"
+    Aggregations = { SearchAggregation.Terms("categories", "category"), SearchAggregation.Stats("prices", "price") },
+    Page = 0,
+    Size = 20,
+}, ct);
+```
+
+| | |
+|---|---|
+| Tenant yalıtımı | Varsayılan açık: her belgeye aktif tenant yazılır (`canTenant`), kimlikler `{tenant}:{id}` olur, her sorguya tenant filtresi eklenir. Tek dizini tüm tenant'lar paylaşır; bir tenant kimlik tahmin ederek bile başkasının belgesine ulaşamaz |
+| Yazmadan sonra görünürlük | `Refresh`: `None` (varsayılan, ~1 sn sonra), `WaitFor` (istek belge görünene kadar bekler), `Immediate` (yalnızca test) |
+| Kimlik doğrulama | `ApiKey` (Elastic Cloud) ya da `Username`/`Password`; anahtarı user-secrets'a yaz |
+| Elastic Cloud | `CloudId` verilirse adres ondan çözülür (dağıtım sayfasındaki "Cloud ID") |
+| Birden çok düğüm | `Nodes`: istekler sırayla dağıtılır; ulaşılamayan ya da 502/503/504 dönen düğüm devre dışı kalır (60 sn'den 30 dk'ya artan), istek diğer düğümle tekrarlanır |
+| Toplu yazma | 500'lük paketler; küme meşgulse (429) yalnızca reddedilen belgeler beklenip tekrar gönderilir (`BulkRetries`, `BulkRetryDelay`) |
+| Sıkıştırma | `EnableCompression`: istek gövdeleri gzip; yanıtlar her zaman açılır |
+| Derin sayfalama | `(Page + 1) × Size` en fazla 10.000 (`index.max_result_window`) |
+| Dayanıklılık | `services.AddHttpClient(ElasticsearchClient.HttpClientName).AddCanStandardResilienceHandler()` |
+| Özel istekler | `ElasticsearchClient.SendAsync(HttpMethod.Post, "/products/_search", jsonBody)`: alias, reindex, özel DSL |
+| Gözlemlenebilirlik | `Can.Core.Search` span'ları (`search.search products`); HTTP çağrıları altında |
+
+Veritabanı esas kaynaktır, dizin bir kopyadır: entity değişince dizini güncelle (domain event handler'ı), arama
+sonucundaki kimliklerle güncel veriyi veritabanından oku ve dizini istendiğinde baştan kurabil (`DeleteAllAsync` +
+`IndexManyAsync`). Bellek içi motor kelime eşleşmesi, tek harflik yazım toleransı, filtre, sıralama ve toplama yapar;
+kök bulma ve gerçek alaka sıralaması için Elasticsearch gerekir.
+
+**Resmî istemciyle karşılaştırma.** Elastic'in .NET istemcisi (Elastic.Clients.Elasticsearch, altında
+Elastic.Transport; Apache 2.0) incelendi. Düğüm havuzu, devre dışı kalma eğrisi (`DeadTimeout`/`MaxDeadTimeout`),
+yalnızca 502/503/504 ve bağlantı hatalarında başka düğüme geçme, toplu yazmada yalnızca 429'ları tekrar deneme ve
+Cloud ID biçimi onunla aynıdır. Bilinçli farklar: tüm API'yi tipli sunmak yerine yaygın arama işlemleri
+(`ISearchIndex`) + ham istek (`ElasticsearchClient.SendAsync`); düğüm keşfi (sniffing) ve ping yok (yük dengeleyici ya
+da sabit düğüm listesi); `application/vnd.elasticsearch+json; compatible-with=N` yerine düz `application/json` (OpenSearch
+ile de çalışsın diye).
+
+Gerçek sunucuya karşı entegrasyon testi:
+`CAN_ELASTICSEARCH_URL=http://localhost:9200 dotnet test --project tests/Can.Core.Search.Tests`.
 
 ## Dosya depolama
 
