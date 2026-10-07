@@ -3,13 +3,13 @@
 
   <PropertyGroup>
     <IsTestProject>true</IsTestProject>
+    <!-- xUnit v3: test projesi kendi kendini çalıştıran bir programdır (dotnet test ya da doğrudan dotnet run) -->
+    <OutputType>Exe</OutputType>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
   </ItemGroup>
 
   <ItemGroup>

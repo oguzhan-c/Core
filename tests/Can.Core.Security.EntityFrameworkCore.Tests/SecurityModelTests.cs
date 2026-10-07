@@ -47,14 +47,14 @@ public sealed class SecurityModelTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _connection.OpenAsync();
         await using AuthDbContext db = Create();
         await db.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync() => await _connection.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
 
     private AuthDbContext Create() => new(new DbContextOptionsBuilder<AuthDbContext>().UseSqlite(_connection).Options);
 
