@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Reporting</RootNamespace>
+    <Description>Raporlama ve istatistik motoru: pivot (satır/sütun gruplama, ara ve genel toplamlar), 14 özet fonksiyonu, tarih/sayı aralıkları, yüzde/kümülatif/sıra/önceki döneme göre fark gösterimleri, Top N, hesaplanmış alanlar için ifade dili. Dış paket yok.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Reporting.Tests" />
+  </ItemGroup>
+
+</Project>
