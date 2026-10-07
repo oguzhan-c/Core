@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router";
 import {
   BoxesIcon,
+  ChartColumnBigIcon,
   FilterIcon,
   FolderTreeIcon,
   HistoryIcon,
@@ -51,6 +52,7 @@ const sections: { title: string; items: NavItem[] }[] = [
       { to: "/admin/orders", label: "Siparişler", icon: ReceiptIcon },
       { to: "/admin/customers", label: "Müşteriler", icon: StoreIcon },
       { to: "/admin/filter-lab", label: "Filtre laboratuvarı", icon: FilterIcon },
+      { to: "/admin/reports", label: "Rapor tasarımcısı", icon: ChartColumnBigIcon },
     ],
   },
   {

@@ -119,3 +119,26 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Rapor tasarımcısı (@can-core/reporting-react) uygulama temasını kullansın */
+.cr-designer,
+.cr-table-wrap,
+.cr-chart {
+  --cr-bg: var(--background);
+  --cr-fg: var(--foreground);
+  --cr-muted: var(--muted-foreground);
+  --cr-border: var(--border);
+  --cr-panel: color-mix(in oklab, var(--muted) 60%, var(--background));
+  --cr-accent: var(--primary);
+  --cr-accent-fg: var(--primary-foreground);
+  --cr-danger: var(--destructive);
+  --cr-header: var(--muted);
+  --cr-group: color-mix(in oklab, var(--muted) 45%, var(--background));
+  --cr-total: color-mix(in oklab, var(--primary) 12%, var(--background));
+  --cr-radius: var(--radius);
+  --cr-chart-1: var(--chart-1);
+  --cr-chart-2: var(--chart-2);
+  --cr-chart-3: var(--chart-3);
+  --cr-chart-4: var(--chart-4);
+  --cr-chart-5: var(--chart-5);
+}

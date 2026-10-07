@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Northwind.Application.Common;
 using Northwind.Infrastructure.Identity;
 using Northwind.Infrastructure.Persistence;
+using Northwind.Infrastructure.Reporting;
 using Northwind.Infrastructure.Seeding;
 
 namespace Northwind.Infrastructure;
@@ -51,6 +52,7 @@ public static class DependencyInjection
         configuration.GetSection("Seed").Bind(seed);
         services.AddSingleton(seed);
         services.AddCanDataSeeders(typeof(DependencyInjection).Assembly);
+        services.AddNorthwindReporting();
 
         services.AddScoped<IIdentityStore, IdentityStore>();
         services.AddScoped<IAuditLogReader, AuditLogReader>();

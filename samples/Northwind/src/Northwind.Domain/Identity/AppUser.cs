@@ -107,6 +107,8 @@ public static class Permissions
     public const string OrdersCreate = "orders.create";
     public const string OrdersShip = "orders.ship";
     public const string OrdersCancel = "orders.cancel";
+    public const string ReportsSales = "reports.sales";
+    public const string ReportsInventory = "reports.inventory";
 
     public static readonly IReadOnlyList<(string Name, string Description)> All =
     [
@@ -114,12 +116,14 @@ public static class Permissions
         (OrdersCreate, "Sipariş oluşturma"),
         (OrdersShip, "Siparişi kargoya verme"),
         (OrdersCancel, "Sipariş iptali"),
+        (ReportsSales, "Satış raporları (sipariş satırları)"),
+        (ReportsInventory, "Stok raporları (ürünler)"),
     ];
 
     /// <summary>Seed'de rollere verilen yetkiler.</summary>
     public static readonly IReadOnlyDictionary<string, string[]> RoleGrants = new Dictionary<string, string[]>
     {
-        [Roles.Sales] = [OrdersCreate, OrdersCancel],
-        [Roles.Warehouse] = [ProductsStock, OrdersShip],
+        [Roles.Sales] = [OrdersCreate, OrdersCancel, ReportsSales],
+        [Roles.Warehouse] = [ProductsStock, OrdersShip, ReportsInventory],
     };
 }

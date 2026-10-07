@@ -1,5 +1,6 @@
 using Can.Core.Application;
 using Can.Core.Persistence.Context;
+using Can.Core.Reporting.EntityFrameworkCore;
 using Can.Core.Security.Entities;
 using Can.Core.Security.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -40,5 +41,6 @@ public sealed class NorthwindDbContext : CanDbContext
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(NorthwindDbContext).Assembly);
         modelBuilder.AddCanOutbox(schema: "infra");
         modelBuilder.AddCanAuditTrail(schema: "infra");
+        modelBuilder.ApplyCanReportingModel(schema: "reporting"); // kaydedilmiş raporlar
     }
 }

@@ -15,6 +15,7 @@ import { FilterLabPage } from "@/pages/admin/filter-lab";
 import { AdminOrderDetailPage, AdminOrdersPage } from "@/pages/admin/orders";
 import { AdminOutboxPage } from "@/pages/admin/outbox";
 import { AdminProductsPage } from "@/pages/admin/products";
+import { AdminReportDesignerPage } from "@/pages/admin/report-designer";
 import { AdminUsersPage } from "@/pages/admin/users";
 import { LoginPage } from "@/pages/auth/login";
 import { RegisterPage } from "@/pages/auth/register";
@@ -93,6 +94,7 @@ const router = createBrowserRouter([
       { path: "orders", element: <AdminOrdersPage /> },
       { path: "orders/:id", element: <AdminOrderDetailPage /> },
       { path: "filter-lab", element: <FilterLabPage /> },
+      { path: "reports", element: <AdminReportDesignerPage /> },
       { path: "audit-logs", element: <AdminAuditLogsPage /> },
       { path: "outbox", element: <AdminOutboxPage /> },
       { path: "users", element: <AdminUsersPage /> },
