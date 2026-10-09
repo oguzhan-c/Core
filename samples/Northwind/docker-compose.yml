@@ -43,6 +43,22 @@ services:
     volumes:
       - northwind-can-search:/usr/share/elasticsearch/data
 
+  # İsteğe bağlı event bus taşıyıcıları (Can.Core.EventBus.*). Yönetim arayüzü http://localhost:15672 (guest/guest).
+  # Entegrasyon testleri: CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: northwind-can-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  # Tek düğüm KRaft (ZooKeeper yok); imajın varsayılan ayarı localhost:9092. Testler: CAN_KAFKA_BOOTSTRAP=localhost:9092
+  kafka:
+    image: apache/kafka:4.3.0
+    container_name: northwind-can-kafka
+    ports:
+      - "9092:9092"
+
 volumes:
   northwind-can-data:
   northwind-can-search:
