@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.EventBus.AzureServiceBus</RootNamespace>
+    <Description>Can.Core.EventBus için Azure Service Bus taşıyıcısı: topic + servis başına subscription (correlation filtreleri), zamanlanmış yeniden deneme, yerleşik DLQ.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.EventBus\Can.Core.EventBus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.EventBus.Brokers.Tests" />
+  </ItemGroup>
+
+</Project>

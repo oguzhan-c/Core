@@ -1,6 +1,8 @@
 using Can.Core.Application;
 using Can.Core.BackgroundJobs;
 using Can.Core.Persistence.AuditTrail;
+using Can.Core.EventBus;
+using Can.Core.Persistence.Inbox;
 using Can.Core.Persistence.Interceptors;
 using Can.Core.Persistence.Outbox;
 using Can.Core.Persistence.Repositories;
@@ -108,6 +110,33 @@ public static class ServiceCollectionExtensions
         {
             o.Interval = options.Interval;
             o.RunOnStartup = true;
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Kalıcı inbox: broker'dan gelen her event bir tüketicide yalnızca bir kez işlenir; handler'ların
+    /// <typeparamref name="TContext"/> değişiklikleri ve inbox kaydı aynı transaction'dadır. Tablo:
+    /// <c>modelBuilder.AddCanInbox()</c>. Eski kayıtlar düzenli silinir.
+    /// </summary>
+    public static IServiceCollection AddCanInbox<TContext>(this IServiceCollection services, Action<InboxOptions>? configure = null)
+        where TContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var options = new InboxOptions();
+        configure?.Invoke(options);
+
+        services.RemoveAll<InboxOptions>();
+        services.AddSingleton(options);
+        services.RemoveAll<IInboxStore>();
+        services.AddSingleton<IInboxStore, EfInboxStore<TContext>>();
+        services.AddCanRecurringJob<InboxCleanupJob<TContext>>(o =>
+        {
+            o.Interval = options.CleanupInterval;
+            o.RunOnStartup = false;
+            o.PerTenant = options.PerTenantDatabases;
         });
 
         return services;

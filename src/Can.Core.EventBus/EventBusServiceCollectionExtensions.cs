@@ -33,6 +33,18 @@ public static class EventBusServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Bellek içi inbox (tek örnek, yeniden başlayınca unutur). Kalıcı inbox için <c>Can.Core.Persistence</c>'taki
+    /// <c>AddCanInbox&lt;TContext&gt;()</c>.
+    /// </summary>
+    public static IServiceCollection AddCanInMemoryInbox(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.RemoveAll<IInboxStore>();
+        services.AddSingleton<IInboxStore, InMemoryInboxStore>();
+        return services;
+    }
+
     /// <summary>Taşıyıcıyı değiştirir (RabbitMQ vb. paketler bunu kullanır).</summary>
     public static IServiceCollection AddCanEventTransport<TTransport>(this IServiceCollection services)
         where TTransport : class, IEventTransport

@@ -18,7 +18,10 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
 | `Can.Core.Redis.ScaleOut` | StackExchange.Redis, SignalR.StackExchangeRedis | Çok sunucu: ortak Data Protection anahtarları, SignalR backplane, sunucular arası hız sınırı, dağıtık kilit |
 | `Can.Core.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
-| `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı; outbox ile birlikte çalışır |
+| `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı, inbox, ortak tüketim akışı (yeniden deneme, DLQ); outbox ile birlikte çalışır |
+| `Can.Core.EventBus.RabbitMQ` | RabbitMQ.Client | Topic exchange, quorum kuyruk, gönderim onayı, gecikmeli deneme kuyrukları, DLQ |
+| `Can.Core.EventBus.Kafka` | Confluent.Kafka | Event başına topic, idempotent producer, consumer group, retry/DLQ topic'leri |
+| `Can.Core.EventBus.AzureServiceBus` | Azure.Messaging.ServiceBus | Topic + subscription (correlation filtreleri), zamanlanmış deneme, yerleşik DLQ |
 | `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
 | `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
 | `Can.Core.Search` | yok | `ISearchIndex<T>`: tam metin arama, filtre, sıralama, vurgulama, toplama, tenant yalıtımı; bellek içi motor |
@@ -348,9 +351,59 @@ builder.Services.AddCanEventBus(typeof(OrderShipped).Assembly);   // tanınan ev
 `AddCanEventBus` kayıtlıysa outbox event'leri bus'a verir. Bus event'i bir zarfa (`EventEnvelope`: ad, JSON, tenant,
 EventId) koyup taşıyıcıya gönderir; karşı tarafta `EventDispatcher` zarfı açar ve handler'ları event'in tenant'ı adına
 kendi scope'unda çalıştırır. Varsayılan taşıyıcı bellek içidir (aynı süreç, hemen dağıtır; hata olursa outbox tekrar
-dener). RabbitMQ vb. için `IEventTransport` yazılıp `AddCanEventTransport<T>()` ile değiştirilir. Tanınmayan event'ler
-(başka servislerin) atlanır. Doğrudan `eventBus.PublishAsync(...)` veritabanı kaydıyla atomik değildir; veriye bağlı
-event'leri aggregate'ten yükselt.
+dener). Tanınmayan event'ler (başka servislerin) atlanır. Doğrudan `eventBus.PublishAsync(...)` veritabanı kaydıyla
+atomik değildir; veriye bağlı event'leri aggregate'ten yükselt.
+
+**Broker taşıyıcıları: RabbitMQ, Kafka, Azure Service Bus**
+
+Servisler arası iletim için bir taşıyıcı seç (her biri ayrı paket, resmî istemciyle); hepsi aynı zarfı, aynı yeniden
+deneme ve DLQ kurallarını kullanır:
+
+```csharp
+builder.Services.AddCanEventBus(typeof(OrderShipped).Assembly);
+builder.Services.AddCanInbox<AppDbContext>();                    // tekrar teslimleri ayıkla; modelBuilder.AddCanInbox()
+
+builder.Services.AddCanRabbitMqTransport(o => { o.ConnectionString = "..."; o.ConsumerName = "billing"; });
+// ya da
+builder.Services.AddCanKafkaTransport(o => { o.BootstrapServers = "localhost:9092"; o.ConsumerName = "billing"; });
+// ya da
+builder.Services.AddCanAzureServiceBusTransport(o => { o.ConnectionString = "..."; o.ConsumerName = "billing"; });
+```
+
+Tüketim akışı (`EventConsumer`, broker'dan bağımsız): mesaj zarfa çevrilir → inbox'ta işlenmiş mi → handler'lar →
+hata olursa aynı süreçte hemen `ImmediateRetries` kez daha → yine olmazsa `RetryDelays` (varsayılan 10 sn, 1 dk, 10 dk,
+1 sa) sonra yeniden teslim → hepsi tükenince DLQ. `PermanentEventFailureException` ve bozuk JSON doğrudan DLQ'ya gider.
+DLQ mesajında hata, tipi, zamanı ve tüketici başlıklarda (`can-error`, `can-error-type`, `can-failed-at`, `can-consumer`).
+`ConsumerName` aynı olan örnekler işi paylaşır, farklı servisler her event'in kopyasını alır. Dinlenen event'ler:
+handler'ı kayıtlı olanlar (ya da `Events` listesi).
+
+| | RabbitMQ (`RabbitMQ.Client` 7) | Kafka (`Confluent.Kafka` 2) | Azure Service Bus (`Azure.Messaging.ServiceBus` 7) |
+|---|---|---|---|
+| Yayın | Topic exchange `can.events`, routing key = event adı, gönderim onayı beklenir | Event başına topic (`TopicPrefix` + ad), idempotent producer, `acks=all` | Topic `can-events`, `Subject` = event adı, `MessageId` = event kimliği |
+| Tüketim | Servis başına quorum kuyruk, event adlarıyla bağlı; prefetch 50, eşzamanlılık 8 | Consumer group = tüketici adı; offset yalnızca işlendikten sonra | Servis başına subscription, event başına correlation kuralı; peek-lock, eşzamanlılık 8 |
+| Gecikmeli deneme | Her gecikme için `{kuyruk}.retry.{sn}s` (TTL dolunca ana kuyruğa döner) | `{tüketici}.retry` topic'i; zamanı gelmemişse partition durdurulur (`Pause`/`Seek`) | Zamanlanmış kopya (`Subject = can.retry`, yalnızca bu subscription alır) |
+| DLQ | `{kuyruk}.dlq` (ana kuyruğun DLX'i de bu: broker'ın teslim sınırı aşılırsa kaybolmaz) | `{tüketici}.dlq` topic'i | Subscription'ın yerleşik dead-letter kuyruğu |
+| Topoloji | `DeclareTopology` | `CreateTopics` | `ManageTopology` (Manage yetkisi) |
+
+Kaynak kodlarından çıkan ve tasarıma yansıyan noktalar: RabbitMQ istemcisinin tüketicisi varsayılan olarak tek mesaj
+işler (`ConsumerDispatchConcurrency = 1`) ve gövde yalnızca olay içinde geçerlidir (kopyalanır); bekleme kuyruğuna
+yeniden yayında `x-death` başlıkları taşınmaz (taşınırsa broker döngü sanıp mesajı düşürür). Kafka'da gecikmeli teslim
+yoktur ve `max.poll.interval.ms` (5 dk) aşılırsa tüketici gruptan atılır: bu yüzden bekleme thread uyutularak değil
+partition durdurularak yapılır. Service Bus'ta yeni subscription her şeyi geçiren `$Default` kuralıyla gelir (silinir)
+ve SDK varsayılanları (`MaxConcurrentCalls = 1`, otomatik tamamlama) değiştirilir.
+
+Kendi taşıyıcın: `IEventTransport` (yayın) + mesaj geldiğinde `new EventConsumer(dispatcher, options, logger)
+.ConsumeAsync(envelope, attempt, ct)` ve sonuca göre onay / yeniden teslim / DLQ; zarf ↔ başlık dönüşümü `EventHeaders`.
+
+**Inbox: tam bir kez işleme.** Broker'lar "en az bir kez" teslim eder. `AddCanInbox<TContext>()` ile her event bir
+tüketicide bir kez işlenir: handler'ların `TContext` değişiklikleri ve inbox kaydı aynı transaction'dadır (handler
+hata verirse ikisi birden geri alınır). Veritabanı dışı yan etkileri (e-posta, HTTP) idempotent yaz. Eski kayıtlar
+`Retention` (7 gün) sonra silinir. Tek örnekli uygulamalarda `AddCanInMemoryInbox()`.
+
+Gerçek broker'a karşı testler (Northwind `docker compose up -d rabbitmq kafka`):
+`CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/ CAN_KAFKA_BOOTSTRAP=localhost:9092 dotnet test --project tests/Can.Core.EventBus.Brokers.Tests`.
+Azure için gerçek ad alanı ya da [Service Bus emülatörü](https://learn.microsoft.com/azure/service-bus-messaging/overview-emulator):
+`CAN_AZURE_SERVICEBUS_CONNECTION="Endpoint=...;UseDevelopmentEmulator=true;"`.
 
 **Değişiklik geçmişi (audit trail)**
 
