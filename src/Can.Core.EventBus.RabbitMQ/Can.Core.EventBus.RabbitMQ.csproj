@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.EventBus.RabbitMQ</RootNamespace>
+    <Description>Can.Core.EventBus için RabbitMQ taşıyıcısı: topic exchange, quorum kuyruk, gönderim onayı, gecikmeli yeniden deneme kuyrukları ve DLQ.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.EventBus\Can.Core.EventBus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.EventBus.Brokers.Tests" />
+  </ItemGroup>
+
+</Project>

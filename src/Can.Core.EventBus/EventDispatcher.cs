@@ -27,7 +27,14 @@ public sealed partial class EventDispatcher
     }
 
     /// <returns>Event tanınıp handler'lara verildiyse <see langword="true"/>; bu serviste karşılığı yoksa <see langword="false"/>.</returns>
-    public async Task<bool> DispatchAsync(EventEnvelope envelope, CancellationToken cancellationToken = default)
+    public async Task<bool> DispatchAsync(EventEnvelope envelope, CancellationToken cancellationToken = default) =>
+        await DispatchAsync(envelope, consumer: null, cancellationToken).ConfigureAwait(false) != DispatchResult.Unknown;
+
+    /// <summary>
+    /// Zarfı dağıtır. <paramref name="consumer"/> verilir ve <see cref="IInboxStore"/> kayıtlıysa event bu tüketicide
+    /// yalnızca bir kez işlenir (tekrar gelen teslimler <see cref="DispatchResult.Duplicate"/>).
+    /// </summary>
+    public async Task<DispatchResult> DispatchAsync(EventEnvelope envelope, string? consumer, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
@@ -35,21 +42,38 @@ public sealed partial class EventDispatcher
         {
             // Başka servislerin event'leri de aynı kanaldan gelebilir; tanımadığımızı atlarız.
             LogUnknownEvent(envelope.EventName, envelope.EventId);
-            return false;
+            return DispatchResult.Unknown;
         }
 
         using Activity? activity = EventBusTelemetry.StartProcess(envelope);
         try
         {
             var integrationEvent = (IIntegrationEvent?)JsonSerializer.Deserialize(envelope.Payload, type, EventJson.Options)
-                ?? throw new InvalidOperationException($"'{envelope.EventName}' event'i okunamadı (boş içerik).");
+                ?? throw new JsonException($"'{envelope.EventName}' event'i okunamadı (boş içerik).");
 
             await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
             IServiceProvider services = scope.ServiceProvider;
 
             await RestoreTenantAsync(services, envelope.TenantId, cancellationToken).ConfigureAwait(false);
-            await services.GetRequiredService<IPublisher>().Publish(integrationEvent, cancellationToken).ConfigureAwait(false);
-            return true;
+            IPublisher publisher = services.GetRequiredService<IPublisher>();
+
+            if (consumer is not null && services.GetService<IInboxStore>() is { } inbox)
+            {
+                bool executed = await inbox
+                    .ExecuteOnceAsync(services, consumer, envelope, ct => publisher.Publish(integrationEvent, ct), cancellationToken)
+                    .ConfigureAwait(false);
+                if (!executed)
+                {
+                    activity?.SetTag("can.duplicate", true);
+                    LogDuplicate(envelope.EventName, envelope.EventId, consumer);
+                    return DispatchResult.Duplicate;
+                }
+
+                return DispatchResult.Handled;
+            }
+
+            await publisher.Publish(integrationEvent, cancellationToken).ConfigureAwait(false);
+            return DispatchResult.Handled;
         }
         catch (Exception exception)
         {
@@ -76,6 +100,21 @@ public sealed partial class EventDispatcher
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Bilinmeyen event {EventName} ({EventId}) atlandı.")]
     private partial void LogUnknownEvent(string eventName, Guid eventId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EventName} ({EventId}) {Consumer} tüketicisinde daha önce işlenmiş; atlandı.")]
+    private partial void LogDuplicate(string eventName, Guid eventId, string consumer);
+}
+
+public enum DispatchResult
+{
+    /// <summary>Handler'lar çalıştı.</summary>
+    Handled,
+
+    /// <summary>Bu serviste bu adla kayıtlı event yok.</summary>
+    Unknown,
+
+    /// <summary>Inbox: bu tüketicide daha önce işlenmiş.</summary>
+    Duplicate,
 }
 
 /// <summary>

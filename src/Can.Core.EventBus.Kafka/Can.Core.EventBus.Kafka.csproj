@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.EventBus.Kafka</RootNamespace>
+    <Description>Can.Core.EventBus için Apache Kafka taşıyıcısı: event başına topic, idempotent producer, consumer group, işlendikten sonra offset, retry/DLQ topic'leri.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.EventBus\Can.Core.EventBus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Confluent.Kafka" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.EventBus.Brokers.Tests" />
+  </ItemGroup>
+
+</Project>

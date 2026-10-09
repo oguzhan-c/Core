@@ -1,4 +1,5 @@
 using Can.Core.Persistence.AuditTrail;
+using Can.Core.Persistence.Inbox;
 using Can.Core.Persistence.Outbox;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,6 +7,26 @@ namespace Can.Core.Persistence.Context;
 
 public static class CanModelBuilderExtensions
 {
+    /// <summary>
+    /// Inbox tablosunu modele ekler (broker'dan gelen event'lerin tekrarını ayıklar). Kullanmak için
+    /// <c>services.AddCanInbox&lt;TContext&gt;()</c>.
+    /// </summary>
+    public static ModelBuilder AddCanInbox(this ModelBuilder modelBuilder, string tableName = "InboxMessages", string? schema = null)
+    {
+        ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        modelBuilder.Entity<InboxMessage>(b =>
+        {
+            b.ToTable(tableName, schema);
+            b.HasKey(m => new { m.Consumer, m.EventId });
+            b.Property(m => m.Consumer).HasMaxLength(200);
+            b.Property(m => m.EventName).HasMaxLength(512).IsRequired();
+            b.HasIndex(m => m.ProcessedAt);
+        });
+
+        return modelBuilder;
+    }
+
     /// <summary>
     /// Outbox tablosunu modele ekler. <c>IIntegrationEvent</c>'ler bu tabloya yazılır; yayınlamak için
     /// <c>services.AddCanOutbox&lt;TContext&gt;()</c> ile işlemciyi de kaydet.

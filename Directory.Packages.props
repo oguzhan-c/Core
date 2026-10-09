@@ -19,6 +19,10 @@
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.12" />
     <!-- 3.x çıktı ama Microsoft'un Redis paketleri (önbellek, SignalR) 2.x'e göre derlenmiş: Microsoft geçene kadar en son 2.x. -->
     <PackageVersion Include="StackExchange.Redis" Version="2.13.17" />
+    <!-- Event bus taşıyıcıları (resmî istemciler) -->
+    <PackageVersion Include="RabbitMQ.Client" Version="7.2.2" />
+    <PackageVersion Include="Confluent.Kafka" Version="2.16.0" />
+    <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.21.0" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Localization.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />

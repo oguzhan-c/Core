@@ -16,6 +16,9 @@
     <Project Path="src/Can.Core.Caching.Redis/Can.Core.Caching.Redis.csproj" />
     <Project Path="src/Can.Core.Redis.ScaleOut/Can.Core.Redis.ScaleOut.csproj" />
     <Project Path="src/Can.Core.EventBus/Can.Core.EventBus.csproj" />
+    <Project Path="src/Can.Core.EventBus.RabbitMQ/Can.Core.EventBus.RabbitMQ.csproj" />
+    <Project Path="src/Can.Core.EventBus.Kafka/Can.Core.EventBus.Kafka.csproj" />
+    <Project Path="src/Can.Core.EventBus.AzureServiceBus/Can.Core.EventBus.AzureServiceBus.csproj" />
     <Project Path="src/Can.Core.FileStorage/Can.Core.FileStorage.csproj" />
     <Project Path="src/Can.Core.FileStorage.S3/Can.Core.FileStorage.S3.csproj" />
     <Project Path="src/Can.Core.Localization/Can.Core.Localization.csproj" />
@@ -50,6 +53,7 @@
     <Project Path="tests/Can.Core.Caching.Redis.Tests/Can.Core.Caching.Redis.Tests.csproj" />
     <Project Path="tests/Can.Core.Redis.ScaleOut.Tests/Can.Core.Redis.ScaleOut.Tests.csproj" />
     <Project Path="tests/Can.Core.EventBus.Tests/Can.Core.EventBus.Tests.csproj" />
+    <Project Path="tests/Can.Core.EventBus.Brokers.Tests/Can.Core.EventBus.Brokers.Tests.csproj" />
     <Project Path="tests/Can.Core.FileStorage.Tests/Can.Core.FileStorage.Tests.csproj" />
     <Project Path="tests/Can.Core.Localization.Tests/Can.Core.Localization.Tests.csproj" />
     <Project Path="tests/Can.Core.Observability.Tests/Can.Core.Observability.Tests.csproj" />

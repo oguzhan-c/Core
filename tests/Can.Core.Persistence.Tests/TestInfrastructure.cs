@@ -94,6 +94,7 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options, ICurr
         modelBuilder.Entity<Product>().HasOne(p => p.Category).WithMany().HasForeignKey(p => p.CategoryId);
         modelBuilder.AddCanOutbox();
         modelBuilder.AddCanAuditTrail();
+        modelBuilder.AddCanInbox();
     }
 }
 
