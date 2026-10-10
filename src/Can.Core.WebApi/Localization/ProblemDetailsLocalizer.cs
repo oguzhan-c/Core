@@ -27,6 +27,7 @@ internal static class ProblemDetailsLocalizer
         [ProblemTitles.Conflict] = "problem.conflict",
         [ProblemTitles.ServerError] = "problem.server_error",
         [ProblemTitles.TooManyRequests] = "problem.too_many_requests",
+        [ProblemTitles.UnprocessableContent] = "problem.unprocessable",
     };
 
     public static void Customize(ProblemDetailsContext context)

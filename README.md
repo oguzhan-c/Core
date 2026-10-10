@@ -1273,6 +1273,38 @@ Aşılınca 429 + `Retry-After` + ProblemDetails (`code: "rate_limited"`). Proxy
 ayarlanmalı (yoksa herkes proxy'nin IP'sini paylaşır). Sınırlar örnek başınadır (bellekte); birden fazla sunucuda
 her biri ayrı sayar.
 
+## Idempotency (tekrar eden istekler)
+
+Ağ koptuğunda istemci isteği tekrar gönderir; sipariş, ödeme gibi işlemler iki kez yapılmamalı. İstemci her işlem için
+bir anahtar üretir (`crypto.randomUUID()`) ve tekrar denemelerde AYNI anahtarı `Idempotency-Key` başlığında gönderir
+([IETF taslağı](https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/)):
+
+```csharp
+builder.Services.AddCanIdempotency();          // yanıtlar IDistributedCache'te (çok sunucuda Redis: AddCanRedisCache)
+
+app.UseAuthentication();
+app.UseCanTenantResolution();
+app.UseAuthorization();
+app.UseCanIdempotency();                       // kullanıcı/tenant bilindikten ve yetki denetlendikten sonra
+
+orders.MapPost("/", CreateOrder).WithIdempotency();               // anahtar zorunlu
+orders.MapPost("/notes", AddNote).WithIdempotency(required: false); // varsa kullanılır
+// controller: [Idempotent]
+```
+
+| Durum | Yanıt |
+|---|---|
+| İlk istek | Handler çalışır; yanıt (durum, gövde, `Location`/`ETag`) 24 saat saklanır |
+| Aynı anahtar, aynı istek | Saklanan yanıt aynen döner + `Idempotent-Replayed: true`; handler çalışmaz |
+| Aynı anahtar, farklı istek (yol, sorgu ya da gövde) | 422 `idempotency_key_reused` |
+| Aynı anahtarla istek hâlâ işleniyor | 409 `idempotency_in_progress` + `Retry-After` |
+| Anahtar yok (zorunluysa) / geçersiz | 400 `idempotency_key_required` / `idempotency_key_invalid` |
+
+Anahtar tenant + kullanıcı ile ayrılır (başkasının anahtarıyla onun yanıtı alınamaz). 5xx, 408, 429, 401 ve 403
+saklanmaz: istemci aynı anahtarla tekrar deneyebilir. Çerezler hiçbir zaman saklanmaz; 1 MB'tan büyük yanıtlar
+saklanmaz (`MaxResponseBodySize`). Eşzamanlı aynı anahtar `IDistributedLock` ile engellenir (Redis ScaleOut kayıtlıysa
+sunucular arası).
+
 ## Logging
 
 ```csharp

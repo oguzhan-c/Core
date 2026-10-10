@@ -8,10 +8,15 @@
     "conflict": "Çakışma",
     "server_error": "Sunucu hatası",
     "unexpected": "Beklenmeyen bir hata oluştu.",
-    "too_many_requests": "Çok fazla istek"
+    "too_many_requests": "Çok fazla istek",
+    "unprocessable": "İşlenemeyen istek"
   },
   "rate_limited": "Çok fazla istek gönderildi; biraz sonra tekrar dene.",
   "unauthorized": "Bu işlem için giriş yapmalısın.",
   "forbidden": "Bu işlem için yetkin yok.",
-  "unexpected": "Beklenmeyen bir hata oluştu."
+  "unexpected": "Beklenmeyen bir hata oluştu.",
+  "idempotency_key_required": "Bu işlem için 'Idempotency-Key' başlığı gerekli.",
+  "idempotency_key_invalid": "'Idempotency-Key' başlığı geçersiz.",
+  "idempotency_in_progress": "Bu anahtarla gönderilen istek hâlâ işleniyor; biraz sonra tekrar dene.",
+  "idempotency_key_reused": "Bu anahtar farklı bir istekle kullanılmış; yeni istek için yeni anahtar üret."
 }

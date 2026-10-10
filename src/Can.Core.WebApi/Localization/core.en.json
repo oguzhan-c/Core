@@ -8,10 +8,15 @@
     "conflict": "Conflict",
     "server_error": "Server error",
     "unexpected": "An unexpected error occurred.",
-    "too_many_requests": "Too many requests"
+    "too_many_requests": "Too many requests",
+    "unprocessable": "Unprocessable request"
   },
   "rate_limited": "Too many requests; please try again later.",
   "unauthorized": "You must sign in to do this.",
   "forbidden": "You are not allowed to do this.",
-  "unexpected": "An unexpected error occurred."
+  "unexpected": "An unexpected error occurred.",
+  "idempotency_key_required": "The 'Idempotency-Key' header is required for this operation.",
+  "idempotency_key_invalid": "The 'Idempotency-Key' header is invalid.",
+  "idempotency_in_progress": "A request with this key is still being processed; try again shortly.",
+  "idempotency_key_reused": "This key was used with a different request; generate a new key for a new request."
 }

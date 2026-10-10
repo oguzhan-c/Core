@@ -131,4 +131,5 @@ public static class ProblemTitles
     public const string Conflict = "Çakışma";
     public const string ServerError = "Sunucu hatası";
     public const string TooManyRequests = "Çok fazla istek";
+    public const string UnprocessableContent = "İşlenemeyen istek";
 }
