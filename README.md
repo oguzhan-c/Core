@@ -1307,6 +1307,44 @@ kullanıcıya (yoksa tenant'a) göre sabittir: aynı kişi hep aynı sonucu alı
 kalır. Kapalı özellik 404 `feature_disabled` döner (yetki denetiminden önce; özelliğin varlığı belli olmaz). Arayüz
 `/api/features` ile menüleri gizler, asıl denetim sunucudadır.
 
+## API sürümleme
+
+Ek paket yok. Sürüm sırasıyla yoldan (`/api/v2/orders`), `api-version` başlığından (`2` ya da `2.0`) ya da
+`DefaultVersion`'dan gelir; başlık ya da varsayılan kullanıldığında yol içeride `/api/v{n}/...`'ye yeniden yazılır.
+
+```csharp
+builder.Services.AddCanApiVersioning(o =>
+{
+    o.Add(new ApiVersionInfo(1)
+    {
+        DeprecatedAt = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero),   // Deprecation başlığı
+        Sunset = new(2027, 3, 1, 0, 0, 0, TimeSpan.Zero),         // Sunset başlığı; bu tarihten sonra 410
+        Link = "https://docs.ornek.com/api/v2-gecis",
+    });
+    o.Add(new ApiVersionInfo(2));
+    o.DefaultVersion = 2;                                         // sürümsüz istekler
+    o.UnversionedPaths.Add("/api/auth");                          // sürümlenmeyen yollar
+});
+
+app.UseCanExceptionHandler();
+app.UseCanApiVersioning();     // routing'den önce (UseRouting'i kendisi çağırır)
+app.UseAuthentication(); ...
+
+app.MapApiVersion(1).MapGet("/orders", GetOrdersV1);   // /api/v1/orders, OpenAPI grubu "v1"
+app.MapApiVersion(2).MapGet("/orders", GetOrdersV2);   // /api/v2/orders
+// handler'da: httpContext.GetApiVersion()?.Major
+```
+
+| Durum | Yanıt |
+|---|---|
+| Her sürümlü yanıt | `api-supported-versions: 1, 2`, `api-deprecated-versions: 1` |
+| Kullanımdan kalkan sürüm | + `Deprecation: @<unix zamanı>` (RFC 9745), `Sunset: <tarih>` (RFC 8594), `Link: <...>; rel="deprecation"` |
+| Bilinmeyen ya da hatalı sürüm | 400 `api_version_unsupported` |
+| `Sunset` geçmiş sürüm | 410 `api_version_retired` |
+
+Yalnızca ana sürüm (`v1`, `v2`) desteklenir: geriye uyumlu değişiklikler aynı sürümde yapılır, kırıcı değişiklik yeni
+sürüm demektir.
+
 ## Idempotency (tekrar eden istekler)
 
 Ağ koptuğunda istemci isteği tekrar gönderir; sipariş, ödeme gibi işlemler iki kez yapılmamalı. İstemci her işlem için

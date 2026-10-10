@@ -9,7 +9,8 @@
     "server_error": "Sunucu hatası",
     "unexpected": "Beklenmeyen bir hata oluştu.",
     "too_many_requests": "Çok fazla istek",
-    "unprocessable": "İşlenemeyen istek"
+    "unprocessable": "İşlenemeyen istek",
+    "gone": "Artık yok"
   },
   "rate_limited": "Çok fazla istek gönderildi; biraz sonra tekrar dene.",
   "unauthorized": "Bu işlem için giriş yapmalısın.",
@@ -19,5 +20,7 @@
   "idempotency_key_invalid": "'Idempotency-Key' başlığı geçersiz.",
   "idempotency_in_progress": "Bu anahtarla gönderilen istek hâlâ işleniyor; biraz sonra tekrar dene.",
   "idempotency_key_reused": "Bu anahtar farklı bir istekle kullanılmış; yeni istek için yeni anahtar üret.",
-  "feature_disabled": "Bu özellik kullanılamıyor."
+  "feature_disabled": "Bu özellik kullanılamıyor.",
+  "api_version_unsupported": "Bu API sürümü desteklenmiyor.",
+  "api_version_retired": "Bu API sürümü kapatıldı; yeni sürüme geç."
 }

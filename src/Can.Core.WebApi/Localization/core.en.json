@@ -9,7 +9,8 @@
     "server_error": "Server error",
     "unexpected": "An unexpected error occurred.",
     "too_many_requests": "Too many requests",
-    "unprocessable": "Unprocessable request"
+    "unprocessable": "Unprocessable request",
+    "gone": "Gone"
   },
   "rate_limited": "Too many requests; please try again later.",
   "unauthorized": "You must sign in to do this.",
@@ -19,5 +20,7 @@
   "idempotency_key_invalid": "The 'Idempotency-Key' header is invalid.",
   "idempotency_in_progress": "A request with this key is still being processed; try again shortly.",
   "idempotency_key_reused": "This key was used with a different request; generate a new key for a new request.",
-  "feature_disabled": "This feature is not available."
+  "feature_disabled": "This feature is not available.",
+  "api_version_unsupported": "This API version is not supported.",
+  "api_version_retired": "This API version has been retired; move to a newer version."
 }

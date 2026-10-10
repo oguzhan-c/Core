@@ -28,6 +28,7 @@ internal static class ProblemDetailsLocalizer
         [ProblemTitles.ServerError] = "problem.server_error",
         [ProblemTitles.TooManyRequests] = "problem.too_many_requests",
         [ProblemTitles.UnprocessableContent] = "problem.unprocessable",
+        [ProblemTitles.Gone] = "problem.gone",
     };
 
     public static void Customize(ProblemDetailsContext context)
