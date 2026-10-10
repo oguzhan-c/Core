@@ -18,5 +18,6 @@
   "idempotency_key_required": "The 'Idempotency-Key' header is required for this operation.",
   "idempotency_key_invalid": "The 'Idempotency-Key' header is invalid.",
   "idempotency_in_progress": "A request with this key is still being processed; try again shortly.",
-  "idempotency_key_reused": "This key was used with a different request; generate a new key for a new request."
+  "idempotency_key_reused": "This key was used with a different request; generate a new key for a new request.",
+  "feature_disabled": "This feature is not available."
 }

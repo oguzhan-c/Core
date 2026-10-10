@@ -1,5 +1,6 @@
 using System.Reflection;
 using Can.Core.Application.Behaviors;
+using Can.Core.Application.Features;
 using Can.Core.Application.Rules;
 using Can.Core.Mediator.DependencyInjection;
 using FluentValidation;
@@ -16,8 +17,8 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <remarks>
     /// Behavior sırası (dıştan içe):
-    /// <c>Telemetry → Logging → Performance → Authorization → Validation → Caching → CacheRemoving → Transaction → Handler</c>.
-    /// Yetkisiz istekler doğrulama hatalarını görmez; önbellekten yalnızca yetkili ve geçerli isteklere yanıt verilir;
+    /// <c>Telemetry → Logging → Performance → FeatureGate → Authorization → Validation → Caching → CacheRemoving → Transaction → Handler</c>.
+    /// Kapalı özelliğin varlığı yetki hatasıyla bile belli olmaz; yetkisiz istekler doğrulama hatalarını görmez; önbellekten yalnızca yetkili ve geçerli isteklere yanıt verilir;
     /// önbellek ancak transaction commit edildikten sonra temizlenir.
     /// </remarks>
     /// <example>
@@ -42,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ICurrentTenant>(NullCurrentTenant.Instance);
         services.TryAddSingleton<IDistributedLock>(sp => new Locking.InMemoryDistributedLock(sp.GetService<TimeProvider>())); // Redis: Can.Core.Redis.ScaleOut
         services.AddHybridCache();
+        services.AddCanFeatureFlagDefaults(); // AddCanFeatureFlags(...) önce ya da sonra çağrılabilir
 
         services.AddCanMediator(cfg =>
         {
@@ -50,6 +52,7 @@ public static class ServiceCollectionExtensions
             cfg.AddOpenBehavior(typeof(TelemetryBehavior<,>));
             cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
             cfg.AddOpenBehavior(typeof(PerformanceBehavior<,>));
+            cfg.AddOpenBehavior(typeof(FeatureGateBehavior<,>));
             cfg.AddOpenBehavior(typeof(AuthorizationBehavior<,>));
             cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
             cfg.AddOpenBehavior(typeof(CachingBehavior<,>));

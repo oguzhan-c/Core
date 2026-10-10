@@ -18,5 +18,6 @@
   "idempotency_key_required": "Bu işlem için 'Idempotency-Key' başlığı gerekli.",
   "idempotency_key_invalid": "'Idempotency-Key' başlığı geçersiz.",
   "idempotency_in_progress": "Bu anahtarla gönderilen istek hâlâ işleniyor; biraz sonra tekrar dene.",
-  "idempotency_key_reused": "Bu anahtar farklı bir istekle kullanılmış; yeni istek için yeni anahtar üret."
+  "idempotency_key_reused": "Bu anahtar farklı bir istekle kullanılmış; yeni istek için yeni anahtar üret.",
+  "feature_disabled": "Bu özellik kullanılamıyor."
 }

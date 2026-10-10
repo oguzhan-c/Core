@@ -1273,6 +1273,40 @@ Aşılınca 429 + `Retry-After` + ProblemDetails (`code: "rate_limited"`). Proxy
 ayarlanmalı (yoksa herkes proxy'nin IP'sini paylaşır). Sınırlar örnek başınadır (bellekte); birden fazla sunucuda
 her biri ayrı sayar.
 
+## Özellik bayrakları (feature flags)
+
+Bir özelliği kod dağıtmadan açıp kapatmak; önce belirli tenant'lara, kullanıcılara ya da kullanıcıların bir yüzdesine
+açmak. Ek paket yok.
+
+```jsonc
+// appsettings.json — dosya değişince yeniden okunur (uygulama yeniden başlamaz)
+"Features": {
+  "dark-mode": true,
+  "new-checkout": { "Tenants": [ "acme" ], "RolloutPercentage": 10, "ExcludedTenants": [ "globex" ] },
+  "beta-reports": { "Roles": [ "Tester" ], "Users": [ "42" ] },
+  "black-friday": { "Enabled": true, "EnabledFrom": "2026-11-27T00:00:00+03:00", "EnabledUntil": "2026-11-30T00:00:00+03:00" }
+}
+```
+
+```csharp
+builder.Services.AddCanFeatureFlags(builder.Configuration.GetSection("Features"));
+// ya da koddan: AddCanFeatureFlags(o => o.Features["x"] = new FeatureDefinition { ... }), ya da kendi IFeatureDefinitionProvider'ın (veritabanı)
+
+if (await features.IsEnabledAsync("new-checkout", ct)) { ... }              // handler'da
+public sealed record GetBetaReportQuery : IRequest<Report>, IFeatureGatedRequest  // pipeline'da
+{
+    public IReadOnlyCollection<string> RequiredFeatures => ["beta-reports"];
+}
+app.MapPost("/checkout/v2", Checkout).RequireFeature("new-checkout");       // endpoint'te
+app.MapCanFeatures();                                                        // GET /api/features → { "features": [...] }
+```
+
+Kurallar: `Enabled` herkese açar; değilse `Users`, `Roles`, `Tenants` ya da `RolloutPercentage`'dan biri tutan için
+açıktır. `ExcludedTenants` ve `EnabledFrom`/`EnabledUntil` her durumda geçerlidir. Tanımsız özellik kapalıdır. Yüzde
+kullanıcıya (yoksa tenant'a) göre sabittir: aynı kişi hep aynı sonucu alır, yüzde artırılınca önceden açık olanlar açık
+kalır. Kapalı özellik 404 `feature_disabled` döner (yetki denetiminden önce; özelliğin varlığı belli olmaz). Arayüz
+`/api/features` ile menüleri gizler, asıl denetim sunucudadır.
+
 ## Idempotency (tekrar eden istekler)
 
 Ağ koptuğunda istemci isteği tekrar gönderir; sipariş, ödeme gibi işlemler iki kez yapılmamalı. İstemci her işlem için
