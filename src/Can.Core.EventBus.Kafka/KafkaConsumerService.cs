@@ -26,6 +26,8 @@ public sealed partial class KafkaConsumerService : BackgroundService
     private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly IServiceProvider _services;
     private readonly ILogger<KafkaConsumerService> _logger;
+    private volatile bool _running;
+    private volatile bool _idle;
 
     public KafkaConsumerService(
         KafkaInfrastructure kafka,
@@ -46,6 +48,9 @@ public sealed partial class KafkaConsumerService : BackgroundService
     /// <summary>Kuyruk/topic/subscription hazır ve dinleniyor (testler ve sağlık kontrolü için).</summary>
     internal Task Started => _started.Task;
 
+    /// <summary>Tüketim döngüsü çalışıyor mu; dinlenecek event yoksa <see langword="null"/>.</summary>
+    internal bool? IsConsuming => _idle ? null : _running;
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         Task.Factory.StartNew(() => RunAsync(stoppingToken), stoppingToken, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
 
@@ -54,6 +59,7 @@ public sealed partial class KafkaConsumerService : BackgroundService
         IReadOnlyList<string> events = EventConsumer.Subscriptions(_services, _options);
         if (events.Count == 0)
         {
+            _idle = true;
             LogNothingToConsume(_consumer.Name);
             return;
         }
@@ -80,6 +86,7 @@ public sealed partial class KafkaConsumerService : BackgroundService
 
         consumer.Subscribe(topics);
         LogStarted(_consumer.Name, events.Count);
+        _running = true;
         _started.TrySetResult();
         try
         {
@@ -109,6 +116,7 @@ public sealed partial class KafkaConsumerService : BackgroundService
         }
         finally
         {
+            _running = false;
             consumer.Close(); // grubu hemen terk et (yeniden dengeleme beklemesin), işaretli offset'ler yazılır
         }
     }
@@ -253,8 +261,14 @@ public static class KafkaServiceCollectionExtensions
         services.AddSingleton(options);
         services.TryAddSingleton<KafkaInfrastructure>();
         services.AddCanEventTransport<KafkaEventTransport>();
+        services.TryAddSingleton<KafkaDeadLetterQueue>();
+        services.TryAddSingleton<IDeadLetterQueue>(sp => sp.GetRequiredService<KafkaDeadLetterQueue>());
+        services.TryAddSingleton<IEventBrokerHealth, KafkaBrokerHealth>();
         if (options.EnableConsumer)
-            services.AddSingleton<IHostedService, KafkaConsumerService>();
+        {
+            services.TryAddSingleton<KafkaConsumerService>();
+            services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<KafkaConsumerService>());
+        }
         return services;
     }
 }

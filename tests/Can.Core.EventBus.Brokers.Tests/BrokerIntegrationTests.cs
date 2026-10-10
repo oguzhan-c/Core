@@ -70,6 +70,17 @@ public class RabbitMqIntegrationTests
     }
 
     [Fact]
+    public async Task Replays_dead_letters()
+    {
+        (BrokerHost host, RabbitMqOptions options) = await StartAsync();
+        await using (host)
+        {
+            await BrokerScenarios.ReplaysDeadLettersAsync(host);
+            await CleanupAsync(host, options);
+        }
+    }
+
+    [Fact]
     public async Task Retries_through_delay_queue_then_dead_letters()
     {
         (BrokerHost host, RabbitMqOptions options) = await StartAsync();
@@ -137,6 +148,15 @@ public class KafkaIntegrationTests
         (BrokerHost host, KafkaOptions options) = await StartAsync();
         await using (host)
             await BrokerScenarios.IgnoresDuplicateDeliveryAsync(host);
+        await CleanupAsync(options);
+    }
+
+    [Fact]
+    public async Task Replays_dead_letters()
+    {
+        (BrokerHost host, KafkaOptions options) = await StartAsync();
+        await using (host)
+            await BrokerScenarios.ReplaysDeadLettersAsync(host);
         await CleanupAsync(options);
     }
 
@@ -211,6 +231,15 @@ public class AzureServiceBusIntegrationTests
         (BrokerHost host, AzureServiceBusOptions options) = await StartAsync();
         await using (host)
             await BrokerScenarios.IgnoresDuplicateDeliveryAsync(host);
+        await CleanupAsync(options);
+    }
+
+    [Fact]
+    public async Task Replays_dead_letters()
+    {
+        (BrokerHost host, AzureServiceBusOptions options) = await StartAsync();
+        await using (host)
+            await BrokerScenarios.ReplaysDeadLettersAsync(host);
         await CleanupAsync(options);
     }
 

@@ -10,6 +10,7 @@ public sealed class KafkaInfrastructure : IDisposable
 {
     private readonly KafkaOptions _options;
     private readonly Lazy<IProducer<string, byte[]>> _producer;
+    private readonly Lazy<IAdminClient> _admin;
     private readonly ConcurrentDictionary<string, byte> _knownTopics = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _adminGate = new(1, 1);
 
@@ -17,9 +18,13 @@ public sealed class KafkaInfrastructure : IDisposable
     {
         _options = options;
         _producer = new Lazy<IProducer<string, byte[]>>(() => new ProducerBuilder<string, byte[]>(options.ProducerConfig()).Build());
+        _admin = new Lazy<IAdminClient>(() => new AdminClientBuilder(options.AdminConfig()).Build());
     }
 
     public IProducer<string, byte[]> Producer => _producer.Value;
+
+    /// <summary>Paylaşılan yönetim istemcisi (metadata, sağlık kontrolü).</summary>
+    public IAdminClient Admin => _admin.Value;
 
     /// <summary>Eksik topic'leri oluşturur (<see cref="KafkaOptions.CreateTopics"/> kapalıysa bir şey yapmaz).</summary>
     public async Task EnsureTopicsAsync(IEnumerable<string> topics, CancellationToken cancellationToken)
@@ -88,6 +93,9 @@ public sealed class KafkaInfrastructure : IDisposable
             _producer.Value.Flush(TimeSpan.FromSeconds(10)); // kuyruktaki mesajlar gitsin
             _producer.Value.Dispose();
         }
+
+        if (_admin.IsValueCreated)
+            _admin.Value.Dispose();
 
         _adminGate.Dispose();
     }

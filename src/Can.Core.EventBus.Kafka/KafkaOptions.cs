@@ -43,6 +43,9 @@ public sealed class KafkaOptions : EventBrokerOptions
 
     internal string DeadLetterTopic => TopicPrefix + Sanitize(ResolveConsumerName()) + ".dlq";
 
+    /// <summary>DLQ'dan yeniden gönderimi izleyen consumer group (hangi ölü mesajların gönderildiğini bilir).</summary>
+    internal string DeadLetterReplayGroup => ResolveConsumerName() + ".dlq-replay";
+
     internal static string Sanitize(string name)
     {
         var builder = new StringBuilder(name.Length);
@@ -82,6 +85,17 @@ public sealed class KafkaOptions : EventBrokerOptions
         if (GroupProtocol is { } protocol)
             config.GroupProtocol = protocol;
         ConfigureConsumer?.Invoke(config);
+        return config;
+    }
+
+    /// <summary>DLQ okuyucusu: offset'ler elle, yalnızca mesaj yeniden gönderildikten (ya da DLQ'ya geri yazıldıktan) sonra yazılır.</summary>
+    internal ConsumerConfig DeadLetterConsumerConfig()
+    {
+        ConsumerConfig config = ConsumerConfig();
+        config.GroupId = DeadLetterReplayGroup;
+        config.ClientId = DeadLetterReplayGroup;
+        config.EnableAutoCommit = false;
+        config.AutoOffsetReset = AutoOffsetReset.Earliest;
         return config;
     }
 

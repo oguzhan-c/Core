@@ -21,6 +21,7 @@ public sealed partial class RabbitMqConsumerService : BackgroundService
     private readonly IServiceProvider _services;
     private readonly ILogger<RabbitMqConsumerService> _logger;
     private IChannel? _channel;
+    private volatile bool _idle;
 
     public RabbitMqConsumerService(
         RabbitMqConnection connection,
@@ -42,11 +43,15 @@ public sealed partial class RabbitMqConsumerService : BackgroundService
     /// <summary>Kuyruk/topic/subscription hazır ve dinleniyor (testler ve sağlık kontrolü için).</summary>
     internal Task Started => _started.Task;
 
+    /// <summary>Dinliyor mu (kanal açık); dinlenecek event yoksa <see langword="null"/>.</summary>
+    internal bool? IsConsuming => _idle ? null : _channel?.IsOpen == true;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         IReadOnlyList<string> events = EventConsumer.Subscriptions(_services, _options);
         if (events.Count == 0)
         {
+            _idle = true;
             LogNothingToConsume(_consumer.Name);
             return;
         }

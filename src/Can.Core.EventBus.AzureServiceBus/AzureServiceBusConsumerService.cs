@@ -22,6 +22,7 @@ public sealed partial class AzureServiceBusConsumerService : BackgroundService
     private readonly IServiceProvider _services;
     private readonly ILogger<AzureServiceBusConsumerService> _logger;
     private ServiceBusProcessor? _processor;
+    private volatile bool _idle;
 
     public AzureServiceBusConsumerService(
         AzureServiceBusInfrastructure bus,
@@ -41,11 +42,15 @@ public sealed partial class AzureServiceBusConsumerService : BackgroundService
     /// <summary>Kuyruk/topic/subscription hazır ve dinleniyor (testler ve sağlık kontrolü için).</summary>
     internal Task Started => _started.Task;
 
+    /// <summary>İşlemci çalışıyor mu; dinlenecek event yoksa <see langword="null"/>.</summary>
+    internal bool? IsConsuming => _idle ? null : _processor?.IsProcessing == true;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         IReadOnlyList<string> events = EventConsumer.Subscriptions(_services, _options);
         if (events.Count == 0)
         {
+            _idle = true;
             LogNothingToConsume(_consumer.Name);
             return;
         }
@@ -280,8 +285,14 @@ public static class AzureServiceBusServiceCollectionExtensions
         services.AddSingleton(options);
         services.TryAddSingleton<AzureServiceBusInfrastructure>();
         services.AddCanEventTransport<AzureServiceBusEventTransport>();
+        services.TryAddSingleton<AzureServiceBusDeadLetterQueue>();
+        services.TryAddSingleton<IDeadLetterQueue>(sp => sp.GetRequiredService<AzureServiceBusDeadLetterQueue>());
+        services.TryAddSingleton<IEventBrokerHealth, AzureServiceBusBrokerHealth>();
         if (options.EnableConsumer)
-            services.AddSingleton<IHostedService, AzureServiceBusConsumerService>();
+        {
+            services.TryAddSingleton<AzureServiceBusConsumerService>();
+            services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<AzureServiceBusConsumerService>());
+        }
         return services;
     }
 }

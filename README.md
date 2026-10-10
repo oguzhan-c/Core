@@ -425,6 +425,38 @@ ve SDK varsayılanları (`MaxConcurrentCalls = 1`, otomatik tamamlama) değişti
 Kendi taşıyıcın: `IEventTransport` (yayın) + mesaj geldiğinde `new EventConsumer(dispatcher, options, logger)
 .ConsumeAsync(envelope, attempt, ct)` ve sonuca göre onay / yeniden teslim / DLQ; zarf ↔ başlık dönüşümü `EventHeaders`.
 
+**DLQ'dan yeniden gönderim.** Hatanın nedeni giderilince (ödeme servisi düzeldi, eksik veri tamamlandı) `IDeadLetterQueue`
+(her taşıyıcı kaydeder) DLQ'daki mesajları yeniden işlemeye gönderir. Mesaj yalnızca bu tüketiciye gider (RabbitMQ:
+doğrudan ana kuyruk; Kafka: kendi retry topic'i; Service Bus: bu subscription'a özel `can.retry` kopyası), deneme
+hakları baştan başlar, hata başlıkları silinir ve `can-replay-count` bir artar. Filtreye uymayanlar DLQ'da kalır.
+
+```csharp
+app.MapPost("/admin/eventbus/dead-letters/replay", async (IDeadLetterQueue deadLetters, string? eventName, CancellationToken ct) =>
+    await deadLetters.ReplayAsync(new DeadLetterReplayOptions
+    {
+        MaxMessages = 100,
+        Filter = m => eventName is null || m.EventName == eventName,
+    }, ct))
+    .RequireAuthorization("admin");
+```
+
+`DeadLetterMessage` filtrede event adı, kimlik, tenant, hata, hata tipi, hata zamanı ve kaç kez gönderildiği bilgisini
+verir. Kafka'da okunan mesaj silinmediği için hangi ölü mesajların gönderildiğini `{tüketici}.dlq-replay` consumer
+group'u tutar.
+
+**Sağlık ve metrikler.** `AddHealthChecks().AddCanEventBusCheck()` (`/health/ready`): broker'a ulaşılamıyorsa ya da
+tüketici dinlemiyorsa `Unhealthy`, DLQ'da `DeadLetterThreshold`'dan (varsayılan 0) fazla mesaj varsa `Degraded`.
+Sonuçta `broker`, `consuming`, `deadLetters` verileri. Metrikler (`Can.Core.EventBus` meter'ı, OpenTelemetry
+paketinde açık):
+
+| Metrik | Etiketler | Ne gösterir |
+|---|---|---|
+| `can.eventbus.published` | `can.event`, `can.outcome` (`published` / `failed`) | Yayınlar |
+| `can.eventbus.consumed` | `can.event`, `can.consumer`, `can.outcome` (`completed` / `duplicate` / `unknown` / `retry` / `dead_letter`) | İşlenen mesajlar; `dead_letter` için alarm kur |
+| `can.eventbus.process.duration` | aynı | Handler süresi (anında denemeler dahil) |
+| `can.eventbus.lag` | `can.event`, `can.consumer` | Event'in oluşmasından ilk işlenmesine kadar geçen süre: tüketici geride mi |
+| `can.eventbus.replayed` | `can.event`, `can.consumer` | DLQ'dan yeniden gönderilenler |
+
 **Inbox: tam bir kez işleme.** Broker'lar "en az bir kez" teslim eder. `AddCanInbox<TContext>()` ile her event bir
 tüketicide bir kez işlenir: handler'ların `TContext` değişiklikleri ve inbox kaydı aynı transaction'dadır (handler
 hata verirse ikisi birden geri alınır). Veritabanı dışı yan etkileri (e-posta, HTTP) idempotent yaz. Eski kayıtlar

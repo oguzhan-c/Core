@@ -35,8 +35,14 @@ public static class RabbitMqServiceCollectionExtensions
         services.TryAddSingleton<RabbitMqConnection>();
         services.TryAddSingleton<RabbitMqTopology>();
         services.AddCanEventTransport<RabbitMqEventTransport>();
+        services.TryAddSingleton<RabbitMqDeadLetterQueue>();
+        services.TryAddSingleton<IDeadLetterQueue>(sp => sp.GetRequiredService<RabbitMqDeadLetterQueue>());
+        services.TryAddSingleton<IEventBrokerHealth, RabbitMqBrokerHealth>();
         if (options.EnableConsumer)
-            services.AddSingleton<IHostedService, RabbitMqConsumerService>();
+        {
+            services.TryAddSingleton<RabbitMqConsumerService>();
+            services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<RabbitMqConsumerService>());
+        }
         return services;
     }
 }

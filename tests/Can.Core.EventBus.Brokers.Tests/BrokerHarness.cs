@@ -19,6 +19,12 @@ public sealed class Received
 
     public ConcurrentQueue<int> Orders { get; } = new();
 
+    /// <summary>Başarıyla işlenen ödeme event'leri (<see cref="PaymentsFail"/> kapatıldıktan sonra).</summary>
+    public ConcurrentQueue<int> Payments { get; } = new();
+
+    /// <summary>Ödeme handler'ı hata versin mi (DLQ'dan yeniden gönderim testi için kapatılır).</summary>
+    public bool PaymentsFail { get; set; } = true;
+
     public int Failures => _failures;
 
     public void Failed() => Interlocked.Increment(ref _failures);
@@ -37,6 +43,12 @@ public sealed class BrokerPaymentFailedHandler(Received received) : INotificatio
 {
     public Task Handle(BrokerPaymentFailed notification, CancellationToken cancellationToken)
     {
+        if (!received.PaymentsFail)
+        {
+            received.Payments.Enqueue(notification.Id);
+            return Task.CompletedTask;
+        }
+
         received.Failed();
         throw new TimeoutException("ödeme servisi yanıt vermedi");
     }
@@ -142,5 +154,39 @@ internal static class BrokerScenarios
         Assert.Equal(typeof(TimeoutException).FullName, headers![EventHeaders.ErrorType]);
         Assert.Equal("brokertest.payment-failed", headers[EventHeaders.EventName]);
         Assert.Equal("2", headers[EventHeaders.Attempt]);
+    }
+
+    /// <summary>
+    /// Ölü mesaj DLQ'da görünür ve sağlık kontrolüne yansır; filtreye uymayan gönderilmez; hata giderilince yeniden
+    /// gönderilen mesaj işlenir ve DLQ boşalır.
+    /// </summary>
+    public static async Task ReplaysDeadLettersAsync(BrokerHost host)
+    {
+        IDeadLetterQueue deadLetters = host.Services.GetRequiredService<IDeadLetterQueue>();
+        IEventBrokerHealth health = host.Services.GetRequiredService<IEventBrokerHealth>();
+        long Count() => deadLetters.CountAsync().GetAwaiter().GetResult() ?? 0;
+
+        await host.PublishAsync(new BrokerPaymentFailed(5));
+        await BrokerHost.WaitUntilAsync(() => Count() == 1, 60);
+
+        EventBrokerHealthReport report = await health.CheckAsync();
+        Assert.True(report.Reachable, report.Error);
+        Assert.True(report.Consuming);
+        Assert.Equal(1, report.DeadLetters);
+
+        DeadLetterReplayResult skipped = await deadLetters.ReplayAsync(new DeadLetterReplayOptions { Filter = m => m.EventName == "baska.event" });
+        Assert.Equal(new DeadLetterReplayResult(0, 1), skipped);
+        await BrokerHost.WaitUntilAsync(() => Count() == 1, 30);
+
+        host.Received.PaymentsFail = false;
+        DeadLetterReplayResult replayed = await deadLetters.ReplayAsync(new DeadLetterReplayOptions
+        {
+            Filter = m => m.EventName == "brokertest.payment-failed" && m.ErrorType == typeof(TimeoutException).FullName,
+        });
+        Assert.Equal(new DeadLetterReplayResult(1, 0), replayed);
+
+        await BrokerHost.WaitUntilAsync(() => host.Received.Payments.Contains(5));
+        await BrokerHost.WaitUntilAsync(() => Count() == 0, 60);
+        Assert.Equal(2, host.Received.Failures); // ilk deneme + 1 gecikmeli deneme; yeniden gönderimde başarılı
     }
 }
