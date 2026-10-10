@@ -273,9 +273,22 @@ public sealed class CustomerQueryHandlers
         );
     }
 
+    /// <summary>
+    /// Dinamik aramada istemcinin kullanabileceği müşteri alanları.
+    /// </summary>
+    private static readonly DynamicQueryFields<Customer> SearchFields = new DynamicQueryFields<Customer>().Allow(
+        c => c.CompanyName,
+        c => c.Code,
+        c => c.ContactName,
+        c => c.ContactTitle,
+        c => c.Address!.City,
+        c => c.Address!.Country,
+        c => c.Phone,
+        c => c.Fax);
+
     public Task<Result<IPaginate<CustomerListItemDto>>> Handle(SearchCustomersQuery request, CancellationToken cancellationToken) =>
         DynamicSearch
-            .Apply(_customers.Query(enableTracking: false), request.Query, q => q.OrderBy(c => c.CompanyName))
+            .Apply(_customers.Query(enableTracking: false), request.Query, SearchFields, q => q.OrderBy(c => c.CompanyName))
             .MapAsync(query =>
                 query.ProjectTo<CustomerListItemDto>(_mapper).ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
             );

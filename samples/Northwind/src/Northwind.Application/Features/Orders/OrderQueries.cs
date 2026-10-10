@@ -142,9 +142,22 @@ public sealed class OrderQueryHandlers
         );
     }
 
+    /// <summary>
+    /// Dinamik aramada istemcinin kullanabileceği sipariş alanları.
+    /// </summary>
+    private static readonly DynamicQueryFields<Order> SearchFields = new DynamicQueryFields<Order>().Allow(
+        o => o.Number,
+        o => o.Status,
+        o => o.OrderedAt,
+        o => o.ShippedAt,
+        o => o.Freight,
+        o => o.ShipName,
+        o => o.ShipAddress.City,
+        o => o.ShipAddress.Country);
+
     public Task<Result<IPaginate<OrderListItemDto>>> Handle(SearchOrdersQuery request, CancellationToken cancellationToken) =>
         DynamicSearch
-            .Apply(_orders.Query(enableTracking: false), request.Query, q => q.OrderByDescending(o => o.Number))
+            .Apply(_orders.Query(enableTracking: false), request.Query, SearchFields, q => q.OrderByDescending(o => o.Number))
             .MapAsync(query =>
                 ToListItems(query).ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken)
             );

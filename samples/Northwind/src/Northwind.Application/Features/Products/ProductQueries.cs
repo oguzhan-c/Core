@@ -115,9 +115,22 @@ public sealed class ProductQueryHandlers
             .ToPaginateAsync(request.Page.Index, request.Page.Size, cancellationToken: cancellationToken));
     }
 
+    /// <summary>
+    /// Dinamik aramada istemcinin kullanabileceği ürün alanları.
+    /// </summary>
+    private static readonly DynamicQueryFields<Product> SearchFields = new DynamicQueryFields<Product>().Allow(
+        p => p.Name,
+        p => p.UnitPrice,
+        p => p.UnitsInStock,
+        p => p.UnitsOnOrder,
+        p => p.ReorderLevel,
+        p => p.IsDiscontinued,
+        p => p.QuantityPerUnit,
+        p => p.CreatedAt);
+
     public async Task<Result<IPaginate<ProductDto>>> Handle(SearchProductsQuery request, CancellationToken cancellationToken)
     {
-        Result<IQueryable<Product>> query = DynamicSearch.Apply(_products.Query(enableTracking: false), request.Query, q => q.OrderBy(p => p.Name));
+        Result<IQueryable<Product>> query = DynamicSearch.Apply(_products.Query(enableTracking: false), request.Query, SearchFields, q => q.OrderBy(p => p.Name));
         if (query.IsFailure)
             return query.Errors;
 
