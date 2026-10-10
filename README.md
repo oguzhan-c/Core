@@ -336,7 +336,23 @@ protected override void ConfigureModel(ModelBuilder modelBuilder)
 
 // Program.cs
 builder.Services.AddCanOutbox<AppDbContext>(o => o.Interval = TimeSpan.FromSeconds(5));
+builder.Services.AddHealthChecks().AddCanOutboxCheck<AppDbContext>();   // ölü/geciken mesajda Degraded
 ```
+
+Mesaj durumu: `Pending` → `Processed` ya da `Dead`. Yayın hata alırsa mesaj üstel beklemeyle tekrar denenir
+(`RetryBaseDelay` 5 sn, her hatada ikiye katlanır, en çok `MaxRetryDelay` 1 sa, ±%20 rastgele oynama: aynı anda düşen
+yüzlerce mesaj aynı anda geri gelip sistemi boğmasın). `MaxAttempts` (10; son deneme ilk hatadan ~45 dk sonra)
+tükenirse ya da handler `PermanentEventFailureException` fırlatırsa mesaj `Dead` olur ve kendiliğinden denenmez; hata
+`LastError`'da kalır. Ölü mesajlar silinmez (`RetainDeadMessagesFor` verilmedikçe); düzeltmeden sonra yeniden kuyruğa al:
+
+```csharp
+await db.Set<OutboxMessage>().Where(m => m.Id == id).RequeueAsync(ct);                       // tek mesaj
+await db.Set<OutboxMessage>().Where(m => m.Status == OutboxMessageStatus.Dead).RequeueAsync(ct); // hepsi
+```
+
+İzleme: `can.outbox.messages` sayacı (`can.outcome` = `published` / `failed` / `dead`; `dead` > 0 için alarm kur),
+`can.outbox.lag` histogramı (event'in oluşmasından yayınına kadar geçen süre) ve `AddCanOutboxCheck` (ölü mesaj ya da
+`MaxPendingAge`'den (15 dk) eski bekleyen mesaj varsa `Degraded`; sayılar yanıtın `data` alanında).
 
 **Event bus: servisler arası event'ler**
 
@@ -1135,7 +1151,7 @@ builder.Services.AddCanOpenTelemetry(o =>
 | Application | her mediator isteği (`can.outcome`: success / failure / exception, `can.error.code`) | `can.request.duration` |
 | Mediator | `publish {Event}` (domain event yayını) | |
 | BackgroundJobs | `job {İş}` (bellek içi, tekrarlayan, Hangfire) | `can.job.duration` |
-| Persistence | `outbox {Event}` | `can.outbox.messages` (published / failed) |
+| Persistence | `outbox {Event}` | `can.outbox.messages` (published / failed / dead), `can.outbox.lag` |
 | EventBus | `publish` (producer) → `process` (consumer); `traceparent` zarfla taşınır, servisler arası tek iz | |
 | Mailing | `email send {sağlayıcı}` (adres/konu yazılmaz) | `can.email.messages` |
 | Resilience | o anki span'a olay (`resilience.retry.retry` ...) | `can.resilience.events` |

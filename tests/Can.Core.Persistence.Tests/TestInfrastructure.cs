@@ -145,12 +145,17 @@ public sealed class ProductCreatedHandler(EventLog log) : INotificationHandler<P
 public sealed class FailureSwitch
 {
     public bool Fail { get; set; }
+
+    /// <summary>Kalıcı hata (yeniden denenmemeli).</summary>
+    public bool Permanent { get; set; }
 }
 
 public sealed class ProductDiscontinuedHandler(EventLog log, FailureSwitch failure) : INotificationHandler<ProductDiscontinued>
 {
     public Task Handle(ProductDiscontinued notification, CancellationToken cancellationToken)
     {
+        if (failure.Permanent)
+            throw new Can.Core.EventBus.PermanentEventFailureException("ürün artık yok");
         if (failure.Fail)
             throw new InvalidOperationException("handler hatası");
 

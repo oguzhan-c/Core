@@ -4,6 +4,27 @@ using Can.Core.Domain.Events;
 namespace Can.Core.Persistence.Outbox;
 
 /// <summary>
+/// Outbox mesajının yaşam döngüsü.
+/// </summary>
+public enum OutboxMessageStatus
+{
+    /// <summary>
+    /// Yayınlanmayı bekliyor; hata aldıysa <see cref="OutboxMessage.NextAttemptAt"/> anında tekrar denenir.
+    /// </summary>
+    Pending = 0,
+
+    /// <summary>
+    /// Başarıyla yayınlandı.
+    /// </summary>
+    Processed = 1,
+
+    /// <summary>
+    /// Deneme hakkı tükendi ya da kalıcı hata alındı; elle yeniden kuyruğa alınana kadar denenmez.
+    /// </summary>
+    Dead = 2,
+}
+
+/// <summary>
 /// Outbox tablosundaki bir kayıt: aggregate değişiklikleriyle aynı transaction'da yazılan, arka planda
 /// yayınlanmayı bekleyen <see cref="IIntegrationEvent"/>. Tarihler UTC'dir.
 /// </summary>
@@ -33,8 +54,25 @@ public sealed class OutboxMessage
 
     public DateTime OccurredAt { get; private set; }
 
-    /// <summary>Başarıyla yayınlandığı an; boşsa bekliyor.</summary>
+    /// <summary>
+    /// Mesajın durumu.
+    /// </summary>
+    public OutboxMessageStatus Status { get; private set; }
+
+    /// <summary>
+    /// Başarıyla yayınlandığı an; yayınlanmadıysa <see langword="null"/>.
+    /// </summary>
     public DateTime? ProcessedAt { get; private set; }
+
+    /// <summary>
+    /// Hata sonrası bir sonraki denemenin en erken anı (üstel bekleme); ilk denemede <see langword="null"/>.
+    /// </summary>
+    public DateTime? NextAttemptAt { get; private set; }
+
+    /// <summary>
+    /// Mesajın ölü (<see cref="OutboxMessageStatus.Dead"/>) olarak işaretlendiği an.
+    /// </summary>
+    public DateTime? DeadAt { get; private set; }
 
     /// <summary>Bir işlemci mesajı bu ana kadar kilitledi (birden fazla uygulama örneği aynı mesajı almasın).</summary>
     public DateTime? LockedUntil { get; private set; }

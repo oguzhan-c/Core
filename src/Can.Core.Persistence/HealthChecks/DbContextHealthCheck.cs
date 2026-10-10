@@ -36,4 +36,31 @@ public static class PersistenceHealthCheckExtensions
         ArgumentNullException.ThrowIfNull(builder);
         return builder.AddCheck<DbContextHealthCheck<TContext>>(name, failureStatus, tags.Length > 0 ? tags : new[] { "ready" });
     }
+
+    /// <summary>
+    /// Outbox durum kontrolü ekler: ölü mesaj ya da geride kalmış yayın varsa <see cref="HealthStatus.Degraded"/>.
+    /// Varsayılan etiket <c>ready</c>: <c>/health/ready</c>'de görünür; Degraded 200 döndüğü için trafiği kesmez.
+    /// </summary>
+    /// <typeparam name="TContext">Outbox tablosunu içeren DbContext.</typeparam>
+    /// <param name="builder">Sağlık kontrolü oluşturucusu.</param>
+    /// <param name="configure">Eşikleri ayarlar.</param>
+    /// <param name="name">Kontrolün adı.</param>
+    /// <param name="tags">Etiketler (boşsa <c>ready</c>).</param>
+    /// <returns>Zincirleme için aynı oluşturucu.</returns>
+    public static IHealthChecksBuilder AddCanOutboxCheck<TContext>(
+        this IHealthChecksBuilder builder,
+        Action<OutboxHealthCheckOptions>? configure = null,
+        string name = "outbox",
+        params string[] tags)
+        where TContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        var options = new OutboxHealthCheckOptions();
+        configure?.Invoke(options);
+        return builder.Add(new HealthCheckRegistration(
+            name,
+            sp => new OutboxHealthCheck<TContext>(sp.GetRequiredService<IServiceScopeFactory>(), options, sp.GetService<TimeProvider>()),
+            HealthStatus.Degraded,
+            tags.Length > 0 ? tags : new[] { "ready" }));
+    }
 }

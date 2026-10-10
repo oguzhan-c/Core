@@ -54,7 +54,8 @@ public static class CanModelBuilderExtensions
             b.Property(m => m.Payload).IsRequired();
             b.Property(m => m.TenantId).HasMaxLength(64);
             b.Property(m => m.LastError).HasMaxLength(2000);
-            b.HasIndex(m => new { m.ProcessedAt, m.OccurredAt });
+            b.HasIndex(m => new { m.Status, m.NextAttemptAt, m.OccurredAt }); // bekleyen adaylar
+            b.HasIndex(m => new { m.Status, m.ProcessedAt });                 // temizlik ve izleme
         });
 
         return modelBuilder;

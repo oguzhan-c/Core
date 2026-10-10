@@ -18,7 +18,10 @@ namespace Can.Core.Persistence.Outbox;
 /// <item>Ortak veritabanını ve kendi veritabanı olan her aktif tenant'ın veritabanını tarar.</item>
 /// <item>Her mesaj tek tek kilitlenerek alınır; birden fazla uygulama örneği aynı mesajı yayınlamaz.</item>
 /// <item>Handler'lar mesajın tenant'ı adına, ayrı bir DI scope'unda çalışır.</item>
-/// <item>Hata olursa mesaj sonraki turda tekrar denenir (<see cref="OutboxOptions.MaxAttempts"/> kadar).</item>
+/// <item>Hata olursa mesaj üstel bekleme ile tekrar denenir (<see cref="OutboxOptions.RetryDelay"/>); deneme hakkı
+/// (<see cref="OutboxOptions.MaxAttempts"/>) tükenirse ya da handler <see cref="PermanentEventFailureException"/>
+/// fırlatırsa mesaj <see cref="OutboxMessageStatus.Dead"/> olur. Ölü mesajlar
+/// <see cref="OutboxMessageQueryableExtensions.RequeueAsync"/> ile yeniden kuyruğa alınır.</item>
 /// </list>
 /// </remarks>
 public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
@@ -77,11 +80,12 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
 
         DbSet<OutboxMessage> messages = scope.ServiceProvider.GetRequiredService<TContext>().Set<OutboxMessage>();
         DateTime now = UtcNow();
-        int maxAttempts = _options.MaxAttempts;
 
         List<Guid> candidates = await messages
             .AsNoTracking()
-            .Where(m => m.ProcessedAt == null && m.Attempts < maxAttempts && (m.LockedUntil == null || m.LockedUntil < now))
+            .Where(m => m.Status == OutboxMessageStatus.Pending
+                && (m.NextAttemptAt == null || m.NextAttemptAt <= now)
+                && (m.LockedUntil == null || m.LockedUntil < now))
             .OrderBy(m => m.OccurredAt)
             .Select(m => m.Id)
             .Take(_options.BatchSize)
@@ -106,7 +110,10 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
 
         // Kilitleme: yalnızca bu güncellemeyi başaran işlemci mesajı yayınlar.
         int claimed = await messages
-            .Where(m => m.Id == id && m.ProcessedAt == null && (m.LockedUntil == null || m.LockedUntil < now))
+            .Where(m => m.Id == id
+                && m.Status == OutboxMessageStatus.Pending
+                && (m.NextAttemptAt == null || m.NextAttemptAt <= now)
+                && (m.LockedUntil == null || m.LockedUntil < now))
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.LockedUntil, lockedUntil), cancellationToken)
             .ConfigureAwait(false);
 
@@ -130,18 +137,41 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
         {
             activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
             activity?.AddException(exception);
-            OutboxTelemetry.Messages.Add(1, new KeyValuePair<string, object?>("can.event", eventName), new KeyValuePair<string, object?>("can.outcome", "failed"));
 
-            LogPublishFailed(exception, message.Id, message.Type, message.Attempts + 1);
+            int attempts = message.Attempts + 1;
             string error = exception.ToString();
             if (error.Length > MaxErrorLength)
                 error = error[..MaxErrorLength];
 
+            DateTime failedAt = UtcNow();
+            if (attempts >= _options.MaxAttempts || exception is PermanentEventFailureException)
+            {
+                OutboxTelemetry.Messages.Add(1, new KeyValuePair<string, object?>("can.event", eventName), new KeyValuePair<string, object?>("can.outcome", "dead"));
+                LogDead(exception, message.Id, message.Type, attempts);
+                await messages
+                    .Where(m => m.Id == id)
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(m => m.Status, OutboxMessageStatus.Dead)
+                            .SetProperty(m => m.DeadAt, failedAt)
+                            .SetProperty(m => m.Attempts, attempts)
+                            .SetProperty(m => m.LastError, error)
+                            .SetProperty(m => m.NextAttemptAt, (DateTime?)null)
+                            .SetProperty(m => m.LockedUntil, (DateTime?)null),
+                        CancellationToken.None
+                    )
+                    .ConfigureAwait(false);
+                return false;
+            }
+
+            DateTime nextAttemptAt = failedAt.Add(_options.RetryDelay(attempts, Random.Shared.NextDouble()));
+            OutboxTelemetry.Messages.Add(1, new KeyValuePair<string, object?>("can.event", eventName), new KeyValuePair<string, object?>("can.outcome", "failed"));
+            LogPublishFailed(exception, message.Id, message.Type, attempts, nextAttemptAt);
             await messages
                 .Where(m => m.Id == id)
                 .ExecuteUpdateAsync(
-                    s => s.SetProperty(m => m.Attempts, m => m.Attempts + 1)
+                    s => s.SetProperty(m => m.Attempts, attempts)
                         .SetProperty(m => m.LastError, error)
+                        .SetProperty(m => m.NextAttemptAt, nextAttemptAt)
                         .SetProperty(m => m.LockedUntil, (DateTime?)null),
                     CancellationToken.None
                 )
@@ -151,10 +181,13 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
 
         OutboxTelemetry.Messages.Add(1, new KeyValuePair<string, object?>("can.event", eventName), new KeyValuePair<string, object?>("can.outcome", "published"));
         DateTime processedAt = UtcNow();
+        OutboxTelemetry.Lag.Record(Math.Max(0, (processedAt - message.OccurredAt).TotalSeconds), new KeyValuePair<string, object?>("can.event", eventName));
         await messages
             .Where(m => m.Id == id)
             .ExecuteUpdateAsync(
-                s => s.SetProperty(m => m.ProcessedAt, processedAt)
+                s => s.SetProperty(m => m.Status, OutboxMessageStatus.Processed)
+                    .SetProperty(m => m.ProcessedAt, processedAt)
+                    .SetProperty(m => m.NextAttemptAt, (DateTime?)null)
                     .SetProperty(m => m.LockedUntil, (DateTime?)null)
                     .SetProperty(m => m.LastError, (string?)null),
                 CancellationToken.None
@@ -198,11 +231,23 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
 
     private async Task DeleteOldMessagesAsync(DbSet<OutboxMessage> messages, CancellationToken cancellationToken)
     {
-        if (_options.RetainProcessedMessagesFor is not { } retain)
-            return;
+        if (_options.RetainProcessedMessagesFor is { } retain)
+        {
+            DateTime threshold = UtcNow().Subtract(retain);
+            await messages
+                .Where(m => m.Status == OutboxMessageStatus.Processed && m.ProcessedAt < threshold)
+                .ExecuteDeleteAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
 
-        DateTime threshold = UtcNow().Subtract(retain);
-        await messages.Where(m => m.ProcessedAt != null && m.ProcessedAt < threshold).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        if (_options.RetainDeadMessagesFor is { } retainDead)
+        {
+            DateTime threshold = UtcNow().Subtract(retainDead);
+            await messages
+                .Where(m => m.Status == OutboxMessageStatus.Dead && m.DeadAt < threshold)
+                .ExecuteDeleteAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private DateTime UtcNow() => _timeProvider.GetUtcNow().UtcDateTime;
@@ -215,6 +260,9 @@ public sealed partial class OutboxProcessor<TContext> : IBackgroundJob
         return dot < 0 ? name : name[(dot + 1)..];
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Outbox mesajı {MessageId} ({EventType}) yayınlanamadı; deneme {Attempt}.")]
-    private partial void LogPublishFailed(Exception exception, Guid messageId, string eventType, int attempt);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Outbox mesajı {MessageId} ({EventType}) yayınlanamadı; deneme {Attempt}, sonraki deneme {NextAttemptAt:O}.")]
+    private partial void LogPublishFailed(Exception exception, Guid messageId, string eventType, int attempt, DateTime nextAttemptAt);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Outbox mesajı {MessageId} ({EventType}) {Attempt} denemede yayınlanamadı; ölü olarak işaretlendi (elle yeniden kuyruğa alınana kadar denenmeyecek).")]
+    private partial void LogDead(Exception exception, Guid messageId, string eventType, int attempt);
 }

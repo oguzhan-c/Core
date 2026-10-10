@@ -67,8 +67,8 @@ public class OutboxAuditSeedingTests
         return await scope.ServiceProvider.GetRequiredService<TestDbContext>().OutboxMessages.AsNoTracking().ToArrayAsync();
     }
 
-    private static OutboxProcessor<TestDbContext> Processor(TestHost host) =>
-        ActivatorUtilities.CreateInstance<OutboxProcessor<TestDbContext>>(host.Services, new OutboxOptions());
+    private static OutboxProcessor<TestDbContext> Processor(TestHost host, OutboxOptions? options = null) =>
+        ActivatorUtilities.CreateInstance<OutboxProcessor<TestDbContext>>(host.Services, options ?? new OutboxOptions());
 
     [Fact]
     public async Task Integration_event_is_stored_in_outbox_instead_of_published_immediately()
@@ -117,10 +117,120 @@ public class OutboxAuditSeedingTests
         Assert.Equal(1, failed.Attempts);
         Assert.Contains("handler hatası", failed.LastError, StringComparison.Ordinal);
         Assert.Null(failed.ProcessedAt);
+        Assert.Equal(OutboxMessageStatus.Pending, failed.Status);
+        Assert.InRange(failed.NextAttemptAt!.Value - host.Clock.Now.UtcDateTime, TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(6)); // 5 sn ± %20
 
         failure.Fail = false;
+        Assert.Equal(0, await Processor(host).ProcessAsync()); // bekleme süresi dolmadı
+
+        host.Clock.Now += TimeSpan.FromSeconds(10);
         Assert.Equal(1, await Processor(host).ProcessAsync());
         Assert.Contains("discontinued:Defter", host.Events.Entries);
+
+        OutboxMessage published = Assert.Single(await OutboxAsync(host));
+        Assert.Equal(OutboxMessageStatus.Processed, published.Status);
+        Assert.Null(published.NextAttemptAt);
+        Assert.Null(published.LastError);
+    }
+
+    [Fact]
+    public async Task Message_dies_after_max_attempts_and_can_be_requeued()
+    {
+        await using TestHost host = await TestHost.CreateAsync();
+        await AddAndDiscontinueAsync(host);
+        FailureSwitch failure = host.Services.GetRequiredService<FailureSwitch>();
+        var options = new OutboxOptions { MaxAttempts = 3, RetryJitter = 0 };
+
+        failure.Fail = true;
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.Equal(0, await Processor(host, options).ProcessAsync());
+            host.Clock.Now += TimeSpan.FromMinutes(1);
+        }
+
+        OutboxMessage dead = Assert.Single(await OutboxAsync(host));
+        Assert.Equal(OutboxMessageStatus.Dead, dead.Status);
+        Assert.Equal(3, dead.Attempts);
+        Assert.NotNull(dead.DeadAt);
+        Assert.Null(dead.NextAttemptAt);
+
+        // ölü mesaj kendiliğinden denenmez
+        failure.Fail = false;
+        host.Clock.Now += TimeSpan.FromDays(1);
+        Assert.Equal(0, await Processor(host, options).ProcessAsync());
+
+        await using (AsyncServiceScope scope = host.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            Assert.Equal(1, await db.OutboxMessages.Where(m => m.Id == dead.Id).RequeueAsync());
+        }
+
+        OutboxMessage requeued = Assert.Single(await OutboxAsync(host));
+        Assert.Equal(OutboxMessageStatus.Pending, requeued.Status);
+        Assert.Equal(0, requeued.Attempts);
+        Assert.Null(requeued.DeadAt);
+
+        Assert.Equal(1, await Processor(host, options).ProcessAsync());
+        Assert.Contains("discontinued:Defter", host.Events.Entries);
+
+        // yayınlanmış mesaj yeniden kuyruğa alınamaz
+        await using (AsyncServiceScope scope = host.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            Assert.Equal(0, await db.OutboxMessages.RequeueAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Permanent_failure_dies_without_retries()
+    {
+        await using TestHost host = await TestHost.CreateAsync();
+        await AddAndDiscontinueAsync(host);
+        host.Services.GetRequiredService<FailureSwitch>().Permanent = true;
+
+        Assert.Equal(0, await Processor(host).ProcessAsync());
+
+        OutboxMessage dead = Assert.Single(await OutboxAsync(host));
+        Assert.Equal(OutboxMessageStatus.Dead, dead.Status);
+        Assert.Equal(1, dead.Attempts);
+        Assert.Contains("ürün artık yok", dead.LastError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Dead_messages_are_kept_unless_retention_is_set()
+    {
+        await using TestHost host = await TestHost.CreateAsync();
+        await AddAndDiscontinueAsync(host);
+        host.Services.GetRequiredService<FailureSwitch>().Permanent = true;
+        await Processor(host).ProcessAsync();
+
+        host.Clock.Now += TimeSpan.FromDays(30);
+        await Processor(host).ProcessAsync();
+        Assert.Single(await OutboxAsync(host));
+
+        await Processor(host, new OutboxOptions { RetainDeadMessagesFor = TimeSpan.FromDays(7) }).ProcessAsync();
+        Assert.Empty(await OutboxAsync(host));
+    }
+
+    [Theory]
+    [InlineData(1, 5)]
+    [InlineData(2, 10)]
+    [InlineData(4, 40)]
+    [InlineData(10, 2560)]
+    [InlineData(11, 3600)] // üst sınır
+    [InlineData(40, 3600)]
+    public void Retry_delay_doubles_up_to_the_cap(int attempts, int seconds)
+    {
+        var options = new OutboxOptions { RetryJitter = 0 };
+        Assert.Equal(TimeSpan.FromSeconds(seconds), options.RetryDelay(attempts, random: 0.5));
+    }
+
+    [Fact]
+    public void Retry_delay_jitter_stays_within_bounds()
+    {
+        var options = new OutboxOptions { RetryJitter = 0.2 };
+        Assert.Equal(8, options.RetryDelay(2, random: 0).TotalSeconds, precision: 3);   // 10 × 0,8
+        Assert.Equal(12, options.RetryDelay(2, random: 1).TotalSeconds, precision: 3);  // 10 × 1,2
     }
 
     [Fact]
