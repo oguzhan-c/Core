@@ -1,0 +1,41 @@
+rows: category | customer
+columns: country
+measures: revenue:Sum:Value: | lines:Count:Value:
+source: 8, matched: 8
+
+C0 Item L1 [DE]
+C1 Item L1 [TR]
+C2 GrandTotal L0 [Genel toplam]
+
+R0 Group L1 [İçecek]
+  C0: 136 2
+  C1: 70 2
+  C2: 206 4
+R1 Item L2 [İçecek / A]
+  C0: 100 1
+  C1: 50 1
+  C2: 150 2
+R2 Group L1 [Şekerleme]
+  C0: 60 1
+  C1: 105 2
+  C2: 165 3
+R3 Item L2 [Şekerleme / C]
+  C0: 60 1
+  C1: 60 1
+  C2: 120 2
+R4 Others L2 [Şekerleme / Diğer]
+  C0: - -
+  C1: 45 1
+  C2: 45 1
+R5 Group L1 [Çeşni]
+  C0: 40 1
+  C1: - -
+  C2: 40 1
+R6 Item L2 [Çeşni / B]
+  C0: 40 1
+  C1: - -
+  C2: 40 1
+R7 GrandTotal L0 [Genel toplam]
+  C0: 236 4
+  C1: 175 4
+  C2: 411 8
