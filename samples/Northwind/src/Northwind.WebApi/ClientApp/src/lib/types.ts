@@ -299,7 +299,7 @@ export interface AuditLog {
   traceId?: string | null;
 }
 
-export type OutboxStatus = "Pending" | "Processed" | "Failed";
+export type OutboxStatus = "Pending" | "Retrying" | "Processed" | "Dead";
 
 export interface OutboxMessage {
   id: string;
@@ -310,6 +310,8 @@ export interface OutboxMessage {
   processedAt?: string | null;
   attempts: number;
   lastError?: string | null;
+  /** Hata aldıysa bir sonraki otomatik deneme anı. */
+  nextAttemptAt?: string | null;
   status: OutboxStatus;
 }
 

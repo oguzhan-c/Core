@@ -71,7 +71,9 @@ export function AdminOutboxPage() {
         <AlertTitle>Nasıl denenir?</AlertTitle>
         <AlertDescription>
           Bir siparişi kargoya ver ya da bir ürünü satıştan kaldır: kayıt yeni bir "Bekliyor" mesajı oluşturur, birkaç saniye içinde
-          "Yayınlandı" olur ve bildirim e-postası geliştirme posta kutusuna düşer. Handler hata verirse mesaj "Hatalı" kalır ve tekrar denenir.
+          "Yayınlandı" olur ve bildirim e-postası geliştirme posta kutusuna düşer. Handler hata verirse mesaj "Tekrar denenecek" olur ve
+          giderek uzayan aralıklarla (5 sn, 10 sn, 20 sn ...) yeniden denenir; deneme hakkı tükenirse "Ölü" olur ve siz yeniden kuyruğa
+          alana kadar bekler.
         </AlertDescription>
       </Alert>
 
@@ -85,8 +87,9 @@ export function AdminOutboxPage() {
         <TabsList>
           <TabsTrigger value="all">Tümü</TabsTrigger>
           <TabsTrigger value="Pending">Bekliyor</TabsTrigger>
+          <TabsTrigger value="Retrying">Tekrar denenecek</TabsTrigger>
           <TabsTrigger value="Processed">Yayınlandı</TabsTrigger>
-          <TabsTrigger value="Failed">Hatalı</TabsTrigger>
+          <TabsTrigger value="Dead">Ölü</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -120,11 +123,14 @@ export function AdminOutboxPage() {
                     <TableCell className="text-right">{m.attempts}</TableCell>
                     <TableCell>
                       <OutboxStatusBadge status={m.status} />
+                      {m.status === "Retrying" && m.nextAttemptAt && (
+                        <div className="text-muted-foreground text-xs">sonraki: {formatDateTime(m.nextAttemptAt)}</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {m.status === "Failed" && (
+                      {(m.status === "Retrying" || m.status === "Dead") && (
                         <Button variant="outline" size="sm" onClick={() => retry(m.id)}>
-                          <RotateCcwIcon /> Tekrar dene
+                          <RotateCcwIcon /> Şimdi dene
                         </Button>
                       )}
                     </TableCell>

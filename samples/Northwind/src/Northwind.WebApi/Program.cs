@@ -5,6 +5,7 @@ using Can.Core.Caching.Redis;
 using Can.Core.Logging.Serilog;
 using Can.Core.Mailing.MailKit;
 using Can.Core.Mailing.SendGrid;
+using Can.Core.Persistence.HealthChecks;
 using Can.Core.Observability.OpenTelemetry;
 using Can.Core.Realtime.SignalR;
 using Can.Core.Redis.ScaleOut;
@@ -14,12 +15,14 @@ using Can.Core.Security.DependencyInjection;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi.DependencyInjection;
 using Can.Core.WebApi.ExternalLogin;
+using Can.Core.WebApi.HealthChecks;
 using Can.Core.WebApi.RateLimiting;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Northwind.Application;
 using Northwind.Application.Features.Products;
 using Northwind.Infrastructure;
+using Northwind.Infrastructure.Persistence;
 using Northwind.WebApi.Endpoints;
 using Northwind.WebApi.Security;
 using Scalar.AspNetCore;
@@ -169,6 +172,16 @@ var signalR = builder.Services.AddCanSignalR();
 if (redis is not null)
     signalR.AddCanRedisBackplane();
 
+// Sağlık: /health/live (süreç ayakta mı) ve /health/ready (veritabanı, outbox, varsa Redis ve Hangfire).
+// Outbox'ta ölü mesaj ya da 15 dakikadan eski bekleyen mesaj varsa "Degraded" döner (200; trafik kesilmez).
+IHealthChecksBuilder health = builder.Services.AddHealthChecks()
+    .AddCanDbContextCheck<NorthwindDbContext>()
+    .AddCanOutboxCheck<NorthwindDbContext>();
+if (redis is not null)
+    health.AddCanRedisCheck();
+if (hangfireEnabled)
+    health.AddCanHangfireCheck();
+
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -214,6 +227,7 @@ if (app.Environment.IsDevelopment())
         app.MapDevMailbox(mailbox); // /api/dev/mailbox
 }
 
+app.MapCanHealthChecks(); // /health/live, /health/ready
 app.MapNorthwindEndpoints(); // /api/...
 app.MapCanRealtimeHub("/hubs/notifications");
 

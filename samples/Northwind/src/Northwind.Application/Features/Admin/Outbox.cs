@@ -9,11 +9,30 @@ using AppRoles = Northwind.Domain.Identity.Roles;
 
 namespace Northwind.Application.Features.Admin;
 
+/// <summary>
+/// Panelde gösterilen outbox durumu.
+/// </summary>
 public enum OutboxStatus
 {
+    /// <summary>
+    /// İlk kez yayınlanmayı bekliyor.
+    /// </summary>
     Pending,
+
+    /// <summary>
+    /// Hata aldı; <c>NextAttemptAt</c> anında kendiliğinden tekrar denenecek.
+    /// </summary>
+    Retrying,
+
+    /// <summary>
+    /// Yayınlandı.
+    /// </summary>
     Processed,
-    Failed,
+
+    /// <summary>
+    /// Deneme hakkı tükendi ya da kalıcı hata; yeniden kuyruğa alınana kadar denenmez.
+    /// </summary>
+    Dead,
 }
 
 public sealed record OutboxMessageDto(
@@ -25,6 +44,7 @@ public sealed record OutboxMessageDto(
     DateTime? ProcessedAt,
     int Attempts,
     string? LastError,
+    DateTime? NextAttemptAt,
     OutboxStatus Status);
 
 /// <summary>Mağazanın outbox mesajları: kalıcı event'lerin (kargo bildirimi, ürün kaldırma ...) yayın durumu.</summary>
@@ -33,7 +53,9 @@ public sealed record GetOutboxMessagesQuery(PageRequest Page, OutboxStatus? Stat
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
 }
 
-/// <summary>Başarısız mesajı yeniden denemeye alır.</summary>
+/// <summary>
+/// Ölü ya da yeniden denenecek mesajı hemen yeniden kuyruğa alır (deneme sayacı sıfırlanır).
+/// </summary>
 public sealed record RetryOutboxMessageCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest
 {
     public IReadOnlyCollection<string> Roles => [AppRoles.Admin];
@@ -64,9 +86,10 @@ public sealed class OutboxHandlers
 
         query = request.Status switch
         {
-            OutboxStatus.Pending => query.Where(m => m.ProcessedAt == null && m.LastError == null),
-            OutboxStatus.Processed => query.Where(m => m.ProcessedAt != null),
-            OutboxStatus.Failed => query.Where(m => m.ProcessedAt == null && m.LastError != null),
+            OutboxStatus.Pending => query.Where(m => m.Status == OutboxMessageStatus.Pending && m.Attempts == 0),
+            OutboxStatus.Retrying => query.Where(m => m.Status == OutboxMessageStatus.Pending && m.Attempts > 0),
+            OutboxStatus.Processed => query.Where(m => m.Status == OutboxMessageStatus.Processed),
+            OutboxStatus.Dead => query.Where(m => m.Status == OutboxMessageStatus.Dead),
             _ => query,
         };
 
@@ -83,16 +106,20 @@ public sealed class OutboxHandlers
             m.ProcessedAt,
             m.Attempts,
             m.LastError,
-            m.ProcessedAt is not null ? OutboxStatus.Processed
-                : m.LastError is not null ? OutboxStatus.Failed
-                : OutboxStatus.Pending
+            m.NextAttemptAt,
+            m.Status switch
+            {
+                OutboxMessageStatus.Processed => OutboxStatus.Processed,
+                OutboxMessageStatus.Dead => OutboxStatus.Dead,
+                _ => m.Attempts > 0 ? OutboxStatus.Retrying : OutboxStatus.Pending,
+            }
         )));
     }
 
     public async Task<Result<Success>> Handle(RetryOutboxMessageCommand request, CancellationToken cancellationToken) =>
         await _outbox.RetryAsync(request.Id, _currentTenant.Id?.ToString(), cancellationToken)
             ? Result.Success
-            : Error.NotFound("outbox.not_found", "Yeniden denenecek mesaj bulunamadı (zaten yayınlanmış olabilir).");
+            : Error.NotFound("outbox.not_found", "Yeniden kuyruğa alınacak mesaj bulunamadı (zaten yayınlanmış olabilir).");
 
     /// <summary><c>Northwind.Domain.Orders.OrderShipped, Northwind.Domain</c> → <c>OrderShipped</c>.</summary>
     private static string ShortTypeName(string type)

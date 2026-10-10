@@ -19,12 +19,20 @@ public interface IAuditLogReader
     IQueryable<AuditLog> Query();
 }
 
-/// <summary>Outbox tablosuna salt-okunur erişim ve başarısız mesajı yeniden deneme (yönetim paneli için).</summary>
+/// <summary>
+/// Outbox tablosuna salt-okunur erişim ve mesajı yeniden kuyruğa alma (yönetim paneli için).
+/// </summary>
 public interface IOutboxMonitor
 {
     IQueryable<Can.Core.Persistence.Outbox.OutboxMessage> Query();
 
-    /// <summary>Yayınlanmamış mesajın deneme sayacını sıfırlar; bir sonraki turda tekrar denenir.</summary>
+    /// <summary>
+    /// Yayınlanmamış (bekleyen ya da ölü) mesajı yeniden kuyruğa alır; bir sonraki turda yayınlanır.
+    /// </summary>
+    /// <param name="id">Mesajın kimliği.</param>
+    /// <param name="tenantId">Mesajın ait olması gereken tenant (başka mağazanın mesajına dokunulmaz).</param>
+    /// <param name="cancellationToken">İptal belirteci.</param>
+    /// <returns>Mesaj bulunup kuyruğa alındıysa <see langword="true"/>.</returns>
     Task<bool> RetryAsync(Guid id, string? tenantId, CancellationToken cancellationToken);
 }
 

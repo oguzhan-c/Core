@@ -8,10 +8,15 @@ export function OrderStatusBadge({ status }: { status: OrderStatus }) {
   return <Badge variant={variant}>{orderLabels[status]}</Badge>;
 }
 
-const outboxLabels: Record<OutboxStatus, string> = { Pending: "Bekliyor", Processed: "Yayınlandı", Failed: "Hatalı" };
+const outboxLabels: Record<OutboxStatus, string> = {
+  Pending: "Bekliyor",
+  Retrying: "Tekrar denenecek",
+  Processed: "Yayınlandı",
+  Dead: "Ölü",
+};
 
 export function OutboxStatusBadge({ status }: { status: OutboxStatus }) {
-  const variant = status === "Processed" ? "success" : status === "Failed" ? "destructive" : "warning";
+  const variant = status === "Processed" ? "success" : status === "Dead" ? "destructive" : status === "Retrying" ? "secondary" : "warning";
   return <Badge variant={variant}>{outboxLabels[status]}</Badge>;
 }
 

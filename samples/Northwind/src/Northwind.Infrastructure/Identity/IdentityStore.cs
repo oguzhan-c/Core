@@ -40,10 +40,5 @@ internal sealed class OutboxMonitor : IOutboxMonitor
     public IQueryable<OutboxMessage> Query() => _db.Set<OutboxMessage>().AsNoTracking();
 
     public async Task<bool> RetryAsync(Guid id, string? tenantId, CancellationToken cancellationToken) =>
-        await _db.Set<OutboxMessage>()
-            .Where(m => m.Id == id && m.TenantId == tenantId && m.ProcessedAt == null)
-            .ExecuteUpdateAsync(
-                s => s.SetProperty(m => m.Attempts, 0).SetProperty(m => m.LastError, (string?)null).SetProperty(m => m.LockedUntil, (DateTime?)null),
-                cancellationToken
-            ) > 0;
+        await _db.Set<OutboxMessage>().Where(m => m.Id == id && m.TenantId == tenantId).RequeueAsync(cancellationToken) > 0;
 }
