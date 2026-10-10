@@ -22,7 +22,7 @@ namespace Can.Core.Reporting;
 /// };
 /// </code>
 /// </example>
-public sealed class ReportDefinition
+public sealed partial class ReportDefinition
 {
     /// <summary>Veri kaynağının adı (kayıtlı kaynaklardan biri).</summary>
     public string? DataSource { get; set; }
@@ -35,7 +35,10 @@ public sealed class ReportDefinition
     /// <summary>Gruplamadan önce satırları daraltır (hepsi sağlanmalı).</summary>
     public List<ReportFilter> Filters { get; set; } = [];
 
-    /// <summary>İfade ile filtre (ör. <c>Year([orderDate]) = 2024 and [country] != 'USA'</c>). Yalnızca bellek içinde.</summary>
+    /// <summary>
+    /// İfade ile filtre (ör. <c>Year([orderDate]) = 2024 and [country] != 'USA'</c>). Çevrilebiliyorsa veritabanında
+    /// (WHERE) uygulanır; çevrilemeyen fonksiyon içeriyorsa rapor bellekte hesaplanır.
+    /// </summary>
     public string? FilterExpression { get; set; }
 
     /// <summary>Satır gruplama düzeyleri (dıştan içe).</summary>

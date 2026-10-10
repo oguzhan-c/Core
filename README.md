@@ -1029,7 +1029,33 @@ sıra) ve Top N uygulanır.
 - *Bellek modu*: ortanca, yüzdelik, farklı değer sayısı, ISO hafta gibi SQL'e çevrilemeyen tanımlar kendiliğinden
   satırları okuyup tek geçişte hesaplar. Her satır, satır yolunun ve sütun yolunun tüm öneklerine eklenir; ara toplamlar
   ham veriden gelir (ortalama ortalamaların ortalaması değildir). Varyans Welford ile sayısal olarak kararlıdır.
-- İki modun sonucu aynıdır; hangisinin kullanıldığı `result.Mode`'da.
+- İki modun sonucu aynıdır; hangisinin kullanıldığı `result.Mode`'da. Bellekte hesaplandıysa nedeni
+  `result.ModeReason`'da (`Code`: `aggregate`, `dimension`, `filter`, `measure`, `slots`, `translation`,
+  `disabled`; `Message`: açıklama). Neden ayrıca loglanır (`translation` uyarı, diğerleri bilgi) ve
+  `can.report.runs` metriğinin `can.report.fallback` etiketine yazılır: yavaş raporların nedeni panodan görülür.
+
+**Sınırlar.**
+
+| Sınır | Varsayılan | Aşılırsa |
+|---|---|---|
+| Veritabanı modunda gruplama + özet yuvası (`ReportSlots`) | 16 (anahtarlar + 1 satır sayısı + değer başına 1-3) | Bellek moduna düşer (`slots`) |
+| Bellek modunda okunan satır (`ReportSourceOptions.MaxRows`) | 1.000.000 | Rapor reddedilir: filtreyi daralt |
+| Sonuç hücresi (`CanReportingOptions.MaxCells`, satır × sütun × değer) | 2.000.000 | Rapor reddedilir: Top N ya da daha kaba aralık |
+
+Sum/Average/Count(alan) 2, Min/Max 1, varyans ailesi 3 yuva kullanır. Bellek modu satırları bellekte tutar:
+büyük kaynaklarda `MaxRows`'u düşür.
+
+**Denetim ve yetki.** `IReportService.RunAsync` çalıştırmadan önce tanımı `ReportDefinition.Validate(fields)` ile
+denetler: bilinmeyen alan, aynı değer adı, hatalı ifade, yüzdelik aralığı, tarih olmayan alanda tarih gruplaması,
+satır gruplaması olmadan having ... TÜM hatalar `ReportDefinitionException.Errors`'da (uç nokta bunları ProblemDetails
+`errors` alanında döner; tasarımcı hepsini birden gösterebilir). Kaynak yetkisi (`Permission`) uç noktada denetlenir;
+`IReportService`'i doğrudan kullanıyorsan (arka plan işi, kendi uç noktan) `IReportAccessPolicy` kaydet, servis her
+çalıştırmada sorar ve izin yoksa `ReportAccessDeniedException` fırlatır:
+
+```csharp
+builder.Services.AddScoped<IReportAccessPolicy>(sp => new DelegateReportAccessPolicy(source =>
+    source.Permission is null || sp.GetRequiredService<ICurrentUser>().HasPermission(source.Permission)));
+```
 
 **Arayüz.** `clients/reporting-react` her React projesinde kullanılır; bağımlılığı yalnızca React:
 

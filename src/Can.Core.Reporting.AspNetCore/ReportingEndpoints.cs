@@ -297,7 +297,11 @@ public static class ReportingEndpoints
         }
         catch (ReportDefinitionException e)
         {
-            return (null, Invalid(e.Message));
+            return (null, Invalid(e.Message, e.Errors));
+        }
+        catch (ReportAccessDeniedException e)
+        {
+            return (null, Forbidden(e.Message));
         }
     }
 
@@ -327,8 +331,13 @@ public static class ReportingEndpoints
         return string.IsNullOrWhiteSpace(name) ? "rapor" : name;
     }
 
-    private static IResult Invalid(string detail) =>
-        TypedResults.Problem(detail: detail, statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz rapor", extensions: new Dictionary<string, object?> { ["code"] = "report.invalid" });
+    private static IResult Invalid(string detail, IReadOnlyList<string>? errors = null)
+    {
+        var extensions = new Dictionary<string, object?> { ["code"] = "report.invalid" };
+        if (errors is { Count: > 0 })
+            extensions["errors"] = errors;
+        return TypedResults.Problem(detail: detail, statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz rapor", extensions: extensions);
+    }
 
     private static IResult Forbidden(string detail = "Raporlama yetkin yok.") =>
         TypedResults.Problem(detail: detail, statusCode: StatusCodes.Status403Forbidden, title: "Yetki yok", extensions: new Dictionary<string, object?> { ["code"] = "report.forbidden" });

@@ -597,4 +597,7 @@ public sealed class ReportDefinitionException : Exception
 
     public ReportDefinitionException(string message, Exception innerException)
         : base(message, innerException) { }
+
+    /// <summary>Tanım denetiminde bulunan tüm hatalar (<see cref="ReportDefinition.EnsureValid"/>); diğer durumlarda boş.</summary>
+    public IReadOnlyList<string> Errors { get; init; } = [];
 }

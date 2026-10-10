@@ -60,6 +60,12 @@ public sealed record ReportResult(
     /// <summary>Nerede hesaplandı: <c>memory</c> (satırlar okunup bellekte) ya da <c>database</c> (GROUP BY ile).</summary>
     public string Mode { get; init; } = "memory";
 
+    /// <summary>
+    /// Veritabanında hesaplanabilecekken neden bellekte hesaplandı (<see cref="Mode"/> <c>memory</c> ise); veritabanı
+    /// modunda ya da motor doğrudan çağrıldığında boş. Yavaş raporların nedenini bulmak için.
+    /// </summary>
+    public ReportModeReason? ModeReason { get; init; }
+
     public object? Value(int row, int column, int measure) => Values[row][(column * Measures.Count) + measure];
 
     /// <summary>Adı verilen değerin hücresi.</summary>
@@ -75,4 +81,36 @@ public sealed record ReportResult(
 
     [JsonIgnore]
     public int GrandTotalColumn => Columns.ToList().FindIndex(c => c.Kind == ReportHeaderKind.GrandTotal);
+}
+
+/// <summary>Raporun veritabanı yerine bellekte hesaplanma nedeni.</summary>
+/// <param name="Code">Makinece okunur kod (metrik etiketi): <see cref="Disabled"/>, <see cref="Aggregate"/> ...</param>
+/// <param name="Message">Açıklama.</param>
+public sealed record ReportModeReason(string Code, string Message)
+{
+    /// <summary>Kaynakta <see cref="ReportSourceOptions.DatabaseMode"/> kapalı.</summary>
+    public const string Disabled = "disabled";
+
+    /// <summary>Özet fonksiyonu birleştirilemez (ortanca, yüzdelik, farklı sayısı, ilk/son).</summary>
+    public const string Aggregate = "aggregate";
+
+    /// <summary>Hesaplanmış alan ifadesi ayrıştırılamadı.</summary>
+    public const string Expression = "expression";
+
+    /// <summary>Filtre ya da filtre ifadesi çevrilemedi.</summary>
+    public const string Filter = "filter";
+
+    /// <summary>Gruplama alanı ya da gruplama türü (ör. ISO hafta) çevrilemedi.</summary>
+    public const string Dimension = "dimension";
+
+    /// <summary>Değer alanı çevrilemedi ya da tipi uygun değil.</summary>
+    public const string Measure = "measure";
+
+    /// <summary>Gruplama + özet sayısı <c>ReportSlots</c> sınırını (16) aşıyor.</summary>
+    public const string Slots = "slots";
+
+    /// <summary>Sağlayıcı (EF Core) sorguyu çalıştırırken çeviremedi.</summary>
+    public const string Translation = "translation";
+
+    internal static readonly ReportModeReason DatabaseModeOff = new(Disabled, "Veri kaynağında veritabanı modu kapalı.");
 }

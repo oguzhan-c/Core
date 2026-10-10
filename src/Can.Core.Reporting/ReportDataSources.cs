@@ -14,7 +14,10 @@ public interface IReportDataSource
     /// <summary>Kullanılabilir alanlar (tasarımcı listeler).</summary>
     IReadOnlyList<ReportField> Fields { get; }
 
-    /// <summary>Gerekli yetki (operation claim); boşsa giriş yapmış herkes. Uç nokta katmanı denetler.</summary>
+    /// <summary>
+    /// Gerekli yetki (operation claim); boşsa giriş yapmış herkes. Uç nokta katmanı denetler; <see cref="IReportService"/>
+    /// doğrudan kullanılıyorsa <see cref="IReportAccessPolicy"/> kaydedilerek servis katmanında da denetlenir.
+    /// </summary>
     string? Permission { get; }
 
     Task<ReportResult> RunAsync(ReportDefinition definition, ReportEngine engine, IServiceProvider services, CancellationToken cancellationToken = default);
@@ -36,7 +39,10 @@ public sealed class ReportSourceOptions
     /// </summary>
     public bool DatabaseMode { get; set; } = true;
 
-    /// <summary>Bellek modunda okunacak en fazla satır (aşılırsa rapor reddedilir: filtreyi daralt).</summary>
+    /// <summary>
+    /// Bellek modunda okunacak en fazla satır (aşılırsa rapor reddedilir: filtreyi daralt). Satırlar bellekte tutulur:
+    /// 1 milyon satır × alan sayısı kadar nesne demektir, büyük kaynaklarda düşür.
+    /// </summary>
     public int MaxRows { get; set; } = 1_000_000;
 
     /// <summary>Alanın başlığı ve biçimi.</summary>
@@ -106,12 +112,17 @@ public sealed class QueryableReportSource<T> : IReportDataSource
 
         IQueryable<T> query = _query(services);
         var schema = new ReportDataSet(Fields, []);
+        ReportModeReason? reason;
 
-        if (_options.DatabaseMode)
+        if (!_options.DatabaseMode)
+        {
+            reason = ReportModeReason.DatabaseModeOff;
+        }
+        else
         {
             try
             {
-                if (DatabasePlan.TryCreate(definition, _visible, Fields) is { } plan)
+                if (DatabasePlan.TryCreate(definition, _visible, Fields, out reason) is { } plan)
                 {
                     (List<AggregatedGroup> groups, long rows) = await plan.ExecuteAsync(query, cancellationToken).ConfigureAwait(false);
                     return engine.RunAggregated(definition, schema, groups, rows);
@@ -120,6 +131,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
             catch (Exception ex) when (IsTranslationFailure(ex))
             {
                 // Sağlayıcı çeviremedi (ör. SQLite'ta decimal toplamı): bellekte hesapla.
+                reason = new ReportModeReason(ReportModeReason.Translation, $"Veritabanı sağlayıcısı sorguyu çeviremedi: {ex.Message}");
             }
         }
 
@@ -141,7 +153,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
             rows2.Add(read(item));
         }
 
-        return engine.Run(definition, new ReportDataSet(Fields, rows2));
+        return engine.Run(definition, new ReportDataSet(Fields, rows2)) with { ModeReason = reason };
     }
 
     private static bool IsTranslationFailure(Exception ex) =>
@@ -300,6 +312,12 @@ public sealed class QueryableReportSource<T> : IReportDataSource
 
         private static readonly Expression Fail = Expression.Constant("fail");
 
+        private static DatabasePlan? Fallback(out ReportModeReason? reason, string code, string message)
+        {
+            reason = new ReportModeReason(code, message);
+            return null;
+        }
+
         /// <summary>Bellek modu için: çevrilebilen filtreler yine veritabanında uygulanır (okunan satır azalır).</summary>
         public static IQueryable<T> ApplyFilters(IQueryable<T> query, ReportDefinition definition, PropertyInfo[] properties, IReadOnlyList<ReportField> fields)
         {
@@ -311,20 +329,21 @@ public sealed class QueryableReportSource<T> : IReportDataSource
             return where is null ? query : query.Where(Expression.Lambda<Func<T, bool>>(where, item));
         }
 
-        public static DatabasePlan? TryCreate(ReportDefinition definition, PropertyInfo[] properties, IReadOnlyList<ReportField> fields)
+        public static DatabasePlan? TryCreate(ReportDefinition definition, PropertyInfo[] properties, IReadOnlyList<ReportField> fields, out ReportModeReason? reason)
         {
+            reason = null;
             var compiled = Compile(definition, properties, fields);
             if (compiled is null)
-                return null;
+                return Fallback(out reason, ReportModeReason.Expression, "Hesaplanmış alan ifadesi ayrıştırılamadı.");
             (ParameterExpression item, List<Expression?> expressions, List<ReportField> schema) = compiled.Value;
 
             ReportMeasure[] measures = definition.Measures.Count > 0 ? [.. definition.Measures] : [new ReportMeasure(null, ReportAggregate.Count)];
-            if (measures.Any(m => !ReportEngine.IsDecomposable(m.Aggregate)))
-                return null;
+            if (measures.FirstOrDefault(m => !ReportEngine.IsDecomposable(m.Aggregate)) is { } holistic)
+                return Fallback(out reason, ReportModeReason.Aggregate, $"{holistic.Aggregate} veritabanında özetlenemez (yalnızca Sum, Count, Average, Min, Max, StdDev, Var).");
 
             Expression? where = Where(definition, expressions, schema, requireAll: true);
             if (where == Fail)
-                return null;
+                return Fallback(out reason, ReportModeReason.Filter, "Filtrelerden biri veritabanına çevrilemiyor.");
 
             var translator = new LinqTranslator(i => i < expressions.Count ? expressions[i] : null);
             var keys = new List<Expression>();
@@ -332,14 +351,14 @@ public sealed class QueryableReportSource<T> : IReportDataSource
             foreach (ReportDimension dimension in definition.Rows.Concat(definition.Columns))
             {
                 if (FieldOf(dimension.Field, expressions, schema) is not { } field)
-                    return null;
+                    return Fallback(out reason, ReportModeReason.Dimension, $"'{dimension.Field}' gruplama alanı veritabanına çevrilemiyor.");
 
                 Expression? key = dimension.DateGrouping != DateGrouping.None ? translator.DateKey(field, dimension.DateGrouping)
                     : dimension.RangeSize is { } size ? translator.RangeKey(field, size)
                     : dimension.FirstLetter ? LinqTranslator.FirstLetter(field)
                     : field;
                 if (key is null)
-                    return null;
+                    return Fallback(out reason, ReportModeReason.Dimension, $"'{dimension.Field}' alanındaki gruplama veritabanına çevrilemiyor.");
                 keys.Add(key);
                 intKeys.Add(dimension.DateGrouping is not (DateGrouping.None or DateGrouping.Date));
             }
@@ -353,7 +372,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
             {
                 Expression? value = measure.Field is null ? null : FieldOf(measure.Field, expressions, schema);
                 if (measure.Field is not null && value is null)
-                    return null;
+                    return Fallback(out reason, ReportModeReason.Measure, $"'{measure.Field}' değer alanı veritabanına çevrilemiyor.");
 
                 int count = -1, sum = -1, squares = -1, min = -1, max = -1;
                 switch (measure.Aggregate)
@@ -368,7 +387,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
                         break;
                     case ReportAggregate.Sum or ReportAggregate.Average:
                         if (value is null || !LinqTranslator.IsNumber(value))
-                            return null;
+                            return Fallback(out reason, ReportModeReason.Measure, $"'{measure.EffectiveName}': {measure.Aggregate} bu alan tipinde veritabanında hesaplanamaz.");
                         count = next++;
                         aggregates.Add(g => CountNotNull(g, item, value));
                         sum = next++;
@@ -376,7 +395,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
                         break;
                     case ReportAggregate.Min or ReportAggregate.Max:
                         if (value is null)
-                            return null;
+                            return Fallback(out reason, ReportModeReason.Measure, $"'{measure.EffectiveName}': {measure.Aggregate} bu alan tipinde veritabanında hesaplanamaz.");
                         int slot = next++;
                         if (measure.Aggregate == ReportAggregate.Min)
                             min = slot;
@@ -387,7 +406,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
                         break;
                     default: // varyans ailesi: n, Σx, Σx²
                         if (value is null || !LinqTranslator.IsNumber(value))
-                            return null;
+                            return Fallback(out reason, ReportModeReason.Measure, $"'{measure.EffectiveName}': {measure.Aggregate} bu alan tipinde veritabanında hesaplanamaz.");
                         count = next++;
                         aggregates.Add(g => CountNotNull(g, item, value));
                         sum = next++;
@@ -401,7 +420,7 @@ public sealed class QueryableReportSource<T> : IReportDataSource
             }
 
             if (next > ReportSlots.Capacity)
-                return null;
+                return Fallback(out reason, ReportModeReason.Slots, $"Gruplama ve özet sayısı ({next}) veritabanı sınırını ({ReportSlots.Capacity}) aşıyor.");
 
             // Anahtar tipi: ReportSlots<k1, k2, ..., int, int ...>
             Type[] keyTypes = Enumerable.Range(0, ReportSlots.Capacity).Select(i => i < keys.Count ? keys[i].Type : typeof(int)).ToArray();

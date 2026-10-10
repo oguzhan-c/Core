@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Can.Core.Reporting;
 
@@ -29,47 +32,106 @@ public interface IReportService
 
     IReportDataSource? Find(string name);
 
+    /// <summary>
+    /// Tanımı denetler (<see cref="ReportDefinition.EnsureValid"/>), yetkiyi sorar (<see cref="IReportAccessPolicy"/>
+    /// kayıtlıysa) ve raporu çalıştırır.
+    /// </summary>
     /// <exception cref="ReportDefinitionException">Veri kaynağı yok ya da tanım geçersiz.</exception>
+    /// <exception cref="ReportAccessDeniedException">Kayıtlı politika kaynağa izin vermedi.</exception>
     Task<ReportResult> RunAsync(ReportDefinition definition, CancellationToken cancellationToken = default);
 }
 
-internal sealed class ReportService : IReportService
+internal sealed partial class ReportService : IReportService
 {
     private readonly CanReportingOptions _options;
     private readonly IServiceProvider _services;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger _logger;
 
-    public ReportService(IEnumerable<IReportDataSource> sources, CanReportingOptions options, IServiceProvider services, TimeProvider? timeProvider = null)
+    public ReportService(IEnumerable<IReportDataSource> sources, CanReportingOptions options, IServiceProvider services, TimeProvider? timeProvider = null, ILogger<ReportService>? logger = null)
     {
         DataSources = sources.ToArray();
         _options = options;
         _services = services;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? NullLogger<ReportService>.Instance;
     }
 
     public IReadOnlyList<IReportDataSource> DataSources { get; }
 
     public IReportDataSource? Find(string name) => DataSources.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
 
-    public Task<ReportResult> RunAsync(ReportDefinition definition, CancellationToken cancellationToken = default)
+    public async Task<ReportResult> RunAsync(ReportDefinition definition, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(definition);
         IReportDataSource source = (string.IsNullOrWhiteSpace(definition.DataSource) ? null : Find(definition.DataSource))
             ?? throw new ReportDefinitionException($"'{definition.DataSource}' veri kaynağı yok.");
 
-        var engine = new ReportEngine(new ReportEngineOptions
+        using Activity? activity = ReportingTelemetry.Source.StartActivity("report.run");
+        activity?.SetTag("can.report.source", source.Name);
+        long started = Stopwatch.GetTimestamp();
+        var tags = new TagList { { "can.report.source", source.Name } };
+        try
         {
-            Culture = _options.Culture ?? CultureInfo.CurrentCulture,
-            TimeProvider = _timeProvider,
-            MaxCells = _options.MaxCells,
-            NullLabel = _options.NullLabel,
-            OthersLabel = _options.OthersLabel,
-            GrandTotalLabel = _options.GrandTotalLabel,
-            TrueLabel = _options.TrueLabel,
-            FalseLabel = _options.FalseLabel,
-        });
-        return source.RunAsync(definition, engine, _services, cancellationToken);
+            if (_services.GetService<IReportAccessPolicy>() is { } policy && !policy.CanUse(source))
+                throw new ReportAccessDeniedException($"'{source.Name}' veri kaynağını kullanma yetkin yok.");
+
+            definition.EnsureValid(source.Fields);
+
+            ReportResult result = await source.RunAsync(definition, CreateEngine(), _services, cancellationToken).ConfigureAwait(false);
+
+            tags.Add("can.report.mode", result.Mode);
+            activity?.SetTag("can.report.mode", result.Mode);
+            if (result.ModeReason is { } reason)
+            {
+                tags.Add("can.report.fallback", reason.Code);
+                activity?.SetTag("can.report.fallback", reason.Code);
+                if (reason.Code == ReportModeReason.Translation)
+                    LogTranslationFallback(_logger, source.Name, reason.Message);
+                else
+                    LogMemoryFallback(_logger, source.Name, reason.Code, reason.Message, result.MatchedRowCount);
+            }
+
+            tags.Add("can.outcome", "success");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            string outcome = ex switch
+            {
+                ReportDefinitionException => "invalid",
+                ReportAccessDeniedException => "denied",
+                OperationCanceledException => "cancelled",
+                _ => "error",
+            };
+            tags.Add("can.outcome", outcome);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+        finally
+        {
+            ReportingTelemetry.Runs.Add(1, tags);
+            ReportingTelemetry.Duration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds, tags);
+        }
     }
+
+    private ReportEngine CreateEngine() => new(new ReportEngineOptions
+    {
+        Culture = _options.Culture ?? CultureInfo.CurrentCulture,
+        TimeProvider = _timeProvider,
+        MaxCells = _options.MaxCells,
+        NullLabel = _options.NullLabel,
+        OthersLabel = _options.OthersLabel,
+        GrandTotalLabel = _options.GrandTotalLabel,
+        TrueLabel = _options.TrueLabel,
+        FalseLabel = _options.FalseLabel,
+    });
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "'{Source}' raporu bellekte hesaplandı ({Code}, {Rows} satır): {Reason}")]
+    private static partial void LogMemoryFallback(ILogger logger, string source, string code, string reason, long rows);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "'{Source}' raporu veritabanında çevrilemedi, bellekte hesaplandı: {Reason}")]
+    private static partial void LogTranslationFallback(ILogger logger, string source, string reason);
 }
 
 /// <summary>Veri kaynaklarının kaydı.</summary>
@@ -127,7 +189,8 @@ public static class ReportingServiceCollectionExtensions
             sp.GetServices<IReportDataSource>(),
             sp.GetRequiredService<CanReportingOptions>(),
             sp,
-            sp.GetService<TimeProvider>()));
+            sp.GetService<TimeProvider>(),
+            sp.GetService<ILogger<ReportService>>()));
         return new CanReportingBuilder(services);
     }
 }

@@ -141,6 +141,7 @@ public sealed class DatabaseModeTests : IAsyncLifetime
         ReportResult database = await RunAsync(Pivot());
 
         Assert.Equal("database", database.Mode);
+        Assert.Null(database.ModeReason);
         AssertSame(InMemory(Pivot()), database);
         // [quantity] >= 2 → Kahve 2025 (adet 1) düşer: 7 satır
         Assert.Equal(7, database.MatchedRowCount);
@@ -182,6 +183,8 @@ public sealed class DatabaseModeTests : IAsyncLifetime
         ReportResult result = await RunAsync(Definition());
 
         Assert.Equal("memory", result.Mode);
+        Assert.Equal(ReportModeReason.Aggregate, result.ModeReason?.Code);
+        Assert.Contains(aggregate.ToString(), result.ModeReason!.Message, StringComparison.Ordinal);
         AssertSame(InMemory(Definition()), result);
     }
 
@@ -196,10 +199,13 @@ public sealed class DatabaseModeTests : IAsyncLifetime
             new() { Measures = { new ReportMeasure("discount", ReportAggregate.Sum) } },
         ];
 
-        foreach (ReportDefinition definition in definitions)
+        string[] reasons = [ReportModeReason.Dimension, ReportModeReason.Filter, ReportModeReason.Translation];
+
+        for (int i = 0; i < definitions.Length; i++)
         {
-            ReportResult result = await RunAsync(definition);
+            ReportResult result = await RunAsync(definitions[i]);
             Assert.Equal("memory", result.Mode);
+            Assert.Equal(reasons[i], result.ModeReason?.Code);
         }
 
         ReportResult weeks = await RunAsync(new ReportDefinition { FilterExpression = "Week([orderDate]) > 10" });
@@ -236,5 +242,79 @@ public sealed class DatabaseModeTests : IAsyncLifetime
         ReportDefinitionException ex = await Assert.ThrowsAsync<ReportDefinitionException>(() =>
             scope.ServiceProvider.GetRequiredService<IReportService>().RunAsync(definition, TestContext.Current.CancellationToken));
         Assert.Contains("filtreyi daralt", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Too_many_slots_fall_back_to_memory_with_reason()
+    {
+        // Varyans ailesi 3 yuva (n, Σx, Σx²) kullanır: 5 değer × 3 + 1 anahtar + 1 satır sayısı = 17 > 16
+        ReportDefinition Definition() => new()
+        {
+            Rows = { new ReportDimension("category") },
+            Measures =
+            {
+                new ReportMeasure("quantity", ReportAggregate.Var) { Name = "v1" },
+                new ReportMeasure("quantity", ReportAggregate.VarP) { Name = "v2" },
+                new ReportMeasure("quantity", ReportAggregate.StdDev) { Name = "v3" },
+                new ReportMeasure("quantity", ReportAggregate.StdDevP) { Name = "v4" },
+                new ReportMeasure("price", ReportAggregate.Var) { Name = "v5" },
+            },
+        };
+
+        ReportResult result = await RunAsync(Definition());
+
+        Assert.Equal("memory", result.Mode);
+        Assert.Equal(ReportModeReason.Slots, result.ModeReason?.Code);
+        AssertSame(InMemory(Definition()), result);
+    }
+
+    [Fact]
+    public async Task Database_mode_off_is_reported()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<SalesDbContext>(o => o.UseSqlite(_connection));
+        services.AddCanReporting().AddSource("sales", sp => sp.GetRequiredService<SalesDbContext>().Sales, o => o.DatabaseMode = false);
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        await using AsyncServiceScope scope = provider.CreateAsyncScope();
+
+        ReportResult result = await scope.ServiceProvider.GetRequiredService<IReportService>()
+            .RunAsync(new ReportDefinition { DataSource = "sales" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("memory", result.Mode);
+        Assert.Equal(ReportModeReason.Disabled, result.ModeReason?.Code);
+    }
+
+    [Fact]
+    public async Task Invalid_definition_is_rejected_before_running_with_all_errors()
+    {
+        ReportDefinitionException ex = await Assert.ThrowsAsync<ReportDefinitionException>(() => RunAsync(new ReportDefinition
+        {
+            Rows = { new ReportDimension("nope") },
+            Measures = { new ReportMeasure("price", ReportAggregate.Median), new ReportMeasure("price", ReportAggregate.Median) },
+        }));
+
+        Assert.Equal(2, ex.Errors.Count);
+        Assert.Contains(ex.Errors, e => e.Contains("'nope'", StringComparison.Ordinal));
+        Assert.Contains(ex.Errors, e => e.Contains("median_price", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Access_policy_is_enforced_by_the_service()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<SalesDbContext>(o => o.UseSqlite(_connection));
+        services.AddCanReporting().AddSource("sales", sp => sp.GetRequiredService<SalesDbContext>().Sales, o => o.Permission = "reports.sales");
+        bool allowed = false;
+        services.AddSingleton<IReportAccessPolicy>(new DelegateReportAccessPolicy(source => allowed && source.Permission == "reports.sales"));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        await using AsyncServiceScope scope = provider.CreateAsyncScope();
+        IReportService reports = scope.ServiceProvider.GetRequiredService<IReportService>();
+        var definition = new ReportDefinition { DataSource = "sales" };
+
+        await Assert.ThrowsAsync<ReportAccessDeniedException>(() => reports.RunAsync(definition, TestContext.Current.CancellationToken));
+
+        allowed = true;
+        ReportResult result = await reports.RunAsync(definition, TestContext.Current.CancellationToken);
+        Assert.Equal(8m, result.Value(0, 0, 0));
     }
 }
