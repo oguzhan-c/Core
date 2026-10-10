@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Can.Core.Testing.EntityFrameworkCore\Can.Core.Testing.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\Can.Core.Testing.AspNetCore\Can.Core.Testing.AspNetCore.csproj" />
+  </ItemGroup>
+
+</Project>

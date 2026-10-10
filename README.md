@@ -41,6 +41,9 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
 | `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
+| `Can.Core.Testing` | yok | Testler için: elle ilerletilen `TestClock` (zamanlayıcılar dahil), `TestCurrentUser`, `TestCurrentTenant` |
+| `Can.Core.Testing.EntityFrameworkCore` | EF Core SQLite | `SqliteTestDatabase`: test başına bellekte gerçek ilişkisel veritabanı |
+| `Can.Core.Testing.AspNetCore` | ASP.NET Core TestHost | Test kimlik doğrulaması (`client.AsUser(...)`), `CanTestApp` |
 | `Can.Core.Observability.OpenTelemetry` | OpenTelemetry | Can.Core ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
 | `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
 | `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
@@ -60,6 +63,30 @@ dotnet test --solution Core.slnx --filter-method "*Retries*"               # met
 dotnet test --project tests/Can.Core.Persistence.Tests --show-live-output on  # ITestOutputHelper çıktısı
 dotnet run --project tests/Can.Core.Persistence.Tests                      # doğrudan (xUnit'in kendi çalıştırıcısı)
 ```
+
+**Kendi uygulamanın testleri** için `Can.Core.Testing*` paketleri (yalnızca test projelerine ekle):
+
+```csharp
+// birim / handler testi
+var clock = new TestClock(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+services.AddCanTestContext(new TestCurrentUser().SignIn("42", roles: ["Admin"]), new TestCurrentTenant { Id = tenantA }, clock);
+clock.Advance(TimeSpan.FromHours(2));        // Task.Delay(..., clock), PeriodicTimer, outbox zamanlaması gerçek bekleme olmadan ilerler
+
+// veritabanı testi: test başına bellekte SQLite (ilişki, benzersiz indeks, transaction gerçek)
+await using var database = new SqliteTestDatabase();
+services.AddDbContext<AppDbContext>(database.Configure);
+await database.CreateSchemaAsync<AppDbContext>(provider);
+
+// API testi: JWT yerine istekte verilen kullanıcı (Production ortamında çalışmaz)
+await using CanTestApp app = await CanTestApp.StartAsync(
+    services => { services.AddCanWebApi(); services.AddCanTestAuthentication(); services.AddAuthorization(); /* uygulamanın servisleri */ },
+    web => { web.UseCanExceptionHandler(); web.UseAuthentication(); web.UseCanTenantResolution(); web.UseAuthorization(); /* uç noktalar */ });
+HttpClient client = app.CreateClient().AsUser("42", roles: ["Admin"], permissions: ["orders.*"], tenant: tenantA.ToString());
+```
+
+`AddCanTestContext` servis kayıtlarının SONUNDA çağrılmalı (önceki `ICurrentUser`/`ICurrentTenant`/`TimeProvider`
+kayıtlarını değiştirir). SQLite `decimal` toplayamaz ve `DateTimeOffset` karşılaştıramaz; bu sorguları gerçek
+veritabanına karşı test et.
 
 ## Domain
 
