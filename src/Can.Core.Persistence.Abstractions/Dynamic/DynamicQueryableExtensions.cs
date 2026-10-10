@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
+using Can.Core.Domain.Auditing;
 
 namespace Can.Core.Persistence.Dynamic;
 
@@ -15,6 +16,12 @@ namespace Can.Core.Persistence.Dynamic;
 /// <list type="bullet">
 /// <item>Ek paket bağımlılığı yoktur.</item>
 /// <item>Alan adları gerçek property'lere karşı doğrulanır; istemci sorguya rastgele ifade enjekte edemez.</item>
+/// <item>İzin listesi (<see cref="DynamicQueryFields{T}"/>) verilirse yalnızca oradaki alanlar kullanılabilir. Verilmezse
+/// yalnızca tipin kendi (üst düzey) property'leri kullanılabilir; iç içe yollar (<c>category.name</c>) izin listesi ister.
+/// İstemciden gelen sorgularda izin listesi kullan: aksi halde istemci, ekranda göstermediğin alanlara göre filtreleyip
+/// değerleri tahmin edebilir.</item>
+/// <item><c>[DisableAuditing]</c> ile işaretli hassas property'ler (şifre hash'i, gizli anahtar, token hash'i) izin
+/// listesinde olsalar bile hiçbir yolda kullanılamaz.</item>
 /// <item>Değerler property tipine çevrilip parametre olarak gönderilir (EF Core SQL parametresi üretir).</item>
 /// </list>
 /// </remarks>
@@ -30,31 +37,58 @@ public static class DynamicQueryableExtensions
         .GetMethods(BindingFlags.Public | BindingFlags.Static)
         .Single(m => m.Name == nameof(Enumerable.Contains) && m.GetParameters().Length == 2);
 
-    /// <summary>Filtre ve sıralamayı uygular.</summary>
-    public static IQueryable<T> ToDynamic<T>(this IQueryable<T> query, DynamicQuery dynamicQuery)
+    /// <summary>
+    /// Filtre ve sıralamayı uygular.
+    /// </summary>
+    /// <typeparam name="T">Sorgulanan tip.</typeparam>
+    /// <param name="query">Sorgu.</param>
+    /// <param name="dynamicQuery">İstemciden gelen filtre ve sıralama.</param>
+    /// <param name="fields">İzin verilen alanlar; boşsa yalnızca üst düzey property'ler.</param>
+    /// <returns>Filtrelenmiş ve sıralanmış sorgu.</returns>
+    /// <exception cref="ArgumentException">Geçersiz ya da izin verilmeyen alan, operatör veya değer.</exception>
+    public static IQueryable<T> ToDynamic<T>(this IQueryable<T> query, DynamicQuery dynamicQuery, DynamicQueryFields<T>? fields = null)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(dynamicQuery);
 
         if (dynamicQuery.Filter is not null)
-            query = query.ApplyFilter(dynamicQuery.Filter);
+            query = query.ApplyFilter(dynamicQuery.Filter, fields);
 
         if (dynamicQuery.Sort is not null)
-            query = query.ApplySort(dynamicQuery.Sort);
+            query = query.ApplySort(dynamicQuery.Sort, fields);
 
         return query;
     }
 
-    public static IQueryable<T> ApplyFilter<T>(this IQueryable<T> query, Filter filter)
+    /// <summary>
+    /// Filtreyi uygular.
+    /// </summary>
+    /// <typeparam name="T">Sorgulanan tip.</typeparam>
+    /// <param name="query">Sorgu.</param>
+    /// <param name="filter">Filtre ağacı.</param>
+    /// <param name="fields">İzin verilen alanlar; boşsa yalnızca üst düzey property'ler.</param>
+    /// <returns>Filtrelenmiş sorgu.</returns>
+    /// <exception cref="ArgumentException">Geçersiz ya da izin verilmeyen alan, operatör veya değer.</exception>
+    public static IQueryable<T> ApplyFilter<T>(this IQueryable<T> query, Filter filter, DynamicQueryFields<T>? fields = null)
     {
         ParameterExpression parameter = Expression.Parameter(typeof(T), "x");
-        Expression? body = BuildFilter(parameter, filter);
+        Expression? body = BuildFilter(parameter, filter, Resolver(fields));
 
         return body is null ? query : query.Where(Expression.Lambda<Func<T, bool>>(body, parameter));
     }
 
-    public static IQueryable<T> ApplySort<T>(this IQueryable<T> query, IEnumerable<Sort> sorts)
+    /// <summary>
+    /// Sıralamayı uygular (ilki <c>OrderBy</c>, sonrakiler <c>ThenBy</c>).
+    /// </summary>
+    /// <typeparam name="T">Sorgulanan tip.</typeparam>
+    /// <param name="query">Sorgu.</param>
+    /// <param name="sorts">Sıralama alanları.</param>
+    /// <param name="fields">İzin verilen alanlar; boşsa yalnızca üst düzey property'ler.</param>
+    /// <returns>Sıralanmış sorgu.</returns>
+    /// <exception cref="ArgumentException">Geçersiz ya da izin verilmeyen alan veya yön.</exception>
+    public static IQueryable<T> ApplySort<T>(this IQueryable<T> query, IEnumerable<Sort> sorts, DynamicQueryFields<T>? fields = null)
     {
+        Func<string, string> resolve = Resolver(fields);
         bool first = true;
 
         foreach (Sort sort in sorts)
@@ -67,7 +101,7 @@ public static class DynamicQueryableExtensions
             };
 
             ParameterExpression parameter = Expression.Parameter(typeof(T), "x");
-            Expression member = BuildMemberPath(parameter, sort.Field, out _);
+            Expression member = BuildMemberPath(parameter, resolve(sort.Field), out _);
             LambdaExpression keySelector = Expression.Lambda(member, parameter);
 
             string methodName = (first, descending) switch
@@ -95,12 +129,36 @@ public static class DynamicQueryableExtensions
 
     // ---------------------------------------------------------------- Filtre ağacı
 
-    private static Expression? BuildFilter(ParameterExpression parameter, Filter filter)
+    /// <summary>
+    /// İstemcinin alan adını property yoluna çeviren ve izinleri uygulayan fonksiyon.
+    /// </summary>
+    /// <typeparam name="T">Sorgulanan tip.</typeparam>
+    /// <param name="fields">İzin listesi; boşsa yalnızca üst düzey property'ler.</param>
+    /// <returns>Alan adı → property yolu; izin yoksa <see cref="ArgumentException"/> fırlatır.</returns>
+    private static Func<string, string> Resolver<T>(DynamicQueryFields<T>? fields) =>
+        field =>
+        {
+            if (string.IsNullOrWhiteSpace(field))
+                throw new ArgumentException("Alan adı boş olamaz.");
+
+            if (fields is not null)
+            {
+                return fields.TryResolve(field, out string path)
+                    ? path
+                    : throw new ArgumentException($"'{field}' alanı kullanılamaz. İzin verilen alanlar: {string.Join(", ", fields.Names.Order(StringComparer.OrdinalIgnoreCase))}.");
+            }
+
+            return field.Contains('.', StringComparison.Ordinal)
+                ? throw new ArgumentException($"'{field}' iç içe bir alan; iç içe alanlar yalnızca izin listesiyle (DynamicQueryFields) kullanılabilir.")
+                : field;
+        };
+
+    private static Expression? BuildFilter(ParameterExpression parameter, Filter filter, Func<string, string> resolve)
     {
-        Expression? own = string.IsNullOrWhiteSpace(filter.Field) ? null : BuildCondition(parameter, filter);
+        Expression? own = string.IsNullOrWhiteSpace(filter.Field) ? null : BuildCondition(parameter, filter, resolve);
 
         Expression[] children = (filter.Filters ?? [])
-            .Select(child => BuildFilter(parameter, child))
+            .Select(child => BuildFilter(parameter, child, resolve))
             .OfType<Expression>()
             .ToArray();
 
@@ -122,10 +180,10 @@ public static class DynamicQueryableExtensions
         return own is null ? grouped : combine(own, grouped);
     }
 
-    private static Expression BuildCondition(ParameterExpression parameter, Filter filter)
+    private static Expression BuildCondition(ParameterExpression parameter, Filter filter, Func<string, string> resolve)
     {
         string @operator = (filter.Operator ?? string.Empty).ToLowerInvariant();
-        Expression member = BuildMemberPath(parameter, filter.Field!, out IReadOnlyList<Expression> nullChecks);
+        Expression member = BuildMemberPath(parameter, resolve(filter.Field!), out IReadOnlyList<Expression> nullChecks);
         Type type = member.Type;
 
         Expression condition = @operator switch
@@ -185,6 +243,10 @@ public static class DynamicQueryableExtensions
             PropertyInfo property =
                 current.Type.GetProperty(segments[i], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
                 ?? throw new ArgumentException($"Geçersiz alan: '{path}'. '{current.Type.Name}' tipinde '{segments[i]}' yok.");
+
+            // hassas alanlar ([DisableAuditing]: şifre hash'i, gizli anahtar ...) sorgulanamaz: değer tahmin edilebilir
+            if (property.IsDefined(typeof(DisableAuditingAttribute), inherit: true))
+                throw new ArgumentException($"'{path}' hassas bir alan; filtreleme ve sıralamada kullanılamaz.");
 
             current = Expression.Property(current, property);
         }

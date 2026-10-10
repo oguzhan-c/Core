@@ -286,4 +286,32 @@ public class ExportTests
         Assert.Equal((byte)'P', stream.ToArray()[0]);
         Assert.Equal((byte)'K', stream.ToArray()[1]);
     }
+
+    [Theory]
+    [InlineData("=HYPERLINK(\"http://kotu\",\"tıkla\")", "'=HYPERLINK")]
+    [InlineData("+90 555", "'+90 555")]
+    [InlineData("-2+3", "'-2+3")]
+    [InlineData("@SUM(A1)", "'@SUM(A1)")]
+    [InlineData("Çeşni", "Çeşni")]
+    [InlineData("", "")]
+    public void Csv_neutralizes_formula_injection(string text, string expectedStart)
+    {
+        Assert.StartsWith(expectedStart, CsvReportWriter.Neutralize(text), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Csv_export_protects_labels_but_keeps_negative_numbers()
+    {
+        WideItem[] items = [new("=1+1", "G", -5m), new("Normal", "G", 3m)];
+        ReportResult result = SalesData.Engine().Run(new ReportDefinition
+        {
+            Rows = { new ReportDimension("name") { Caption = "Ad" } },
+            Measures = { new ReportMeasure("amount", ReportAggregate.Sum) { Caption = "Tutar" } },
+        }, ReportDataSet.From(items));
+
+        string csv = Encoding.UTF8.GetString(ReportExporter.Export(result, ReportExportFormat.Csv, Options(o => o.CsvDelimiter = ";")));
+
+        Assert.Contains("'=1+1;-5", csv, StringComparison.Ordinal); // etiket korunur, sayı ham kalır
+        Assert.DoesNotContain("\n=1+1", csv, StringComparison.Ordinal);
+    }
 }

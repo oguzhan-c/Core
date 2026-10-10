@@ -107,6 +107,7 @@ public class EfRepository<TEntity, TId> : IRepository<TEntity, TId>
         int size = 10,
         bool withDeleted = false,
         bool enableTracking = true,
+        DynamicQueryFields<TEntity>? fields = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dynamicQuery);
@@ -119,7 +120,7 @@ public class EfRepository<TEntity, TId> : IRepository<TEntity, TId>
         if (predicate is not null)
             query = query.Where(predicate);
 
-        query = query.ToDynamic(dynamicQuery);
+        query = query.ToDynamic(dynamicQuery, fields);
 
         if (dynamicQuery.Sort is null || !dynamicQuery.Sort.Any())
             query = query.OrderBy(e => e.Id);

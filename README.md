@@ -279,8 +279,22 @@ Tenant yoksa (`ICurrentTenant.Id == null`) tenant'a ait hiçbir kayıt görünme
 
 Operatörler: `eq, neq, lt, lte, gt, gte, isnull, isnotnull, startswith, endswith, contains, doesnotcontain, in, between`.
 System.Linq.Dynamic.Core yerine doğrudan expression tree kurulur: alan adları gerçek property'lere karşı doğrulanır,
-değerler SQL parametresi olarak gider. Not: istemci herhangi bir public property'ye göre filtreleyebilir; hassas alanları
-(ör. `PasswordHash`) DTO'ya değil entity'ye filtre açan endpoint'lerde dikkatli ol.
+değerler SQL parametresi olarak gider.
+
+İstemci girdisinde **alan izin listesi** kullan; yoksa istemci ekranda göstermediğin alanlara göre filtreleyip
+değerlerini tahmin edebilir:
+
+```csharp
+private static readonly DynamicQueryFields<Product> Fields = new DynamicQueryFields<Product>()
+    .Allow(p => p.Name, p => p.UnitPrice, p => p.UnitsInStock)      // istemci: name, unitPrice, unitsInStock
+    .Allow("categoryName", p => p.Category!.Name);                    // takma ad: iç yapı gizli
+
+query = query.ToDynamic(request.Query, Fields);                       // ya da repository.GetListByDynamicAsync(..., fields: Fields)
+```
+
+Listede olmayan alan `ArgumentException` (izin verilen alanların adlarıyla) fırlatır. İzin listesi verilmezse yalnızca
+tipin üst düzey property'leri kullanılabilir; iç içe yollar (`category.name`) liste ister. `[DisableAuditing]` ile
+işaretli hassas property'ler (şifre hash'i, gizli anahtar, token hash'i) hiçbir durumda kullanılamaz.
 
 **Specification: sık kullanılan sorgular**
 
@@ -1001,6 +1015,8 @@ byte[] xlsx = ReportExporter.Export(result, ReportExportFormat.Xlsx, new() { Tit
 Hatalar ProblemDetails: 400 `report.invalid` (ifade hatası, bilinmeyen alan ...), 403 `report.forbidden`, 404
 `report.not_found`. Başka tenant'ın ya da başkasının paylaşılmamış raporu 404 döner (varlığı bile sızmaz).
 Seçenekler: `Permission` (raporlamaya genel yetki), `SharePermission` (paylaşma yetkisi), `MaxSavedReportsPerUser`.
+CSV dışa aktarmada `=`, `+`, `-`, `@` ile başlayan metinlerin önüne `'` eklenir (formül enjeksiyonu: rapordaki bir
+müşteri adı `=HYPERLINK(...)` olsa bile dosyayı açanın Excel'inde formül olarak çalışmaz); sayılar etkilenmez.
 
 **Nasıl hesaplanır.** DevExpress'in pivot motoru incelenerek aynı iş akışı kuruldu: alanlar dört bölgeye (filtre,
 satır, sütun, değer) yerleşir; önce filtreler, sonra gruplama ve özet, en sonda gösterim dönüşümleri (yüzde, kümülatif,

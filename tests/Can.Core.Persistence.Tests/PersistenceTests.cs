@@ -268,12 +268,16 @@ public class PersistenceTests
         await db.SaveChangesAsync();
     }
 
-    private static async Task<IPaginate<Product>> QueryAsync(TestHost host, DynamicQuery query, int index = 0, int size = 10)
+    private static async Task<IPaginate<Product>> QueryAsync(TestHost host, DynamicQuery query, int index = 0, int size = 10, DynamicQueryFields<Product>? fields = null)
     {
         await using AsyncServiceScope scope = host.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IRepository<Product, int>>();
-        return await repository.GetListByDynamicAsync(query, index: index, size: size, enableTracking: false);
+        return await repository.GetListByDynamicAsync(query, index: index, size: size, enableTracking: false, fields: fields);
     }
+
+    private static readonly DynamicQueryFields<Product> ProductFields = new DynamicQueryFields<Product>()
+        .Allow(p => p.Name, p => p.Price)
+        .Allow("categoryName", p => p.Category!.Name);
 
     private static string[] Names(IPaginate<Product> page) => page.Items.Select(p => p.Name).ToArray();
 
@@ -310,12 +314,58 @@ public class PersistenceTests
             Filter = new Filter("name", "eq", "Defter")
             {
                 Logic = "or",
-                Filters = [new Filter("category.name", "eq", "Ofis")],
+                Filters = [new Filter("categoryName", "eq", "Ofis")],
             },
             Sort = [new Sort("price", "desc")],
         };
 
-        Assert.Equal(new[] { "Defter", "Mavi Kalem", "Kirmizi Kalem" }, Names(await QueryAsync(host, query)));
+        Assert.Equal(new[] { "Defter", "Mavi Kalem", "Kirmizi Kalem" }, Names(await QueryAsync(host, query, fields: ProductFields)));
+    }
+
+    [Fact]
+    public async Task Dynamic_without_field_list_allows_only_top_level_fields()
+    {
+        await using TestHost host = await TestHost.CreateAsync();
+        await SeedCatalogAsync(host);
+
+        ArgumentException nested = await Assert.ThrowsAsync<ArgumentException>(() => QueryAsync(host, new() { Filter = new Filter("category.name", "eq", "Ofis") }));
+        Assert.Contains("izin listesi", nested.Message, StringComparison.Ordinal);
+        Assert.Equal(2, (await QueryAsync(host, new() { Filter = new Filter("name", "contains", "kalem") })).Count);
+    }
+
+    [Fact]
+    public async Task Dynamic_field_list_rejects_fields_not_listed()
+    {
+        await using TestHost host = await TestHost.CreateAsync();
+        await SeedCatalogAsync(host);
+
+        ArgumentException filter = await Assert.ThrowsAsync<ArgumentException>(() => QueryAsync(host, new() { Filter = new Filter("tenantId", "isnull") }, fields: ProductFields));
+        Assert.Contains("categoryName, name, price", filter.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<ArgumentException>(() => QueryAsync(host, new() { Sort = [new Sort("tenantId")] }, fields: ProductFields));
+        await Assert.ThrowsAsync<ArgumentException>(() => QueryAsync(host, new() { Filter = new Filter("category.name", "eq", "Ofis") }, fields: ProductFields)); // gerçek yol değil, takma ad açık
+        Assert.Equal(2, (await QueryAsync(host, new() { Filter = new Filter("CATEGORYNAME", "eq", "Ofis") }, fields: ProductFields)).Count); // ad büyük/küçük harf duyarsız
+    }
+
+    [Fact]
+    public void Dynamic_rejects_sensitive_fields_even_when_listed()
+    {
+        IQueryable<Customer> customers = Array.Empty<Customer>().AsQueryable();
+        var fields = new DynamicQueryFields<Customer>().Allow(c => c.Name, c => c.Secret);
+
+        ArgumentException listed = Assert.Throws<ArgumentException>(() => customers.ToDynamic(new DynamicQuery { Filter = new Filter("secret", "eq", "x") }, fields).ToList());
+        Assert.Contains("hassas", listed.Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => customers.ToDynamic(new DynamicQuery { Sort = [new Sort("secret")] }).ToList());
+    }
+
+    [Fact]
+    public void Field_list_derives_camel_case_paths()
+    {
+        var fields = new DynamicQueryFields<Product>().Allow(p => p.Category!.Name, p => p.Price);
+
+        Assert.True(fields.TryResolve("category.name", out string path));
+        Assert.Equal("category.name", path);
+        Assert.True(fields.TryResolve("Price", out _));
+        Assert.Throws<ArgumentException>(() => new DynamicQueryFields<Product>().Allow(p => p.Name.ToUpper()));
     }
 
     [Fact]
@@ -373,7 +423,7 @@ public class PersistenceTests
             Product.Create("B", 2),
         }.AsQueryable();
 
-        List<Product> result = products.ToDynamic(new DynamicQuery { Filter = new Filter("category.name", "eq", "Ofis") }).ToList();
+        List<Product> result = products.ToDynamic(new DynamicQuery { Filter = new Filter("categoryName", "eq", "Ofis") }, ProductFields).ToList();
 
         Assert.Equal("A", Assert.Single(result).Name);
     }

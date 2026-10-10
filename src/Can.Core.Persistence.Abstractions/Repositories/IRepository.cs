@@ -51,7 +51,20 @@ public interface IRepository<TEntity, TId>
         bool enableTracking = true,
         CancellationToken cancellationToken = default);
 
-    /// <summary>İstemciden gelen <see cref="DynamicQuery"/> (filtre + sıralama) ile sayfalı liste.</summary>
+    /// <summary>
+    /// İstemciden gelen <see cref="DynamicQuery"/> (filtre + sıralama) ile sayfalı liste.
+    /// </summary>
+    /// <param name="dynamicQuery">Filtre ve sıralama.</param>
+    /// <param name="predicate">Ek sabit koşul (ör. kullanıcının kendi kayıtları).</param>
+    /// <param name="include">İlişkili veriler.</param>
+    /// <param name="index">Sayfa (0'dan başlar).</param>
+    /// <param name="size">Sayfa boyutu.</param>
+    /// <param name="withDeleted">Silinmişler dahil mi.</param>
+    /// <param name="enableTracking">Değişiklik izleme açık mı.</param>
+    /// <param name="fields">İstemcinin kullanabileceği alanlar; boşsa yalnızca üst düzey property'ler. İstemci girdisinde verilmesi önerilir.</param>
+    /// <param name="cancellationToken">İptal belirteci.</param>
+    /// <returns>Sayfa.</returns>
+    /// <exception cref="ArgumentException">Geçersiz ya da izin verilmeyen alan, operatör veya değer.</exception>
     Task<IPaginate<TEntity>> GetListByDynamicAsync(
         DynamicQuery dynamicQuery,
         Expression<Func<TEntity, bool>>? predicate = null,
@@ -60,6 +73,7 @@ public interface IRepository<TEntity, TId>
         int size = 10,
         bool withDeleted = false,
         bool enableTracking = true,
+        DynamicQueryFields<TEntity>? fields = null,
         CancellationToken cancellationToken = default);
 
     Task<bool> AnyAsync(

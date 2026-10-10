@@ -118,14 +118,30 @@ internal static class CsvReportWriter
         return [.. System.Text.Encoding.UTF8.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(builder.ToString())];
     }
 
-    /// <summary>Sayılar binlik ayırıcısız, kültürün ondalık ayırıcısıyla (yeniden hesaplanabilsin); yüzdeler oran olarak.</summary>
+    /// <summary>
+    /// Hücrenin CSV metni: sayılar binlik ayırıcısız, kültürün ondalık ayırıcısıyla (yeniden hesaplanabilsin);
+    /// yüzdeler oran olarak; metinler formül enjeksiyonuna karşı korunur (<see cref="Neutralize"/>).
+    /// </summary>
+    /// <param name="cell">Hücre.</param>
+    /// <param name="culture">Sayı biçimi kültürü.</param>
+    /// <returns>Kaçışsız CSV metni.</returns>
     private static string CsvText(GridCell cell, CultureInfo culture) =>
         cell.Value switch
         {
             decimal d => d.ToString("0.############", culture),
             DateTime t => t.TimeOfDay == TimeSpan.Zero ? t.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : t.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
-            _ => cell.Text,
+            _ => Neutralize(cell.Text),
         };
+
+    /// <summary>
+    /// CSV formül enjeksiyonu koruması (OWASP): <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, sekme ya da satır başıyla
+    /// başlayan metnin önüne <c>'</c> eklenir. Aksi halde rapordaki bir müşteri adı <c>=HYPERLINK(...)</c> gibi bir
+    /// formül olarak, dosyayı açan kişinin Excel'inde çalışır. Sayı hücreleri etkilenmez (ayrı yoldan yazılır).
+    /// </summary>
+    /// <param name="text">Hücre metni.</param>
+    /// <returns>Güvenli metin.</returns>
+    internal static string Neutralize(string text) =>
+        text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + text : text;
 
     private static string Escape(string text, string delimiter) =>
         text.Contains(delimiter, StringComparison.Ordinal) || text.Contains('"') || text.Contains('\n') || text.Contains('\r')
