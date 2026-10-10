@@ -28,6 +28,7 @@ public static class CanTelemetrySources
         "Can.Core.Application",     // can.request.duration
         "Can.Core.BackgroundJobs",  // can.job.duration
         "Can.Core.Persistence",     // can.outbox.messages
+        "Can.Core.EventBus",        // can.eventbus.published, consumed, lag, replayed
         "Can.Core.Mailing",         // can.email.messages
         "Can.Core.Sms",             // can.sms.messages, can.sms.segments
         "Can.Core.Resilience",      // can.resilience.events

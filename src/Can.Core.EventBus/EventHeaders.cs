@@ -26,9 +26,12 @@ public static class EventHeaders
     public const string ErrorType = "can-error-type";
     public const string FailedAt = "can-failed-at";
 
+    /// <summary>Mesajın DLQ'dan kaç kez yeniden işlemeye gönderildiği.</summary>
+    public const string ReplayCount = "can-replay-count";
+
     private static readonly HashSet<string> System = new(StringComparer.OrdinalIgnoreCase)
     {
-        EventId, EventName, TenantId, OccurredAt, Attempt, NotBefore, Consumer, Error, ErrorType, FailedAt,
+        EventId, EventName, TenantId, OccurredAt, Attempt, NotBefore, Consumer, Error, ErrorType, FailedAt, ReplayCount,
     };
 
     /// <summary>Zarfın başlıkları (zarfın kendi başlıkları — traceparent vb. — dahil).</summary>
@@ -113,6 +116,27 @@ public static class EventHeaders
             [ErrorType] = error?.GetType().FullName ?? reason,
             [FailedAt] = failedAt.ToString("O", CultureInfo.InvariantCulture),
         };
+        next.Remove(NotBefore);
+        return next;
+    }
+
+    /// <summary>
+    /// DLQ'dan yeniden işlemeye gönderilecek mesajın başlıkları: hata bilgisi silinir, deneme 1'e döner (yeniden deneme
+    /// hakları baştan başlar), <see cref="ReplayCount"/> bir artar.
+    /// </summary>
+    public static Dictionary<string, string> ForReplay(IReadOnlyDictionary<string, string> headers, string consumer)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+        int replays = headers.TryGetValue(ReplayCount, out string? value) && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int count) ? count : 0;
+        var next = new Dictionary<string, string>(headers, StringComparer.Ordinal)
+        {
+            [Attempt] = "1",
+            [Consumer] = consumer,
+            [ReplayCount] = (replays + 1).ToString(CultureInfo.InvariantCulture),
+        };
+        next.Remove(Error);
+        next.Remove(ErrorType);
+        next.Remove(FailedAt);
         next.Remove(NotBefore);
         return next;
     }

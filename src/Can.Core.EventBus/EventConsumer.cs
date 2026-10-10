@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using Can.Core.Mediator;
@@ -146,6 +147,34 @@ public sealed partial class EventConsumer
     {
         ArgumentNullException.ThrowIfNull(envelope);
         attempt = Math.Max(1, attempt);
+
+        var tags = new TagList { { "can.event", envelope.EventName }, { "can.consumer", Name } };
+        if (attempt == 1)
+            EventBusTelemetry.Lag.Record(Math.Max(0, (_time.GetUtcNow() - envelope.OccurredAt).TotalSeconds), tags);
+
+        long started = _time.GetTimestamp();
+        ConsumeOutcome outcome = await ConsumeCoreAsync(envelope, attempt, cancellationToken).ConfigureAwait(false);
+
+        tags.Add("can.outcome", OutcomeTag(outcome));
+        EventBusTelemetry.Consumed.Add(1, tags);
+        EventBusTelemetry.ProcessDuration.Record(_time.GetElapsedTime(started).TotalSeconds, tags);
+        return outcome;
+    }
+
+    private static string OutcomeTag(ConsumeOutcome outcome) => outcome.Action switch
+    {
+        ConsumeAction.Retry => "retry",
+        ConsumeAction.DeadLetter => "dead_letter",
+        _ => outcome.Reason switch
+        {
+            "duplicate" => "duplicate",
+            "unknown-event" => "unknown",
+            _ => "completed",
+        },
+    };
+
+    private async Task<ConsumeOutcome> ConsumeCoreAsync(EventEnvelope envelope, int attempt, CancellationToken cancellationToken)
+    {
         string? consumer = _options.UseInbox ? Name : null;
 
         for (int immediate = 0; ; immediate++)

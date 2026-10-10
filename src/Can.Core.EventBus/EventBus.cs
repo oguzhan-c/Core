@@ -47,9 +47,11 @@ internal sealed class DefaultEventBus : IEventBus
         try
         {
             await _transport.SendAsync(envelope, cancellationToken).ConfigureAwait(false);
+            EventBusTelemetry.Published.Add(1, new TagList { { "can.event", eventName }, { "can.outcome", "published" } });
         }
         catch (Exception exception)
         {
+            EventBusTelemetry.Published.Add(1, new TagList { { "can.event", eventName }, { "can.outcome", "failed" } });
             activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
             activity?.AddException(exception);
             throw;
