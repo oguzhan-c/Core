@@ -7,7 +7,8 @@ namespace Can.Core.Reporting.Tests;
 /// <summary>
 /// Altın (golden) testler: bilinen tanımların TÜM sonucu (başlıklar + hücreler) <c>Golden/*.txt</c> dosyalarıyla
 /// karşılaştırılır. Motorda yapılan bir değişiklik sonucu beklenmedik biçimde değiştirirse test kırılır.
-/// Dosya yoksa ya da <c>CAN_UPDATE_GOLDEN=1</c> ise dosya yazılır (gözden geçirip commit'le).
+/// Dosya yoksa ya da <c>CAN_UPDATE_GOLDEN=1</c> ise dosya yazılır (gözden geçirip commit'le); CI'da (<c>CI=true</c>)
+/// eksik dosya hatadır.
 /// </summary>
 public sealed class GoldenReportTests
 {
@@ -116,6 +117,8 @@ public sealed class GoldenReportTests
     {
         string path = Path.Combine(Path.GetDirectoryName(source)!, "Golden", name + ".txt");
         bool update = Environment.GetEnvironmentVariable("CAN_UPDATE_GOLDEN") == "1";
+        if (!update && !File.Exists(path) && Environment.GetEnvironmentVariable("CI") == "true")
+            Assert.Fail($"Golden dosyası yok: {path}. Yerelde testi çalıştırıp oluşan dosyayı commit'le.");
         if (update || !File.Exists(path))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
