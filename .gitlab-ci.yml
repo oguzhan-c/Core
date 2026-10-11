@@ -7,6 +7,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
     - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v\d+/   # v1.2.0 etiketi: paketler yayınlanır
 
 stages: [test]
 
@@ -47,6 +48,7 @@ dotnet:
     CAN_REDIS_URL: redis:6379
     CAN_ELASTICSEARCH_URL: http://elasticsearch:9200
     # CAN_AZURE_SERVICEBUS_CONNECTION: Settings → CI/CD → Variables'ta (masked) tanımlanırsa Service Bus testleri çalışır
+    # NUGET_API_KEY (masked, protected) ve isteğe bağlı NUGET_SOURCE: etiketli derlemede yayın için
     NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages
   cache:
     key:
@@ -56,10 +58,12 @@ dotnet:
     - ./build/ci.sh restore
     - ./build/ci.sh build
     - ./build/ci.sh test
+    - ./build/ci.sh pack
+    - ./build/ci.sh publish   # etiket yoksa atlanır
   artifacts:
     when: always
     expire_in: 14 days
-    paths: [artifacts/test-results]
+    paths: [artifacts/test-results, artifacts/packages]
     reports:
       junit: artifacts/test-results/**/*.xml
 

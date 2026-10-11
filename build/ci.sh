@@ -4,11 +4,15 @@
 #   ./build/ci.sh            restore + build + test
 #   ./build/ci.sh restore | build | test | client
 #   ./build/ci.sh services | services-down   entegrasyon servislerini docker compose ile başlat / kaldır
+#   ./build/ci.sh pack       NuGet paketleri (artifacts/packages)
+#   ./build/ci.sh publish    etiketli derlemede (v1.2.0) paketleri yayınlar; etiket yoksa hiçbir şey yapmaz
+#   ./build/ci.sh version    hesaplanan sürümü yazar
 # Ortam değişkenleri:
 #   CONFIGURATION   Release (varsayılan) / Debug
 #   ARTIFACTS       çıktı klasörü (varsayılan: artifacts)
 #   CAN_RABBITMQ_URL, CAN_KAFKA_BOOTSTRAP, CAN_REDIS_URL, CAN_ELASTICSEARCH_URL, CAN_AZURE_SERVICEBUS_CONNECTION
 #                   verilen entegrasyon testleri çalışır (servis hazır olana kadar beklenir), verilmeyenler atlanır.
+#   NUGET_API_KEY   yayın anahtarı (yalnızca publish); NUGET_SOURCE yayın adresi (varsayılan nuget.org)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,6 +23,38 @@ export DOTNET_NOLOGO=true
 export DOTNET_CLI_TELEMETRY_OPTOUT=true
 
 log() { printf '\n==> %s\n' "$*"; }
+
+# Azure DevOps tanımsız değişkeni "$(AD)" metni olarak geçirir: bunları tanımsız say
+for variable in CAN_AZURE_SERVICEBUS_CONNECTION CAN_RABBITMQ_URL CAN_KAFKA_BOOTSTRAP CAN_REDIS_URL CAN_ELASTICSEARCH_URL NUGET_API_KEY NUGET_SOURCE; do
+  if [[ "${!variable:-}" == '$('*')' ]]; then unset "$variable"; fi
+done
+
+# ------------------------------------------------------------------ sürüm
+# Etiket: CI sisteminin değişkeninden, yoksa git'ten (HEAD tam olarak etiketliyse).
+release_tag() {
+  local tag="${CI_COMMIT_TAG:-${BITBUCKET_TAG:-${TAG_NAME:-}}}"               # GitLab, Bitbucket, Jenkins/Cloud Build
+  if [[ -z "$tag" && "${GITHUB_REF_TYPE:-}" == tag ]]; then tag="$GITHUB_REF_NAME"; fi             # GitHub
+  if [[ -z "$tag" && "${BUILD_SOURCEBRANCH:-}" == refs/tags/* ]]; then tag="${BUILD_SOURCEBRANCH#refs/tags/}"; fi   # Azure DevOps
+  if [[ -z "$tag" && "${CODEBUILD_WEBHOOK_TRIGGER:-}" == tag/* ]]; then tag="${CODEBUILD_WEBHOOK_TRIGGER#tag/}"; fi # AWS
+  if [[ -z "$tag" ]]; then tag="$(git describe --tags --exact-match 2>/dev/null || true)"; fi
+  printf '%s' "$tag"
+}
+
+# v1.2.0 / v1.2.0-rc.1 etiketi → o sürüm (yayınlanır); yoksa VersionPrefix-ci.<derleme no> (yayınlanmaz).
+compute_version() {
+  local tag prefix number
+  tag="$(release_tag)"
+  if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]; then
+    VERSION="${BASH_REMATCH[1]}"
+    IS_RELEASE=true
+    return
+  fi
+  prefix="$(sed -n 's:.*<VersionPrefix>\(.*\)</VersionPrefix>.*:\1:p' Directory.Build.props | head -n 1)"
+  number="${GITHUB_RUN_NUMBER:-${CI_PIPELINE_IID:-${BUILD_BUILDID:-${BITBUCKET_BUILD_NUMBER:-${BUILD_NUMBER:-${CODEBUILD_BUILD_NUMBER:-}}}}}}"
+  if [[ -n "$number" ]]; then VERSION="$prefix-ci.$number"; else VERSION="$prefix-local"; fi
+  IS_RELEASE=false
+}
+compute_version
 
 # host:port açılana kadar bekler (en çok 180 sn). Bash'in /dev/tcp'si: ek araç gerekmez.
 wait_for() {
@@ -67,8 +103,8 @@ restore() {
 }
 
 build() {
-  log "build ($CONFIGURATION)"
-  dotnet build Core.slnx -c "$CONFIGURATION" --no-restore
+  log "build ($CONFIGURATION, sürüm $VERSION)"
+  dotnet build Core.slnx -c "$CONFIGURATION" --no-restore -p:Version="$VERSION"
 }
 
 run_tests() {
@@ -99,6 +135,35 @@ services_down() {
   docker compose -f ci/docker-compose.ci.yml down -v
 }
 
+pack() {
+  log "pack (sürüm $VERSION)"
+  rm -rf "$ARTIFACTS/packages"
+  # --no-build: test edilen ikililer paketlenir (build aynı sürümle yapılmış olmalı)
+  dotnet pack Core.slnx -c "$CONFIGURATION" --no-build -p:Version="$VERSION" -o "$ARTIFACTS/packages"
+  printf '    %s paket\n' "$(find "$ARTIFACTS/packages" -name '*.nupkg' | wc -l | tr -d ' ')"
+}
+
+publish() {
+  if [[ "$IS_RELEASE" != true ]]; then
+    log "publish atlandı (etiketli derleme değil; sürüm $VERSION)"
+    return
+  fi
+  log "publish $VERSION"
+  if ! grep -qE "^## \[$VERSION\]" CHANGELOG.md; then
+    echo "    CHANGELOG.md'de '## [$VERSION]' bölümü yok: önce değişiklikleri yaz." >&2
+    exit 1
+  fi
+  if [[ -z "${NUGET_API_KEY:-}" ]]; then
+    echo "    NUGET_API_KEY tanımlı değil (CI'ın gizli değişkenlerine ekle)." >&2
+    exit 1
+  fi
+  # .snupkg sembol paketleri aynı klasörde olduğu için birlikte gider; aynı sürüm zaten varsa atlanır
+  dotnet nuget push "$ARTIFACTS/packages/*.nupkg" \
+    --api-key "$NUGET_API_KEY" \
+    --source "${NUGET_SOURCE:-https://api.nuget.org/v3/index.json}" \
+    --skip-duplicate
+}
+
 client() {
   log "reporting-react tip denetimi"
   (cd clients/reporting-react && npm install --no-audit --no-fund && npm run typecheck)
@@ -109,8 +174,11 @@ case "${1:-all}" in
   build) build ;;
   test) run_tests ;;
   client) client ;;
+  pack) pack ;;
+  publish) publish ;;
+  version) echo "$VERSION" ;;
   services) services_up ;;
   services-down) services_down ;;
-  all) restore; build; run_tests ;;
-  *) echo "Kullanım: $0 [all|restore|build|test|client|services|services-down]" >&2; exit 2 ;;
+  all) restore; build; run_tests; pack ;;
+  *) echo "Kullanım: $0 [all|restore|build|test|pack|publish|version|client|services|services-down]" >&2; exit 2 ;;
 esac

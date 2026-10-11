@@ -13,16 +13,17 @@ steps:
   - id: build-and-test
     name: mcr.microsoft.com/dotnet/sdk:10.0
     entrypoint: bash
-    args: ["./build/ci.sh", "all"]
+    args: ["-c", "./build/ci.sh all && ./build/ci.sh publish"]   # publish etiket yoksa atlanır
     waitFor: ["services"]
     env:
+      - TAG_NAME=$TAG_NAME   # etiket trigger'ında (v1.2.0) dolu
       - DOTNET_NOLOGO=true
       - DOTNET_CLI_TELEMETRY_OPTOUT=true
       - CAN_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - CAN_KAFKA_BOOTSTRAP=kafka:9092
       - CAN_REDIS_URL=redis:6379
       - CAN_ELASTICSEARCH_URL=http://elasticsearch:9200
-    # secretEnv: ["CAN_AZURE_SERVICEBUS_CONNECTION"]
+    # secretEnv: ["CAN_AZURE_SERVICEBUS_CONNECTION", "NUGET_API_KEY"]
 
   - id: client
     name: node:22
@@ -34,6 +35,8 @@ steps:
 #   secretManager:
 #     - versionName: projects/$PROJECT_ID/secrets/can-servicebus/versions/latest
 #       env: CAN_AZURE_SERVICEBUS_CONNECTION
+#     - versionName: projects/$PROJECT_ID/secrets/nuget-api-key/versions/latest
+#       env: NUGET_API_KEY
 
 timeout: 2400s
 options:

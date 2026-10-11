@@ -4,6 +4,7 @@ name: CI
 on:
   push:
     branches: [main, master, "feat/**", "fix/**"]
+    tags: ["v*"]   # v1.2.0 etiketi: paketler NuGet'e yayınlanır
   pull_request:
   workflow_dispatch:
 
@@ -46,6 +47,8 @@ jobs:
       CAN_ELASTICSEARCH_URL: http://localhost:9200
       # Azure Service Bus testleri için depo sırrı tanımlanırsa çalışır, yoksa atlanır
       CAN_AZURE_SERVICEBUS_CONNECTION: ${{ secrets.CAN_AZURE_SERVICEBUS_CONNECTION }}
+      # Yayın (yalnızca etiketli derlemede kullanılır): Settings → Secrets → Actions → NUGET_API_KEY
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
     steps:
@@ -64,6 +67,8 @@ jobs:
       - run: ./build/ci.sh restore
       - run: ./build/ci.sh build
       - run: ./build/ci.sh test
+      - run: ./build/ci.sh pack
+      - run: ./build/ci.sh publish   # etiket yoksa atlanır
 
       - name: Test sonuçları
         if: always()
@@ -71,6 +76,13 @@ jobs:
         with:
           name: test-results
           path: artifacts/test-results
+          if-no-files-found: ignore
+
+      - name: Paketler
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages
           if-no-files-found: ignore
 
   client:

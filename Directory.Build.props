@@ -7,13 +7,37 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
 
+    <!--
+      Sürüm: tek kaynak. Sıradaki sürümü yaz (semver: kırıcı değişiklik → major, yeni özellik → minor, düzeltme → patch).
+      CI etiketli derlemede sürümü etiketten alır (v1.2.0 → 1.2.0), etiketsizde "VersionPrefix-ci.<derleme no>" verir
+      (build/ci.sh → -p:Version=...). Yerelde: VersionPrefix.
+    -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+
     <!-- Paket bilgileri -->
     <Authors>Can</Authors>
     <Product>Can.Core</Product>
+    <Copyright>Copyright © Can</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Version>0.1.0</Version>
+    <PackageTags>can-core;dotnet;ddd;clean-architecture;cqrs;multi-tenancy</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Her public üyeye XML yorum zorunlu olmasın -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Source Link (.NET SDK'da yerleşik): paketten koda adım adım girilebilir; repo adresi git remote'tan okunur -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- CI'da yollar makineden bağımsız (aynı kod → aynı ikili) -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Paket yapısı ve (ilk sürümden sonra PackageValidationBaselineVersion ile) geriye uyumluluk denetimi -->
+    <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>

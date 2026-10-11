@@ -2,6 +2,8 @@
 // Kurulum: New Item → Pipeline (ya da Multibranch Pipeline) → "Pipeline script from SCM" → Script Path: ci/jenkins/Jenkinsfile
 // Ajan gereksinimleri: Linux, bash, curl, Docker + compose eklentisi (entegrasyon servisleri için). .NET SDK
 // her derlemede çalışma alanına kurulur (ajanda kurulu olması gerekmez). Arayüz denetimi için ajanda Node.js 22 olmalı.
+// Etiketler (v1.2.0) için Multibranch Pipeline'da "Discover tags" açık olmalı; yayın anahtarı Jenkins kimlik bilgisi
+// (Secret text) "nuget-api-key".
 // Servisler sabit portlara (5672, 9092, 6379, 9200) açılır: aynı ajanda aynı anda tek derleme çalışsın.
 pipeline {
     agent any
@@ -58,6 +60,22 @@ pipeline {
             }
         }
 
+        stage('Pack') {
+            steps {
+                sh './build/ci.sh pack'
+            }
+        }
+
+        stage('Publish') {
+            when { buildingTag() }
+            environment {
+                NUGET_API_KEY = credentials('nuget-api-key')
+            }
+            steps {
+                sh './build/ci.sh publish'
+            }
+        }
+
         stage('Arayüz paketi') {
             when {
                 expression { sh(script: 'command -v npm', returnStatus: true) == 0 }
@@ -71,6 +89,7 @@ pipeline {
     post {
         always {
             junit testResults: 'artifacts/test-results/**/*.xml', allowEmptyResults: true
+            archiveArtifacts artifacts: 'artifacts/packages/*', allowEmptyArchive: true
             sh './build/ci.sh services-down || true'
         }
     }

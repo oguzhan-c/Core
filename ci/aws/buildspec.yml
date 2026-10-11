@@ -5,6 +5,7 @@
 #                "Privileged" AÇIK olmalı (entegrasyon servisleri Docker ile çalışır)
 #                Compute: en az 7 GB bellek (Kafka + Elasticsearch)
 #   Buildspec: "Use a buildspec file" → ci/aws/buildspec.yml
+#   Etiketle yayın: webhook filtresine HEAD_REF = ^refs/tags/v.* ekle; NUGET_API_KEY Secrets Manager'dan (aşağıda)
 version: 0.2
 
 env:
@@ -15,9 +16,10 @@ env:
     CAN_KAFKA_BOOTSTRAP: localhost:9092
     CAN_REDIS_URL: localhost:6379
     CAN_ELASTICSEARCH_URL: http://localhost:9200
-  # Service Bus testleri için Secrets Manager'daki bağlantı dizesi:
+  # Gizli değerler (Secrets Manager):
   # secrets-manager:
   #   CAN_AZURE_SERVICEBUS_CONNECTION: can-core/ci:servicebus
+  #   NUGET_API_KEY: can-core/ci:nuget-api-key
 
 phases:
   install:
@@ -36,6 +38,8 @@ phases:
       - ./build/ci.sh restore
       - ./build/ci.sh build
       - ./build/ci.sh test
+      - ./build/ci.sh pack
+      - ./build/ci.sh publish   # etiket yoksa atlanır
       - ./build/ci.sh client
 
 reports:
@@ -43,6 +47,10 @@ reports:
     base-directory: artifacts/test-results
     files: ["**/*.xml"]
     file-format: JUNITXML
+
+artifacts:
+  base-directory: artifacts/packages
+  files: ["*.nupkg", "*.snupkg"]
 
 cache:
   paths:

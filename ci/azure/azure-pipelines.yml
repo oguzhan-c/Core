@@ -4,6 +4,8 @@
 trigger:
   branches:
     include: [main, master, feat/*, fix/*]
+  tags:
+    include: [v*]   # v1.2.0 etiketi: paketler yayınlanır
 
 pr:
   branches:
@@ -71,6 +73,15 @@ jobs:
         displayName: Test
         env:
           CAN_AZURE_SERVICEBUS_CONNECTION: $(CAN_AZURE_SERVICEBUS_CONNECTION)
+      - script: ./build/ci.sh pack
+        displayName: Pack
+      - script: ./build/ci.sh publish
+        displayName: Publish (yalnızca etiket)
+        env:
+          NUGET_API_KEY: $(NUGET_API_KEY)   # Pipeline → Variables'ta gizli değişken
+      - publish: artifacts/packages
+        artifact: packages
+        displayName: Paketler
 
       - task: PublishTestResults@2
         displayName: Test sonuçları
