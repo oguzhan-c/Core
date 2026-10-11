@@ -67,6 +67,10 @@ dotnet test --project tests/Can.Core.Persistence.Tests --show-live-output on  # 
 dotnet run --project tests/Can.Core.Persistence.Tests                      # doğrudan (xUnit'in kendi çalıştırıcısı)
 ```
 
+**CI.** Hazır yapılandırmalar: GitHub Actions, GitLab CI/CD, Azure DevOps, Bitbucket Pipelines, Jenkins, AWS CodeBuild
+ve Google Cloud Build (hepsinde entegrasyon testleri dahil).
+Hepsi aynı betiği (`./build/ci.sh`) çağırır; kullandığını seç, diğerlerini sil. Ayrıntı: [ci/README.md](ci/README.md).
+
 **Kendi uygulamanın testleri** için `Can.Core.Testing*` paketleri (yalnızca test projelerine ekle):
 
 ```csharp

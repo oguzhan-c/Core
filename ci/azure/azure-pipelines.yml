@@ -1,0 +1,93 @@
+# Azure DevOps Pipelines. Asıl iş build/ci.sh'ta; bu dosya yalnızca ortamı (SDK, servisler) hazırlar.
+# Kurulum: Pipelines → New pipeline → depo → "Existing Azure Pipelines YAML file" → /ci/azure/azure-pipelines.yml
+
+trigger:
+  branches:
+    include: [main, master, feat/*, fix/*]
+
+pr:
+  branches:
+    include: ["*"]
+
+variables:
+  NUGET_PACKAGES: $(Pipeline.Workspace)/.nuget/packages
+  # CAN_AZURE_SERVICEBUS_CONNECTION: Pipeline → Variables'ta gizli değişken olarak tanımlanırsa Service Bus testleri çalışır
+
+# Entegrasyon testleri için servis container'ları (ajan makinesinden localhost ile erişilir)
+resources:
+  containers:
+    - container: rabbitmq
+      image: rabbitmq:4-management
+      ports: ["5672:5672"]
+    - container: kafka
+      image: apache/kafka:4.3.0
+      ports: ["9092:9092"]
+    - container: redis
+      image: redis:7-alpine
+      ports: ["6379:6379"]
+    - container: elasticsearch
+      image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+      ports: ["9200:9200"]
+      env:
+        ES_SETTING_DISCOVERY_TYPE: single-node
+        ES_SETTING_XPACK_SECURITY_ENABLED: "false"
+        ES_JAVA_OPTS: -Xms512m -Xmx512m
+
+jobs:
+  - job: dotnet
+    displayName: Build ve test
+    pool:
+      vmImage: ubuntu-latest
+    timeoutInMinutes: 40
+    services:
+      rabbitmq: rabbitmq
+      kafka: kafka
+      redis: redis
+      elasticsearch: elasticsearch
+    variables:
+      CAN_RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+      CAN_KAFKA_BOOTSTRAP: localhost:9092
+      CAN_REDIS_URL: localhost:6379
+      CAN_ELASTICSEARCH_URL: http://localhost:9200
+    steps:
+      - task: UseDotNet@2
+        displayName: .NET 10 SDK
+        inputs:
+          packageType: sdk
+          version: 10.0.x
+
+      - task: Cache@2
+        displayName: NuGet önbelleği
+        inputs:
+          key: 'nuget | "$(Agent.OS)" | Directory.Packages.props'
+          restoreKeys: 'nuget | "$(Agent.OS)"'
+          path: $(NUGET_PACKAGES)
+
+      - script: ./build/ci.sh restore
+        displayName: Restore
+      - script: ./build/ci.sh build
+        displayName: Build
+      - script: ./build/ci.sh test
+        displayName: Test
+        env:
+          CAN_AZURE_SERVICEBUS_CONNECTION: $(CAN_AZURE_SERVICEBUS_CONNECTION)
+
+      - task: PublishTestResults@2
+        displayName: Test sonuçları
+        condition: always()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: artifacts/test-results/**/*.xml
+          failTaskOnMissingResultsFile: false
+
+  - job: client
+    displayName: Arayüz paketi (TypeScript)
+    pool:
+      vmImage: ubuntu-latest
+    timeoutInMinutes: 10
+    steps:
+      - task: NodeTool@0
+        inputs:
+          versionSpec: 22.x
+      - script: ./build/ci.sh client
+        displayName: Tip denetimi

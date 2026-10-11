@@ -1,0 +1,77 @@
+// Jenkins (Declarative Pipeline). Asıl iş build/ci.sh'ta.
+// Kurulum: New Item → Pipeline (ya da Multibranch Pipeline) → "Pipeline script from SCM" → Script Path: ci/jenkins/Jenkinsfile
+// Ajan gereksinimleri: Linux, bash, curl, Docker + compose eklentisi (entegrasyon servisleri için). .NET SDK
+// her derlemede çalışma alanına kurulur (ajanda kurulu olması gerekmez). Arayüz denetimi için ajanda Node.js 22 olmalı.
+// Servisler sabit portlara (5672, 9092, 6379, 9200) açılır: aynı ajanda aynı anda tek derleme çalışsın.
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 40, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    environment {
+        DOTNET_ROOT = "${WORKSPACE}/.dotnet"
+        PATH = "${WORKSPACE}/.dotnet:${PATH}"
+        NUGET_PACKAGES = "${WORKSPACE}/.nuget/packages"
+        CAN_RABBITMQ_URL = 'amqp://guest:guest@localhost:5672/'
+        CAN_KAFKA_BOOTSTRAP = 'localhost:9092'
+        CAN_REDIS_URL = 'localhost:6379'
+        CAN_ELASTICSEARCH_URL = 'http://localhost:9200'
+        // Service Bus testleri: Jenkins kimlik bilgisi (Secret text) tanımlanırsa
+        // CAN_AZURE_SERVICEBUS_CONNECTION = credentials('can-azure-servicebus')
+    }
+
+    stages {
+        stage('.NET SDK') {
+            steps {
+                sh '''
+                    curl -fsSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+                    bash dotnet-install.sh --channel 10.0 --install-dir "$DOTNET_ROOT"
+                '''
+            }
+        }
+
+        stage('Servisler') {
+            steps {
+                sh './build/ci.sh services'
+            }
+        }
+
+        stage('Restore') {
+            steps {
+                sh './build/ci.sh restore'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh './build/ci.sh build'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh './build/ci.sh test'
+            }
+        }
+
+        stage('Arayüz paketi') {
+            when {
+                expression { sh(script: 'command -v npm', returnStatus: true) == 0 }
+            }
+            steps {
+                sh './build/ci.sh client'
+            }
+        }
+    }
+
+    post {
+        always {
+            junit testResults: 'artifacts/test-results/**/*.xml', allowEmptyResults: true
+            sh './build/ci.sh services-down || true'
+        }
+    }
+}

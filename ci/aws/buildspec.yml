@@ -1,0 +1,49 @@
+# AWS CodeBuild. Asıl iş build/ci.sh'ta.
+# Kurulum: CodeBuild → Create build project
+#   Source: depo (GitHub, GitLab, Bitbucket ya da CodeCommit)
+#   Environment: Managed image → Ubuntu → Standard (son sürüm); .NET 10 aşağıda kurulur
+#                "Privileged" AÇIK olmalı (entegrasyon servisleri Docker ile çalışır)
+#                Compute: en az 7 GB bellek (Kafka + Elasticsearch)
+#   Buildspec: "Use a buildspec file" → ci/aws/buildspec.yml
+version: 0.2
+
+env:
+  variables:
+    DOTNET_NOLOGO: "true"
+    DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    CAN_RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+    CAN_KAFKA_BOOTSTRAP: localhost:9092
+    CAN_REDIS_URL: localhost:6379
+    CAN_ELASTICSEARCH_URL: http://localhost:9200
+  # Service Bus testleri için Secrets Manager'daki bağlantı dizesi:
+  # secrets-manager:
+  #   CAN_AZURE_SERVICEBUS_CONNECTION: can-core/ci:servicebus
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+      - bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "$HOME/.dotnet"
+      - export DOTNET_ROOT="$HOME/.dotnet" PATH="$HOME/.dotnet:$PATH"
+      - dotnet --version
+  pre_build:
+    commands:
+      - ./build/ci.sh services          # RabbitMQ, Kafka, Redis, Elasticsearch (ci/docker-compose.ci.yml)
+  build:
+    commands:
+      - ./build/ci.sh restore
+      - ./build/ci.sh build
+      - ./build/ci.sh test
+      - ./build/ci.sh client
+
+reports:
+  can-core-tests:
+    base-directory: artifacts/test-results
+    files: ["**/*.xml"]
+    file-format: JUNITXML
+
+cache:
+  paths:
+    - /root/.nuget/packages/**/*

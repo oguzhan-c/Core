@@ -1,0 +1,85 @@
+# GitHub Actions. Asıl iş build/ci.sh'ta; bu dosya yalnızca ortamı (SDK, servisler) hazırlar.
+name: CI
+
+on:
+  push:
+    branches: [main, master, "feat/**", "fix/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: Build ve test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    # Entegrasyon testleri için gerçek servisler (job'dan localhost ile erişilir)
+    services:
+      rabbitmq:
+        image: rabbitmq:4-management
+        ports: ["5672:5672"]
+      kafka:
+        image: apache/kafka:4.3.0
+        ports: ["9092:9092"]
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+        ports: ["9200:9200"]
+        env:
+          ES_SETTING_DISCOVERY_TYPE: single-node
+          ES_SETTING_XPACK_SECURITY_ENABLED: "false"
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+
+    env:
+      CAN_RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+      CAN_KAFKA_BOOTSTRAP: localhost:9092
+      CAN_REDIS_URL: localhost:6379
+      CAN_ELASTICSEARCH_URL: http://localhost:9200
+      # Azure Service Bus testleri için depo sırrı tanımlanırsa çalışır, yoksa atlanır
+      CAN_AZURE_SERVICEBUS_CONNECTION: ${{ secrets.CAN_AZURE_SERVICEBUS_CONNECTION }}
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: .nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: ./build/ci.sh restore
+      - run: ./build/ci.sh build
+      - run: ./build/ci.sh test
+
+      - name: Test sonuçları
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
+
+  client:
+    name: Arayüz paketi (TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: ./build/ci.sh client

@@ -8,6 +8,11 @@ riderModule.iml
 .idea/
 
 # Build / IDE çıktıları
+artifacts/
+# CI çalışma alanına kurulan SDK ve paket önbelleği
+.dotnet/
+.nuget/
+dotnet-install.sh
 *.log
 *.DotSettings.user
 

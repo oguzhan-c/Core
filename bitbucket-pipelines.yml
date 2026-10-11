@@ -1,0 +1,61 @@
+# Bitbucket Pipelines. Asıl iş build/ci.sh'ta; bu dosya yalnızca ortamı (SDK, servisler) hazırlar.
+# Bitbucket bu dosyayı depo kökünde arar. Repository settings → Pipelines → Settings'ten açılır.
+# Test sonuçları (artifacts/test-results altındaki JUnit) "Tests" sekmesinde kendiliğinden görünür.
+
+definitions:
+  caches:
+    nuget: ~/.nuget/packages
+
+  # Servisler adımla aynı ağda: localhost ile erişilir
+  services:
+    rabbitmq:
+      image: rabbitmq:4-management
+    kafka:
+      image: apache/kafka:4.3.0
+    redis:
+      image: redis:7-alpine
+    elasticsearch:
+      image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+      memory: 2048
+      variables:
+        ES_SETTING_DISCOVERY_TYPE: single-node
+        ES_SETTING_XPACK_SECURITY_ENABLED: "false"
+        ES_JAVA_OPTS: -Xms512m -Xmx512m
+
+  steps:
+    - step: &dotnet
+        name: Build ve test
+        image: mcr.microsoft.com/dotnet/sdk:10.0
+        size: 2x   # servisler (Kafka, Elasticsearch) için 8 GB
+        max-time: 40
+        caches: [nuget]
+        services: [rabbitmq, kafka, redis, elasticsearch]
+        script:
+          - export CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+          - export CAN_KAFKA_BOOTSTRAP=localhost:9092
+          - export CAN_REDIS_URL=localhost:6379
+          - export CAN_ELASTICSEARCH_URL=http://localhost:9200
+          # CAN_AZURE_SERVICEBUS_CONNECTION: Repository variables'ta (Secured) tanımlanırsa Service Bus testleri çalışır
+          - ./build/ci.sh restore
+          - ./build/ci.sh build
+          - ./build/ci.sh test
+        artifacts:
+          - artifacts/test-results/**
+
+    - step: &client
+        name: Arayüz paketi (TypeScript)
+        image: node:22
+        max-time: 10
+        script:
+          - ./build/ci.sh client
+
+pipelines:
+  default:
+    - parallel:
+        - step: *dotnet
+        - step: *client
+  pull-requests:
+    "**":
+      - parallel:
+          - step: *dotnet
+          - step: *client
