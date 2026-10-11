@@ -38,6 +38,9 @@
     <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
     <Project Path="src/Can.Core.Logging.Serilog/Can.Core.Logging.Serilog.csproj" />
     <Project Path="src/Can.Core.WebApi/Can.Core.WebApi.csproj" />
+    <Project Path="src/Can.Core.Settings/Can.Core.Settings.csproj" />
+    <Project Path="src/Can.Core.Settings.EntityFrameworkCore/Can.Core.Settings.EntityFrameworkCore.csproj" />
+    <Project Path="src/Can.Core.Settings.AspNetCore/Can.Core.Settings.AspNetCore.csproj" />
     <Project Path="src/Can.Core.Testing/Can.Core.Testing.csproj" />
     <Project Path="src/Can.Core.Testing.EntityFrameworkCore/Can.Core.Testing.EntityFrameworkCore.csproj" />
     <Project Path="src/Can.Core.Testing.AspNetCore/Can.Core.Testing.AspNetCore.csproj" />
@@ -66,6 +69,7 @@
     <Project Path="tests/Can.Core.Search.Tests/Can.Core.Search.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Tests/Can.Core.Resilience.Tests.csproj" />
     <Project Path="tests/Can.Core.Testing.Tests/Can.Core.Testing.Tests.csproj" />
+    <Project Path="tests/Can.Core.Settings.Tests/Can.Core.Settings.Tests.csproj" />
     <Project Path="tests/Can.Core.Resilience.Comparison.Tests/Can.Core.Resilience.Comparison.Tests.csproj" />
     <Project Path="tests/Can.Core.Mailing.Tests/Can.Core.Mailing.Tests.csproj" />
     <Project Path="tests/Can.Core.Sms.Tests/Can.Core.Sms.Tests.csproj" />

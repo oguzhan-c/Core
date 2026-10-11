@@ -41,6 +41,9 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
 | `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
+| `Can.Core.Settings` | Caching.Hybrid | Tipli uygulama/tenant ayarları: tenant → uygulama → varsayılan, doğrulama, gizli (şifreli) değerler, önbellek |
+| `Can.Core.Settings.EntityFrameworkCore` | EF Core | `SettingValues` tablosu ve deposu: `ApplyCanSettingsModel()`, `UseEntityFrameworkStore<TContext>()` |
+| `Can.Core.Settings.AspNetCore` | ASP.NET Core | `MapCanSettings()`: listele/değiştir/sıfırla (düzey bazlı yetki), istemci ayarları; `UseDataProtection()` |
 | `Can.Core.Testing` | yok | Testler için: elle ilerletilen `TestClock` (zamanlayıcılar dahil), `TestCurrentUser`, `TestCurrentTenant` |
 | `Can.Core.Testing.EntityFrameworkCore` | EF Core SQLite | `SqliteTestDatabase`: test başına bellekte gerçek ilişkisel veritabanı |
 | `Can.Core.Testing.AspNetCore` | ASP.NET Core TestHost | Test kimlik doğrulaması (`client.AsUser(...)`), `CanTestApp` |
@@ -1299,6 +1302,48 @@ auth.MapPost("/sms/send", ...).RequireRateLimiting(CanRateLimitPolicies.Sensitiv
 Aşılınca 429 + `Retry-After` + ProblemDetails (`code: "rate_limited"`). Proxy arkasında `UseForwardedHeaders`
 ayarlanmalı (yoksa herkes proxy'nin IP'sini paylaşır). Sınırlar örnek başınadır (bellekte); birden fazla sunucuda
 her biri ayrı sayar.
+
+## Ayarlar (uygulama ve tenant)
+
+Kodda tanımlanan, yönetim ekranından değiştirilen tipli ayarlar. Değer sırasıyla aktif tenant'ın değerinden, uygulama
+geneli değerden, yoksa tanımdaki varsayılandan gelir.
+
+```csharp
+public static class OrderSettings
+{
+    public static readonly SettingKey<int> MaxLines = new SettingKey<int>("orders.max-lines", 100)
+    {
+        DisplayName = "Siparişte en fazla satır",
+        Group = "Siparişler",
+    }.Validate(v => v is > 0 and <= 1000, "1 ile 1000 arasında olmalı.");
+
+    public static readonly SettingKey<string> Currency = new("orders.currency", "TRY") { IsVisibleToClients = true };
+
+    public static readonly SettingKey<string> SmsApiKey = new("sms.api-key", "") { Scopes = SettingScope.Tenant, IsSecret = true };
+}
+
+builder.Services.AddCanSettings(s => s
+    .Add(OrderSettings.MaxLines, OrderSettings.Currency, OrderSettings.SmsApiKey)
+    .UseEntityFrameworkStore<AppDbContext>()   // DbContext'te modelBuilder.ApplyCanSettingsModel()
+    .UseDataProtection());                       // gizli ayarlar şifreli saklanır
+
+int max = await settings.GetAsync(OrderSettings.MaxLines, ct);           // ISettings (handler'da)
+await manager.SetAsync(OrderSettings.MaxLines, 250, SettingScope.Tenant); // ISettingManager (yetki denetimi çağıranda)
+
+app.MapCanSettings();   // /api/settings
+```
+
+| Uç nokta | Yetki | |
+|---|---|---|
+| `GET /api/settings?scope=tenant\|global` | `settings.tenant` / `settings.global` (ya da `Admin`) | Etkin değer, kaynak (`Default`/`Global`/`Tenant`), varsayılan; gizliler gösterilmez |
+| `PUT /api/settings/{name}?scope=...` `{ "value": 250 }` | aynı + ayarın `Permission`'ı | Tip ve kurallar denetlenir: 400 `setting_invalid` |
+| `DELETE /api/settings/{name}?scope=...` | aynı | O düzeydeki değeri siler, üst düzeye döner |
+| `GET /api/settings/client` | giriş yeterli | `IsVisibleToClients` ayarlar (gizliler hariç): arayüz bunlarla çalışır |
+
+`scope` verilmezse aktif tenant varsa `tenant`, yoksa `global`. `Scopes = SettingScope.Global` olan ayar tenant'ta
+değiştirilemez (`setting_scope_invalid`). Gizli ayar `ISettingProtector` olmadan kaydedilmez (düz metin saklanmasın
+diye). Değerler tenant başına HybridCache'te tutulur; değişiklik aynı sunucuda hemen, diğer sunucularda en geç
+`LocalCacheExpiration` (1 dk) sonra görünür.
 
 ## Özellik bayrakları (feature flags)
 

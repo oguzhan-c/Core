@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Settings.AspNetCore</RootNamespace>
+    <Description>Ayarların yönetim uç noktaları (listele, değiştir, sıfırla, istemci değerleri; düzey bazlı yetki) ve gizli ayarlar için ASP.NET Data Protection şifrelemesi.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Settings\Can.Core.Settings.csproj" />
+  </ItemGroup>
+
+</Project>

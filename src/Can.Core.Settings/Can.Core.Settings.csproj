@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Can.Core.Settings</RootNamespace>
+    <Description>Tipli uygulama ve tenant ayarları: kodda tanım, tenant → uygulama → varsayılan çözümü, doğrulama, şifreli (gizli) değerler, HybridCache ile önbellek. Depo: bellek içi ya da EF Core.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Application.Abstractions\Can.Core.Application.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Can.Core.Settings.Tests" />
+  </ItemGroup>
+
+</Project>
