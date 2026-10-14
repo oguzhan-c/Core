@@ -1,4 +1,5 @@
 using System.Globalization;
+using Can.Core.Security.Events;
 using Can.Core.Security.Tokens;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -53,9 +54,18 @@ internal sealed class AccessTokenRevocationMiddleware(RequestDelegate next)
                 IAccessTokenDenylist denylist = context.RequestServices.GetService<IAccessTokenDenylist>()
                     ?? throw new InvalidOperationException("UseCanAccessTokenRevocation için AddCanAccessTokenRevocation() çağrılmalı.");
 
-                if ((!string.IsNullOrEmpty(tokenId) && await denylist.IsRevokedAsync(tokenId, context.RequestAborted).ConfigureAwait(false))
-                    || (!string.IsNullOrEmpty(sessionId) && await denylist.IsRevokedAsync(AccessTokenDenylistKeys.Session(sessionId), context.RequestAborted).ConfigureAwait(false)))
+                bool tokenRevoked = !string.IsNullOrEmpty(tokenId) && await denylist.IsRevokedAsync(tokenId, context.RequestAborted).ConfigureAwait(false);
+                bool sessionRevoked = !tokenRevoked && !string.IsNullOrEmpty(sessionId)
+                    && await denylist.IsRevokedAsync(AccessTokenDenylistKeys.Session(sessionId), context.RequestAborted).ConfigureAwait(false);
+                if (tokenRevoked || sessionRevoked)
                 {
+                    // Çıkış yapılmış token'ın tekrar kullanımı çalınma belirtisidir; kapatılmış oturumun cihazının son
+                    // istekleri ise olağandır.
+                    await SecurityEventPublishing.PublishAsync(context, new SecurityEvent(SecurityEventTypes.RevokedTokenUsed)
+                    {
+                        Reason = tokenRevoked ? "token_revoked" : "session_revoked",
+                        Severity = tokenRevoked ? SecurityEventSeverity.Critical : SecurityEventSeverity.Info,
+                    }).ConfigureAwait(false);
                     await SessionRejection.WriteAsync(context).ConfigureAwait(false);
                     return;
                 }

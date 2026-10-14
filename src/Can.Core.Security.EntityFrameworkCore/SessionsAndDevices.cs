@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Linq.Expressions;
 using Can.Core.Security.Devices;
 using Can.Core.Security.Entities;
+using Can.Core.Security.Events;
 using Can.Core.Security.Sessions;
 using Can.Core.Security.Tokens;
 using Microsoft.EntityFrameworkCore;
@@ -29,12 +30,30 @@ public sealed class EfUserSessionService<TContext, TId> : IUserSessionService
     private readonly TContext _context;
     private readonly SessionRevoker<TId> _revoker;
     private readonly TimeProvider _timeProvider;
+    private readonly IServiceProvider _services;
 
     public EfUserSessionService(TContext context, TimeProvider timeProvider, IServiceProvider services)
     {
         _context = context;
         _timeProvider = timeProvider;
+        _services = services;
         _revoker = new SessionRevoker<TId>(context, timeProvider, services);
+    }
+
+    public async Task<bool> IsKnownDeviceAsync(string userId, string deviceId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) || !IdParser<TId>.TryParse(userId, out TId? id))
+            return false;
+
+        bool seen = await _context.Set<RefreshToken<TId>>().AsNoTracking()
+            .Where(IdParser<TId>.UserIs<RefreshToken<TId>>(id!))
+            .AnyAsync(t => t.DeviceId == deviceId, cancellationToken).ConfigureAwait(false);
+        if (seen || _context.Model.FindEntityType(typeof(TrustedDevice<TId>)) is null)
+            return seen;
+
+        return await _context.Set<TrustedDevice<TId>>().AsNoTracking()
+            .Where(IdParser<TId>.UserIs<TrustedDevice<TId>>(id!))
+            .AnyAsync(d => d.DeviceId == deviceId, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<UserSession>> ListAsync(string userId, string? currentSessionId = null, CancellationToken cancellationToken = default)
@@ -70,17 +89,32 @@ public sealed class EfUserSessionService<TContext, TId> : IUserSessionService
     public async Task<bool> RevokeAsync(string userId, string sessionId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
-        return await _revoker.RevokeAsync(userId, t => t.SessionId == sessionId, RevokedReason, cancellationToken).ConfigureAwait(false) > 0;
+        bool revoked = await _revoker.RevokeAsync(userId, t => t.SessionId == sessionId, RevokedReason, cancellationToken).ConfigureAwait(false) > 0;
+        if (revoked)
+            await PublishAsync(new SecurityEvent(SecurityEventTypes.SessionRevoked, userId) { Properties = Props("revoked_session", sessionId) }, cancellationToken).ConfigureAwait(false);
+        return revoked;
     }
 
-    public Task<int> RevokeOthersAsync(string userId, string currentSessionId, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeOthersAsync(string userId, string currentSessionId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currentSessionId);
-        return _revoker.RevokeAsync(userId, t => t.SessionId != currentSessionId, RevokedReason, cancellationToken);
+        int count = await _revoker.RevokeAsync(userId, t => t.SessionId != currentSessionId, RevokedReason, cancellationToken).ConfigureAwait(false);
+        if (count > 0)
+            await PublishAsync(new SecurityEvent(SecurityEventTypes.OtherSessionsRevoked, userId) { Properties = Props("count", count.ToString(CultureInfo.InvariantCulture)) }, cancellationToken).ConfigureAwait(false);
+        return count;
     }
 
-    public Task<int> RevokeAllAsync(string userId, CancellationToken cancellationToken = default) =>
-        _revoker.RevokeAsync(userId, _ => true, RevokedReason, cancellationToken);
+    public async Task<int> RevokeAllAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        int count = await _revoker.RevokeAsync(userId, _ => true, RevokedReason, cancellationToken).ConfigureAwait(false);
+        await PublishAsync(new SecurityEvent(SecurityEventTypes.AllSessionsRevoked, userId) { Properties = Props("count", count.ToString(CultureInfo.InvariantCulture)) }, cancellationToken).ConfigureAwait(false);
+        return count;
+    }
+
+    private ValueTask PublishAsync(SecurityEvent securityEvent, CancellationToken cancellationToken) =>
+        _services.GetService<ISecurityEvents>()?.PublishAsync(securityEvent, cancellationToken) ?? ValueTask.CompletedTask;
+
+    private static Dictionary<string, string?> Props(string key, string value) => new() { [key] = value };
 }
 
 /// <summary>
@@ -97,14 +131,20 @@ public sealed class EfTrustedDeviceService<TContext, TId> : ITrustedDeviceServic
     private readonly IDeviceBindingService _binding;
     private readonly TimeProvider _timeProvider;
     private readonly SessionRevoker<TId> _revoker;
+    private readonly IServiceProvider _services;
 
     public EfTrustedDeviceService(TContext context, IDeviceBindingService binding, TimeProvider timeProvider, IServiceProvider services)
     {
         _context = context;
         _binding = binding;
         _timeProvider = timeProvider;
+        _services = services;
         _revoker = new SessionRevoker<TId>(context, timeProvider, services);
     }
+
+    private ValueTask PublishAsync(string type, string userId, string deviceId, string? reason, CancellationToken cancellationToken) =>
+        _services.GetService<ISecurityEvents>()?.PublishAsync(new SecurityEvent(type, userId) { DeviceId = deviceId, Reason = reason }, cancellationToken)
+        ?? ValueTask.CompletedTask;
 
     public async Task<TrustedDeviceInfo> RegisterAsync(string userId, string deviceId, string name, string? platform, string publicKey, CancellationToken cancellationToken = default)
     {
@@ -127,6 +167,7 @@ public sealed class EfTrustedDeviceService<TContext, TId> : ITrustedDeviceServic
         }
 
         await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await PublishAsync(SecurityEventTypes.DeviceRegistered, userId, deviceId, null, cancellationToken).ConfigureAwait(false);
         return Info(device);
     }
 
@@ -151,11 +192,17 @@ public sealed class EfTrustedDeviceService<TContext, TId> : ITrustedDeviceServic
 
         TrustedDevice<TId>? device = await FindAsync(id!, deviceId, cancellationToken).ConfigureAwait(false);
         if (device is not { IsActive: true })
+        {
+            await PublishAsync(SecurityEventTypes.DeviceVerificationFailed, userId, deviceId, "unknown_device", cancellationToken).ConfigureAwait(false);
             return false;
+        }
 
         DeviceVerification result = _binding.Verify(device.PublicKey, deviceId, challenge, signature, device.LastChallengeIssuedAt);
         if (!result.IsValid)
+        {
+            await PublishAsync(SecurityEventTypes.DeviceVerificationFailed, userId, deviceId, result.Failure, cancellationToken).ConfigureAwait(false);
             return false;
+        }
 
         device.MarkVerified(result.IssuedAt, _timeProvider.GetUtcNow());
         try
@@ -165,9 +212,11 @@ public sealed class EfTrustedDeviceService<TContext, TId> : ITrustedDeviceServic
         catch (DbUpdateConcurrencyException)
         {
             // Aynı meydan okumayla eşzamanlı ikinci doğrulama: ilki kazandı, bu tekrar sayılır.
+            await PublishAsync(SecurityEventTypes.DeviceVerificationFailed, userId, deviceId, "replayed", cancellationToken).ConfigureAwait(false);
             return false;
         }
 
+        await PublishAsync(SecurityEventTypes.DeviceVerified, userId, deviceId, null, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
@@ -183,6 +232,7 @@ public sealed class EfTrustedDeviceService<TContext, TId> : ITrustedDeviceServic
         device.Revoke(_timeProvider.GetUtcNow());
         await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await _revoker.RevokeAsync(userId, t => t.DeviceId == deviceId, RevokedReason, cancellationToken).ConfigureAwait(false);
+        await PublishAsync(SecurityEventTypes.DeviceRevoked, userId, deviceId, null, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

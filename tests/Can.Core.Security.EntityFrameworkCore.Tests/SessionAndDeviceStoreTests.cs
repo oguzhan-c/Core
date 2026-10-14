@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Can.Core.Security.Devices;
 using Can.Core.Security.Entities;
+using Can.Core.Security.Events;
 using Can.Core.Security.Sessions;
 using Can.Core.Security.Tokens;
 using Microsoft.Data.Sqlite;
@@ -32,6 +33,19 @@ public sealed class SessionAndDeviceStoreTests : IAsyncLifetime
         public ValueTask<bool> IsRevokedAsync(string tokenId, CancellationToken cancellationToken = default) => ValueTask.FromResult(Revoked.ContainsKey(tokenId));
     }
 
+    private sealed class RecordingSink : ISecurityEventSink
+    {
+        public List<SecurityEvent> Events { get; } = [];
+
+        public ValueTask WriteAsync(SecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            lock (Events)
+                Events.Add(securityEvent);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private readonly RecordingSink _sink = new();
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
     private readonly Clock _clock = new();
     private readonly RecordingDenylist _denylist = new();
@@ -47,6 +61,9 @@ public sealed class SessionAndDeviceStoreTests : IAsyncLifetime
         services.AddSingleton<IAccessTokenDenylist>(_denylist);
         services.AddSingleton(new JwtOptions { AccessTokenLifetime = TimeSpan.FromMinutes(15) });
         services.AddSingleton<IDeviceBindingService>(new DeviceBindingService("cihaz-baglama-icin-en-az-otuz-iki-karakterlik-anahtar", _clock));
+        services.AddLogging();
+        services.AddCanSecurityEvents(o => o.WriteToLog = false);
+        services.AddSingleton<ISecurityEventSink>(_sink);
         services.AddCanUserSessions<AuthDbContext, Guid>();
         services.AddCanTrustedDevices<AuthDbContext, Guid>();
         _services = services.BuildServiceProvider();
@@ -189,5 +206,88 @@ public sealed class SessionAndDeviceStoreTests : IAsyncLifetime
         Assert.False(await InScopeAsync(sp => sp.GetRequiredService<ITrustedDeviceService>().VerifyAsync(UserId, "phone-1", challenge.Challenge, Sign(oldKey))));
         Assert.True(await InScopeAsync(sp => sp.GetRequiredService<ITrustedDeviceService>().VerifyAsync(UserId, "phone-1", challenge.Challenge, Sign(newKey))));
         Assert.Single(await InScopeAsync(sp => sp.GetRequiredService<ITrustedDeviceService>().ListAsync(UserId)));
+    }
+
+    [Fact]
+    public async Task Session_and_device_changes_are_published_as_security_events()
+    {
+        RefreshToken<Guid> phone = await LoginAsync("phone-1", "iPhone");
+        await LoginAsync(null, "Chrome");
+        await InScopeAsync(sp => sp.GetRequiredService<IUserSessionService>().RevokeAsync(UserId, phone.SessionId));
+
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        await InScopeAsync(sp => sp.GetRequiredService<ITrustedDeviceService>().RegisterAsync(UserId, "phone-2", "Pixel", "android", Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())));
+        DeviceChallenge challenge = await InScopeAsync(sp => Task.FromResult(sp.GetRequiredService<ITrustedDeviceService>().CreateChallenge("phone-2")));
+        await InScopeAsync(sp => sp.GetRequiredService<ITrustedDeviceService>().VerifyAsync(UserId, "phone-2", challenge.Challenge, "AAAA")); // bozuk imza
+        await InScopeAsync(sp => sp.GetRequiredService<IUserSessionService>().RevokeAllAsync(UserId));
+
+        Assert.Equal(
+            new[] { SecurityEventTypes.SessionRevoked, SecurityEventTypes.DeviceRegistered, SecurityEventTypes.DeviceVerificationFailed, SecurityEventTypes.AllSessionsRevoked },
+            _sink.Events.Select(e => e.Type));
+        Assert.All(_sink.Events, e => Assert.Equal(UserId, e.UserId));
+        Assert.Equal(phone.SessionId, _sink.Events[0].Properties["revoked_session"]);
+        Assert.Equal("phone-2", _sink.Events[2].DeviceId);
+        Assert.Equal(SecurityEventSeverity.Warning, _sink.Events[2].Severity);
+    }
+
+    [Fact]
+    public async Task Known_devices_are_recognised_by_sessions_and_trusted_devices()
+    {
+        await LoginAsync("phone-1", "iPhone");
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        await InScopeAsync(sp => sp.GetRequiredService<ITrustedDeviceService>().RegisterAsync(UserId, "tablet-1", "iPad", "ios", Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())));
+
+        IUserSessionService Sessions(IServiceProvider sp) => sp.GetRequiredService<IUserSessionService>();
+        Assert.True(await InScopeAsync(sp => Sessions(sp).IsKnownDeviceAsync(UserId, "phone-1")));
+        Assert.True(await InScopeAsync(sp => Sessions(sp).IsKnownDeviceAsync(UserId, "tablet-1")));
+        Assert.False(await InScopeAsync(sp => Sessions(sp).IsKnownDeviceAsync(UserId, "yeni-telefon")));
+        Assert.False(await InScopeAsync(sp => Sessions(sp).IsKnownDeviceAsync(Guid.NewGuid().ToString(), "phone-1"))); // başkasının cihazı
+    }
+}
+
+public sealed class EventLogDbContext(DbContextOptions<EventLogDbContext> options) : DbContext(options)
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ApplyCanSecurityEventLog(o => o.TablePrefix = "Auth");
+}
+
+public sealed class SecurityEventStoreTests
+{
+    [Fact]
+    public async Task Events_are_written_in_their_own_scope_and_queryable_per_user()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<EventLogDbContext>(o => o.UseSqlite(connection));
+        services.AddCanSecurityEvents(o => o.WriteToLog = false);
+        services.AddCanSecurityEventStore<EventLogDbContext>();
+        await using ServiceProvider provider = services.BuildServiceProvider();
+
+        await using (AsyncServiceScope scope = provider.CreateAsyncScope())
+        {
+            EventLogDbContext db = scope.ServiceProvider.GetRequiredService<EventLogDbContext>();
+            await db.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+
+            ISecurityEvents events = scope.ServiceProvider.GetRequiredService<ISecurityEvents>();
+            await events.PublishAsync(new SecurityEvent(SecurityEventTypes.LoginFailed, "42") { Reason = "invalid_password", IpAddress = "10.0.0.1" }, TestContext.Current.CancellationToken);
+            await events.PublishAsync(new SecurityEvent(SecurityEventTypes.LoginSucceeded, "42") { Properties = new Dictionary<string, string?> { ["method"] = "passkey" } }, TestContext.Current.CancellationToken);
+            await events.PublishAsync(new SecurityEvent(SecurityEventTypes.LoginSucceeded, "7"), TestContext.Current.CancellationToken);
+
+            Assert.False(db.ChangeTracker.HasChanges()); // isteğin DbContext'i kullanılmadı
+        }
+
+        await using (AsyncServiceScope scope = provider.CreateAsyncScope())
+        {
+            EventLogDbContext db = scope.ServiceProvider.GetRequiredService<EventLogDbContext>();
+            List<SecurityEventRecord> mine = await db.Set<SecurityEventRecord>().Where(e => e.UserId == "42").ToListAsync(TestContext.Current.CancellationToken);
+
+            Assert.Equal(2, mine.Count);
+            SecurityEventRecord failed = mine.Single(e => e.Type == SecurityEventTypes.LoginFailed);
+            Assert.Equal(SecurityEventSeverity.Warning, failed.Severity);
+            Assert.Equal("10.0.0.1", failed.IpAddress);
+            Assert.Equal("invalid_password", failed.Reason);
+            Assert.Equal("{\"method\":\"passkey\"}", mine.Single(e => e.Type == SecurityEventTypes.LoginSucceeded).Properties);
+        }
     }
 }

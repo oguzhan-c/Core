@@ -925,6 +925,57 @@ await devices.RevokeAsync(userId, deviceId, ct);
 - Hangi işlemin kayıtlı cihaz isteyeceği uygulamanın kararıdır: örneğin yeni cihazdan girişte 2FA zorunlu, kayıtlı
   cihazda değil; ödemeler yalnızca kayıtlı cihazdan. Web için aynı güvence passkey'lerle (`IPasskeyService`) sağlanır.
 
+**Güvenlik olayları.** Kim, ne zaman, nereden (IP, cihaz, oturum) ne yaptı: başarısız giriş, hesap kilitlenmesi,
+yeni cihazdan giriş, şifre değişimi, oturum kapatma... Olaylar loga, metriğe ve istenirse veritabanına yazılır;
+uygulama kendi sink'iyle e-posta bildirimi ya da SIEM'e aktarım ekler.
+
+```csharp
+builder.Services.AddCanSecurityEvents();                          // log (Can.Core.Security.Events) + can.security.events metriği
+builder.Services.AddCanSecurityEventStore<AppDbContext>();        // isteğe bağlı: SecurityEvents tablosu
+builder.Services.AddSingleton<ISecurityEventSink, NewDeviceMailer>(); // isteğe bağlı: kendi sink'in
+
+// DbContext
+modelBuilder.ApplyCanSecurityEventLog();
+
+// giriş handler'ı: olayı uygulama yayınlar (giriş akışı uygulamanın)
+if (!passwordValid)
+{
+    await events.PublishAsync(new SecurityEvent(SecurityEventTypes.LoginFailed, user.Id.ToString()) { Reason = "invalid_password" }, ct);
+    ...
+}
+
+if (request.DeviceId is { } deviceId && !await sessions.IsKnownDeviceAsync(user.Id.ToString(), deviceId, ct))
+    await events.PublishAsync(new SecurityEvent(SecurityEventTypes.LoginFromNewDevice, user.Id.ToString()) { DeviceId = deviceId }, ct);
+
+// e-posta bildirimi
+public sealed class NewDeviceMailer(IServiceScopeFactory scopes) : ISecurityEventSink
+{
+    public async ValueTask WriteAsync(SecurityEvent e, CancellationToken ct)
+    {
+        if (e.Type != SecurityEventTypes.LoginFromNewDevice) return;
+        await using var scope = scopes.CreateAsyncScope();
+        // kullanıcıya "hesabına yeni bir cihazdan girildi, sen değilsen şifreni değiştir" e-postası
+    }
+}
+```
+
+| Kim yayınlar | Olaylar |
+|---|---|
+| Core, kendiliğinden | `session.revoked`, `session.revoked_others`, `session.revoked_all`, `device.registered`, `device.revoked`, `device.verified`, `device.verification_failed`, `session.revoked_token_used`, `session.stamp_rejected` |
+| Uygulama, kendi akışında | `login.succeeded`, `login.failed`, `login.new_device`, `account.locked`, `two_factor.*`, `recovery_code.used`, `password.*`, `email.changed`, `external_login.*`, `passkey.*`, `roles.changed`, `refresh_token.reused` ve kendi tipleri (`payment.approved`) |
+
+- **Önem:** `Info`, `Warning` (başarısız giriş, kilitlenme, yeni cihaz), `Critical` (çalınmış refresh token'ın tekrar
+  kullanımı, çıkış yapılmış token'la istek). Log düzeyi buna göredir; `can.security.events` metriğinde ani artışlara
+  (ör. dakikada 100 `login.failed`) alarm kur.
+- **Zenginleştirme:** WebApi'de IP, User-Agent, tenant, oturum (`sid`) ve giriş yapmış kullanıcı kendiliğinden eklenir.
+  Reverse proxy arkasında gerçek IP için `UseForwardedHeaders` kullan.
+- **Gizli değer yazma:** parola, kod, token, kullanıcının yazdığı serbest metin (ör. denenen e-posta) olaya konmaz.
+  `Reason` makinece okunur bir koddur (`invalid_password`, `unknown_user`).
+- **Hata yalıtımı:** bir sink hata verirse loglanır; diğer sink'ler ve asıl işlem (giriş) devam eder.
+- **Veritabanı:** olay isteğin DbContext'iyle değil, kendi scope'unda kaydedilir; uygulamanın kaydedilmemiş
+  değişiklikleri yanlışlıkla kaydedilmez. Tenant başına veritabanında olaylar ortak veritabanına yazılır (`TenantId`
+  sütunuyla). Kullanıcının "hesap etkinliği" sayfası `SecurityEventRecord` tablosundan `UserId`'ye göre okunur.
+
 **Kurtarma kodları.** 2FA cihazı kaybolursa kullanıcı tek kullanımlık kodlardan biriyle girer. `IRecoveryCodeService`
 (`VerificationCodeKey` verilince kayıtlı) 10 kod üretir (`ABCDE-FGH23`, ≈ 50 bit); veritabanında yalnızca anahtarlı
 HMAC'leri `RecoveryCode<TId>` olarak saklanır. Kodlar kullanıcıya bir kez gösterilir; yeniden üretilince ya da 2FA

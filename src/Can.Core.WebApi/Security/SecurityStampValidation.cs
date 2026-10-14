@@ -1,4 +1,5 @@
 using Can.Core.Security;
+using Can.Core.Security.Events;
 using Can.Core.Security.Tokens;
 using Can.Core.WebApi.DependencyInjection;
 using Microsoft.AspNetCore.Builder;
@@ -28,6 +29,7 @@ internal sealed class SecurityStampMiddleware(RequestDelegate next)
 
             if (!await validator.IsCurrentAsync(userId, stamp, context.RequestAborted).ConfigureAwait(false))
             {
+                await SecurityEventPublishing.PublishAsync(context, new SecurityEvent(SecurityEventTypes.SecurityStampRejected, userId)).ConfigureAwait(false);
                 await SessionRejection.WriteAsync(context).ConfigureAwait(false);
                 return;
             }

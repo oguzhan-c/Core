@@ -33,7 +33,8 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 - **Security**: PBKDF2 parola özeti, JWT (cookie'de), yenileme token'ı, OTP, doğrulama kodları, passkey (FIDO2);
   güvenlik damgası denetimi, kurtarma kodları, şifreli TOTP anahtarları, access token geri alma; aktif oturumlar
   (listeleme, tek cihazdan / diğer cihazlardan çıkış, `MapCanSessions`), kayıtlı cihazlar (ECDSA P-256 cihaz
-  bağlama, tek kullanımlık meydan okuma); EF Core deposu.
+  bağlama, tek kullanımlık meydan okuma); güvenlik olayları (log, metrik, isteğe bağlı veritabanı, kendi sink'in;
+  istek bilgisiyle zenginleştirme); EF Core deposu.
 - **WebApi**: hata → ProblemDetails (çeviri destekli), `ICurrentUser`, tenant çözümleme, hız sınırlama, sağlık uç
   noktaları, harici giriş, idempotency anahtarı (`Idempotency-Key`), URL/başlık ile API sürümleme
   (`Deprecation`/`Sunset`).

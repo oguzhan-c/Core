@@ -2,6 +2,8 @@ using System.Globalization;
 using Can.Core.Application;
 using Can.Core.Localization;
 using Can.Core.MultiTenancy;
+using Can.Core.Security.Events;
+using Can.Core.WebApi.Security;
 using Can.Core.WebApi.CurrentUser;
 using Can.Core.WebApi.ExceptionHandling;
 using Can.Core.WebApi.Localization;
@@ -44,6 +46,9 @@ public static class WebApiExtensions
         // çağrıldıysa onun ayarları korunur; çağrılmadıysa varsayılanlarla (tek veritabanı) kaydedilir.
         if (!services.Any(d => d.ServiceType == typeof(MultiTenancyOptions)))
             services.AddCanMultiTenancy();
+
+        // Güvenlik olaylarına (AddCanSecurityEvents) IP, User-Agent, tenant ve oturum eklenir.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecurityEventEnricher, HttpSecurityEventEnricher>());
 
         services.AddProblemDetails(o => o.CustomizeProblemDetails = ProblemDetailsLocalizer.Customize);
         services.AddExceptionHandler<CanExceptionHandler>();

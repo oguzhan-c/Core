@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
+using Can.Core.Security.Events;
 using Can.Core.Security.Sessions;
 using Can.Core.Security.Tokens;
 using Can.Core.WebApi.DependencyInjection;
@@ -40,6 +41,8 @@ public class SessionEndpointTests
             return Task.FromResult(removed);
         }
 
+        public Task<bool> IsKnownDeviceAsync(string userId, string deviceId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
         public Task<int> RevokeAllAsync(string userId, CancellationToken cancellationToken = default)
         {
             int removed = Open.Count;
@@ -47,6 +50,20 @@ public class SessionEndpointTests
             return Task.FromResult(removed);
         }
     }
+
+    private sealed class RecordingSink : ISecurityEventSink
+    {
+        public List<SecurityEvent> Events { get; } = [];
+
+        public ValueTask WriteAsync(SecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            lock (Events)
+                Events.Add(securityEvent);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private static readonly RecordingSink Sink = new();
 
     private static async Task<(WebApplication App, HttpClient Client, FakeSessions Sessions)> CreateAsync()
     {
@@ -57,6 +74,8 @@ public class SessionEndpointTests
         builder.Services.AddSingleton<IAuthCookieService>(new AuthCookieService(new AuthCookieOptions()));
         var sessions = new FakeSessions();
         builder.Services.AddSingleton<IUserSessionService>(sessions);
+        builder.Services.AddCanSecurityEvents(o => o.WriteToLog = false);
+        builder.Services.AddSingleton<ISecurityEventSink>(Sink);
 
         WebApplication app = builder.Build();
         app.UseCanExceptionHandler();
@@ -175,9 +194,21 @@ public class SessionEndpointTests
             IAccessTokenDenylist denylist = app.Services.GetRequiredService<IAccessTokenDenylist>();
             await denylist.RevokeAsync(AccessTokenDenylistKeys.Session("s2"), DateTimeOffset.UtcNow.AddMinutes(15), TestContext.Current.CancellationToken);
 
-            HttpResponseMessage closed = await client.SendAsync(As(HttpMethod.Get, "/me", sid: "s2"), TestContext.Current.CancellationToken);
+            HttpRequestMessage request = As(HttpMethod.Get, "/me", user: "77", sid: "s2");
+            request.Headers.UserAgent.ParseAdd("CanTest/1.0");
+            HttpResponseMessage closed = await client.SendAsync(request, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Unauthorized, closed.StatusCode);
             Assert.Equal("session_revoked", await CodeAsync(closed));
+
+            // olay isteğin bilgisiyle zenginleşti
+            SecurityEvent used;
+            lock (Sink.Events)
+                used = Sink.Events.Single(e => e.UserId == "77");
+            Assert.Equal(SecurityEventTypes.RevokedTokenUsed, used.Type);
+            Assert.Equal("session_revoked", used.Reason);
+            Assert.Equal(SecurityEventSeverity.Info, used.Severity);
+            Assert.Equal("s2", used.SessionId);
+            Assert.Equal("CanTest/1.0", used.UserAgent);
 
             Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(As(HttpMethod.Get, "/me", sid: "s1"), TestContext.Current.CancellationToken)).StatusCode);
         }

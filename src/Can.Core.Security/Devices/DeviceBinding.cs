@@ -162,9 +162,17 @@ public sealed class DeviceBindingService : IDeviceBindingService
         }
 
         byte[] data = Encoding.UTF8.GetBytes(challenge);
-        bool valid = signatureBytes.Length == 64
-            ? ecdsa.VerifyData(data, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation)
-            : ecdsa.VerifyData(data, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+        bool valid;
+        try
+        {
+            valid = signatureBytes.Length == 64
+                ? ecdsa.VerifyData(data, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation)
+                : ecdsa.VerifyData(data, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+        }
+        catch (CryptographicException)
+        {
+            valid = false; // bozuk DER
+        }
 
         return valid ? new DeviceVerification(true, issuedAt, null) : DeviceVerification.Fail("imza geçersiz");
     }

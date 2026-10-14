@@ -41,6 +41,15 @@ public interface IUserSessionService
     Task<int> RevokeOthersAsync(string userId, string currentSessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Bu cihazla daha önce giriş yapılmış mı (oturum ya da kayıtlı cihaz olarak). Girişte <see langword="false"/> ise
+    /// "yeni cihazdan giriş" olayı yayınlanabilir, kullanıcıya e-posta gönderilebilir ya da 2FA istenebilir.
+    /// </summary>
+    /// <param name="userId">Kullanıcı.</param>
+    /// <param name="deviceId">İstemcinin cihaz kimliği (<c>SessionDevice.DeviceId</c>).</param>
+    /// <param name="cancellationToken">İptal.</param>
+    Task<bool> IsKnownDeviceAsync(string userId, string deviceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tüm oturumları kapatır. Hesap ele geçirildiyse ayrıca güvenlik damgasını yenile (şifre değişimi bunu zaten yapar).
     /// </summary>
     Task<int> RevokeAllAsync(string userId, CancellationToken cancellationToken = default);
