@@ -410,6 +410,33 @@ imlecin içini yorumlamaz. Kurallar:
 - İmleç gizli değildir: içinde son kaydın sıralama değerleri (ör. tarih ve Id) bulunur. Gizli bir kolonla sıralama
   yapıyorsan bunu göz önünde bulundur.
 
+**Veritabanı tanılaması: yavaş sorgu, sorgu etiketi, N+1**
+
+```csharp
+builder.Services.AddCanQueryDiagnostics(o =>
+{
+    o.SlowQueryThreshold = TimeSpan.FromMilliseconds(300);                    // varsayılan 500 ms
+    o.RepeatedQueryThreshold = builder.Environment.IsDevelopment() ? 10 : 0;  // N+1 dedektörü (varsayılan kapalı)
+});
+```
+
+| Özellik | Ne yapar |
+|---|---|
+| Yavaş sorgu | Eşiği aşan komut uyarı olarak loglanır: süre, kaynak ve SQL (`Yavaş sorgu (812 ms, kaynak: GetOrdersQuery): ...`). |
+| Sorgu etiketi | Her SQL'in başına kaynağı yazılır: `-- can: GetOrdersQuery`. Veritabanının kendi raporunda (PostgreSQL `pg_stat_statements`, SQL Server Query Store) yavaş sorgunun hangi handler'dan geldiği görünür. |
+| Metrik | `can.db.command.duration` (süre) ve `can.db.slow_commands` (eşiği aşanlar); etiketler: `can.db.operation`, `can.source`. `AddCanOpenTelemetry` ile Grafana/Prometheus'a gider. |
+| N+1 dedektörü | Aynı SQL bir istekte N kez çalışırsa bir kez uyarır: döngü içinde sorgu yazılmış demektir (`Include` ya da tek sorgu kullan). |
+| İstek başına komut sınırı | `MaxCommandsPerScope`: bir istekte bundan fazla komut çalışırsa uyarır. |
+
+- **Kaynak** mediator isteğinin adıdır (`OperationContext`, pipeline kendiliğinden ayarlar). Mediator dışında
+  HTTP isteğinin span adı kullanılır (OpenTelemetry açıksa, ör. `GET /products/{id}`). Kendi arka plan işinde
+  `using (OperationContext.Begin("NightlyReportJob")) { ... }`.
+- **Parametre değerleri hiçbir zaman loglanmaz** (kişisel veri). Loglanan SQL `MaxLoggedSqlLength` (2000) karakterle sınırlıdır.
+- Kaynak adı SQL yorumuna yazılmadan önce temizlenir (yalnızca harf, rakam ve `_ . / { } : -`); yorumdan çıkılamaz.
+- Sayaçlar DI scope'u (HTTP isteği, arka plan işi) başınadır. Testlerde `ThrowOnViolation = true` ile N+1 hatası testi düşürür.
+- Etiket her farklı kaynak için ayrı bir sorgu metni üretir. Veritabanı sorgu planlarını kaynak başına bir kez önbelleğe alır;
+  istemiyorsan `TagQueries = false`.
+
 **Outbox: kaybolmaması gereken event'ler**
 
 `IIntegrationEvent` uygulayan event'ler kayıttan hemen sonra bellekte yayınlanmaz; aggregate değişiklikleriyle aynı

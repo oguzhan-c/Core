@@ -1,6 +1,7 @@
 using Can.Core.Application;
 using Can.Core.BackgroundJobs;
 using Can.Core.Persistence.Caching;
+using Can.Core.Persistence.Diagnostics;
 using Can.Core.Persistence.AuditTrail;
 using Can.Core.EventBus;
 using Can.Core.Persistence.Inbox;
@@ -72,6 +73,10 @@ public static class ServiceCollectionExtensions
                 // AddCanEntityCacheInvalidation() çağrıldıysa: kaydedilen entity'lerin önbellek etiketleri silinir.
                 if (serviceProvider.GetService<EntityCacheInvalidationInterceptor>() is { } cacheInvalidation)
                     options.AddInterceptors(cacheInvalidation, serviceProvider.GetRequiredService<EntityCacheInvalidationTransactionInterceptor>());
+
+                // AddCanQueryDiagnostics() çağrıldıysa: yavaş sorgu, sorgu etiketi, N+1
+                if (serviceProvider.GetService<QueryDiagnosticsInterceptor>() is { } diagnostics)
+                    options.AddInterceptors(diagnostics);
             }
         );
 
@@ -79,6 +84,43 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IUnitOfWork, UnitOfWork>();
         services.TryAddScoped(typeof(IRepository<,>), typeof(EfRepository<,>));
 
+        return services;
+    }
+
+    /// <summary>
+    /// Veritabanı tanılaması:
+    /// <list type="bullet">
+    /// <item>Eşiği (varsayılan 500 ms) aşan komutlar SQL'i ve kaynağıyla uyarı olarak loglanır, sayılır.</item>
+    /// <item>Her SQL'in başına kaynağı yazılır (<c>-- can: GetProductsQuery</c>): veritabanının yavaş sorgu raporunda
+    /// sorgunun hangi koddan geldiği görünür.</item>
+    /// <item>Komut süreleri metrik olarak yayınlanır (<c>can.db.command.duration</c>).</item>
+    /// <item>İsteğe bağlı N+1 dedektörü ve istek başına komut sınırı (geliştirmede).</item>
+    /// </list>
+    /// Parametre değerleri hiçbir zaman loglanmaz (kişisel veri).
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// builder.Services.AddCanQueryDiagnostics(o =&gt;
+    /// {
+    ///     o.SlowQueryThreshold = TimeSpan.FromMilliseconds(300);
+    ///     o.RepeatedQueryThreshold = builder.Environment.IsDevelopment() ? 10 : 0; // N+1
+    /// });
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddCanQueryDiagnostics(this IServiceCollection services, Action<QueryDiagnosticsOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        var options = new QueryDiagnosticsOptions();
+        configure?.Invoke(options);
+        if (options.SlowQueryThreshold < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(configure), "QueryDiagnosticsOptions.SlowQueryThreshold negatif olamaz.");
+        ArgumentOutOfRangeException.ThrowIfNegative(options.RepeatedQueryThreshold, nameof(QueryDiagnosticsOptions.RepeatedQueryThreshold));
+        ArgumentOutOfRangeException.ThrowIfNegative(options.MaxCommandsPerScope, nameof(QueryDiagnosticsOptions.MaxCommandsPerScope));
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxLoggedSqlLength, 100, nameof(QueryDiagnosticsOptions.MaxLoggedSqlLength));
+
+        services.RemoveAll<QueryDiagnosticsOptions>();
+        services.AddSingleton(options);
+        services.TryAddScoped<QueryDiagnosticsInterceptor>(); // scope başına sayaç (N+1)
         return services;
     }
 

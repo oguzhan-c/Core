@@ -33,6 +33,9 @@ public sealed class TelemetryBehavior<TRequest, TResponse> : IPipelineBehavior<T
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
+        // Telemetri kapalı olsa da: veritabanı tanılaması sorguları bu adla etiketler.
+        using IDisposable operation = OperationContext.Begin(RequestName);
+
         if (!ApplicationTelemetry.Source.HasListeners() && !ApplicationTelemetry.RequestDuration.Enabled)
             return await next().ConfigureAwait(false);
 

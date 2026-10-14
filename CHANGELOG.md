@@ -26,7 +26,8 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 - **Özellik bayrakları**: kullanıcı/rol/tenant hedefleme, sabit yüzdelik açılım, zaman aralığı, tenant hariç tutma,
   ayarlardan canlı yükleme; `IFeatureGatedRequest`, `.RequireFeature()`, `/api/features`.
 - **Persistence**: `CanDbContext`, repository ve unit of work, `DynamicQuery` (izin listeli alanlar), sayfalama,
-  imleçli (keyset) sayfalama (`GetCursorPageAsync`, `ToCursorPageAsync`), outbox (üstel geri çekilme, ölü mesajlar, yeniden kuyruklama, sağlık kontrolü, metrikler), inbox, değişiklik geçmişi,
+  imleçli (keyset) sayfalama (`GetCursorPageAsync`, `ToCursorPageAsync`), veritabanı tanılaması (yavaş sorgu, SQL'e
+  kaynak etiketi, komut metrikleri, N+1 dedektörü), outbox (üstel geri çekilme, ölü mesajlar, yeniden kuyruklama, sağlık kontrolü, metrikler), inbox, değişiklik geçmişi,
   seed.
 - **Multi-tenancy**: tek veritabanı ya da tenant başına veritabanı, tenant yalnızca imzalı token'dan.
 - **Security**: PBKDF2 parola özeti, JWT (cookie'de), yenileme token'ı, OTP, doğrulama kodları, passkey (FIDO2);
