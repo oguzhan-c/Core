@@ -48,6 +48,9 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   varsayılan kapalı.
 - **İstek aktivite logu** (varsayılan kapalı): kim/ne zaman/hangi tenant/uç nokta/sonuç/süre/IP; isteği bekletmeyen
   kuyruk ve partili yazma, maskelenen sorgu parametreleri, veritabanı deposu, kendi sink'in.
+- **Tarayıcı güvenliği** (üçü de varsayılan kapalı): güvenlik başlıkları (HSTS, yol başına CSP, nosniff, çerçeve,
+  Referrer/Permissions/Cross-Origin politikaları), kimlik bilgili CORS (`*` yasak, açılan başlıklar, localhost yalnızca
+  Development), iki katmanlı CSRF koruması (Sec-Fetch-Site/Origin denetimi + imzalı çift gönderimli token).
 - **Ayarlar**: tipli uygulama/tenant ayarları, doğrulama, gizli (şifreli) değerler, önbellek; EF Core deposu; yönetim
   uç noktaları.
 - **Event bus**: zarf, sabit event adları, tenant'ı koruyan dağıtım, ortak tüketim akışı (anında ve gecikmeli deneme,

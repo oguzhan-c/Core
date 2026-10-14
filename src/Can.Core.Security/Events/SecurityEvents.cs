@@ -59,12 +59,14 @@ public static class SecurityEventTypes
     public const string DeviceVerified = "device.verified";
     public const string DeviceVerificationFailed = "device.verification_failed";
 
+    public const string CsrfRejected = "csrf.rejected";
+
     /// <summary>Tipin varsayılan önemi.</summary>
     /// <param name="type">Olay tipi.</param>
     public static SecurityEventSeverity DefaultSeverity(string type) => type switch
     {
         RefreshTokenReused or RevokedTokenUsed => SecurityEventSeverity.Critical,
-        LoginFailed or LoginFromNewDevice or AccountLocked or TwoFactorFailed or TwoFactorDisabled or DeviceVerificationFailed
+        LoginFailed or LoginFromNewDevice or AccountLocked or TwoFactorFailed or TwoFactorDisabled or DeviceVerificationFailed or CsrfRejected
             or PasswordResetRequested or AllSessionsRevoked => SecurityEventSeverity.Warning,
         _ => SecurityEventSeverity.Info,
     };

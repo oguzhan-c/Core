@@ -1,6 +1,7 @@
 using Can.Core.Security.Tokens;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,7 +24,7 @@ public sealed class AuthCookieOptions
 
     /// <summary>
     /// <see cref="SameSiteMode.Strict"/>: cookie başka sitelerden gelen isteklerle gönderilmez (CSRF koruması).
-    /// Ön yüz farklı bir sitedeyse <see cref="SameSiteMode.None"/> gerekir; o durumda ayrıca antiforgery kullan.
+    /// Ön yüz farklı bir sitedeyse <see cref="SameSiteMode.None"/> gerekir; o durumda <c>AddCanCsrfProtection()</c> ile CSRF korumasını aç.
     /// </summary>
     public SameSiteMode SameSite { get; set; } = SameSiteMode.Strict;
 
@@ -151,6 +152,7 @@ public static class JwtAuthenticationExtensions
         configure?.Invoke(cookieOptions);
         cookieOptions.Validate();
         StartupValidation.Require<ITokenService>(services, "AddCanJwtAuthentication", "builder.Services.AddCanSecurity(o => ...) ile JWT ayarlarını ver.");
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IStartupFilter, Security.CsrfAdvisor>()); // SameSite != Strict ve CSRF kapalıysa uyarı
 
         services.TryAddSingleton(cookieOptions);
         services.TryAddSingleton<IAuthCookieService, AuthCookieService>();

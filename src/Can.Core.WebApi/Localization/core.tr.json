@@ -26,5 +26,7 @@
   "session_revoked": "Oturum sonlandırıldı; tekrar giriş yap.",
   "session_not_found": "Oturum bulunamadı.",
   "session_unknown": "Bu oturumun kimliği yok; tekrar giriş yap.",
-  "cursor_invalid": "Sayfa imleci geçersiz ya da bu sıralamaya ait değil; ilk sayfadan başla."
+  "cursor_invalid": "Sayfa imleci geçersiz ya da bu sıralamaya ait değil; ilk sayfadan başla.",
+  "csrf_rejected": "İstek başka bir siteden geldiği için reddedildi.",
+  "csrf_token_invalid": "Güvenlik doğrulaması başarısız; sayfayı yenileyip tekrar dene."
 }

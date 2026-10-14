@@ -26,5 +26,7 @@
   "session_revoked": "Your session has ended; please sign in again.",
   "session_not_found": "Session not found.",
   "session_unknown": "This session has no identifier; please sign in again.",
-  "cursor_invalid": "The page cursor is invalid or belongs to another sort order; start from the first page."
+  "cursor_invalid": "The page cursor is invalid or belongs to another sort order; start from the first page.",
+  "csrf_rejected": "The request was rejected because it came from another site.",
+  "csrf_token_invalid": "Security check failed; refresh the page and try again."
 }

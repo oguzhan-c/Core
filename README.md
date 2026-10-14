@@ -761,7 +761,7 @@ app.MapPost("/auth/login", async (LoginCommand command, ISender sender, IAuthCoo
 app.MapPost("/auth/logout", (IAuthCookieService cookies, HttpResponse response) => { cookies.Clear(response); return Results.NoContent(); });
 ```
 
-Ön yüz farklı bir sitedeyse (`SameSite = None`) cookie'ler çapraz istekle gönderilebilir; o durumda antiforgery token ekle.
+Ön yüz farklı bir sitedeyse (`SameSite = None`) cookie'ler çapraz istekle gönderilebilir; o durumda CSRF korumasını aç (`AddCanCsrfProtection`, aşağıda "Tarayıcı güvenliği").
 
 **Tenant** kuralları:
 
@@ -1897,6 +1897,85 @@ Değişiklik geçmişi (audit trail) yalnızca veri değişikliklerini tutar; bu
 - Kendi hedefin için `IRequestActivitySink` (Elasticsearch, SIEM). Saklama süresi:
   `AddCanDataRetention` ile `o.Keep<RequestActivityRecord>(TimeSpan.FromDays(90), a => a.Timestamp)`.
 - **KVKK:** IP, kullanıcı ve tarayıcı bilgisi kişisel veridir. Aydınlatma metninde belirt ve saklama süresi koy.
+
+## Tarayıcı güvenliği: güvenlik başlıkları, CORS ve CSRF
+
+Üçü de **varsayılan kapalıdır**: ön yüz kurulumuna göre davranışı değiştirdikleri için uygulama kendisi açar.
+
+```csharp
+builder.Services.AddCanSecurityHeaders();                                         // HSTS, CSP, nosniff, ...
+builder.Services.AddCanCors(o => o.AllowedOrigins.Add("https://app.example.com")); // ön yüz başka origin'deyse
+builder.Services.AddCanCsrfProtection();                                          // cookie'deki token'ı korur
+
+app.UseCanSecurityHeaders();      // en başta (hata yanıtları da başlık alsın)
+app.UseCanExceptionHandler();
+app.UseCanApiVersioning();        // UseRouting
+app.UseCanCors();                 // routing'den sonra, kimlik doğrulamadan önce
+app.UseCanCsrfProtection();
+app.UseAuthentication();
+...
+```
+
+**Güvenlik başlıkları** (`AddCanSecurityHeaders`). Varsayılanlar JSON dönen bir API içindir; her biri `null` ile
+kapatılabilir, uç noktanın kendi verdiği başlık ezilmez.
+
+| Başlık | Varsayılan | Ne işe yarar |
+|---|---|---|
+| `Strict-Transport-Security` | 1 yıl, alt alan adları | Tarayıcı siteye yalnızca HTTPS ile gelir. Yalnızca HTTPS yanıtında ve Development dışında. |
+| `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'` | XSS'e karşı en güçlü savunma. `/docs` için Scalar'a uygun ayrı politika. |
+| `X-Content-Type-Options` | `nosniff` | Yüklenen "resim" script olarak çalışmaz. |
+| `X-Frame-Options` | `DENY` | Clickjacking: sayfa başka sitenin çerçevesine gömülemez. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Adresteki token'lar başka siteye gitmez. |
+| `Permissions-Policy` | kamera, mikrofon, konum... kapalı | |
+| `Cross-Origin-Opener-Policy` / `-Resource-Policy` | `same-origin` | Başka site pencereye erişemez, yanıtları gömemez. |
+| `X-XSS-Protection` | `0` | Eski tarayıcı filtresi kapatılır (kendisi açık oluşturuyordu). |
+| `Server`, `X-Powered-By` | kaldırılır | Sunucu yazılımı ve sürümü gösterilmez. |
+
+- **Aynı sunucudan SPA veriliyorsa** API için yazılmış CSP arayüzü bozar (inline script, Google Fonts, CDN).
+  O yollar için ayrı politika: `o.ContentSecurityPolicyByPath["/"] = "default-src 'self'; ..."`. Yeni politikayı
+  canlıda kırmadan denemek için `ContentSecurityPolicyReportOnly = true`.
+- Dosyaları başka alan adındaki ön yüz `<img>` ile gösteriyorsa `CrossOriginResourcePolicy = "same-site"` ya da
+  `"cross-origin"`.
+- `HstsPreload` tarayıcılara gömülür ve geri alınması aylar sürer; ancak emin olunca aç.
+
+**CORS** (`AddCanCors`). Ön yüz farklı origin'deyse (`app.example.com` → `api.example.com`) gerekir; ikisi tek origin'den
+(reverse proxy ile `/api`) sunuluyorsa gerekmez.
+
+- Token cookie'de olduğu için kimlik bilgisi açık (`AllowCredentials`); ön yüz `fetch(..., { credentials: "include" })`
+  kullanır. Bu yüzden `"*"` verilemez: açılışta hata verir. Gelen origin olduğu gibi geri yansıtılmaz, yalnızca
+  listedekilere izin verilir. Bu en yaygın ve en tehlikeli CORS hatasıdır.
+- `ETag`, `api-version`, `Deprecation`, `Sunset`, `Retry-After`, `Location` gibi başlıklar JavaScript'e açılır
+  (`ExposedHeaders`); açılmazsa tarayıcı ön yüze göstermez.
+- Ön kontrol (OPTIONS) yanıtı 10 dakika önbelleğe alınır; her POST'tan önce ayrı istek atılmaz.
+- Development'ta `localhost`'un her portu izinlidir (Vite, React dev server); Production'da değil.
+
+**CSRF koruması** (`AddCanCsrfProtection`). Token'ı JavaScript'in erişemediği HttpOnly cookie'de tutmak XSS'e karşı
+güvenlidir; bedeli, tarayıcının cookie'yi başka siteden gelen isteğe de eklemesidir. Kötü bir site gizli bir formla
+`POST /transfer` gönderirse kullanıcının oturumuyla çalışır. İki katmanlı koruma:
+
+1. **Origin denetimi** (her zaman): veri değiştiren isteklerde tarayıcının kendisinin eklediği ve JavaScript'in
+   değiştiremediği `Sec-Fetch-Site` başlığı `cross-site` ya da `same-site` ise origin güvenilir listede olmalı
+   (`AddCanCors` origin'leri ve `TrustedOrigins`). `same-site` da denetlenir: ele geçirilmiş bir alt alan adı
+   (`blog.example.com`) aynı site sayılır. Eski tarayıcıda `Origin` başlığına bakılır. Ön yüzde değişiklik gerekmez.
+2. **Çift gönderimli token** (`TokenMode = Auto`: auth cookie'si `SameSite=Strict` değilse): sunucu imzalı token'ı
+   `XSRF-TOKEN` cookie'sine yazar, ön yüz aynı değeri `X-XSRF-TOKEN` başlığında gönderir. Kötü site cookie'yi okuyamaz,
+   başlık da ekleyemez. **Axios ve Angular bunu kendiliğinden yapar**; `fetch` kullanıyorsan:
+
+   ```js
+   const token = document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1];
+   fetch("/api/transfer", { method: "POST", credentials: "include", headers: { "X-XSRF-TOKEN": decodeURIComponent(token) } });
+   ```
+
+- **Mobil ve servis istemcileri** ne `Origin` ne `Sec-Fetch-Site` gönderir; CSRF yalnızca tarayıcıda yapılabildiği
+  için token istenmez (`RequireTokenForNonBrowserClients = true` ile istenebilir).
+- GET/HEAD/OPTIONS denetlenmez: **GET ile veri değiştirme**.
+- Dış servislerin çağırdığı uç noktalar (webhook) muaf: `.DisableCsrfProtection()` ya da `ExemptPaths`.
+- Reddedilen istek 403 (`csrf_rejected` / `csrf_token_invalid`) ve `csrf.rejected` güvenlik olayı.
+- Token'lar ASP.NET Data Protection ile imzalanır; birden çok sunucuda anahtar halkası paylaşılmalı
+  (`AddCanRedisScaleOut(...).PersistDataProtectionKeys()`).
+- Reverse proxy arkasında `UseForwardedHeaders` yapılandırılmalı; yoksa eski tarayıcılar için yapılan origin
+  karşılaştırması yanlış şemayla (http) yapılır.
+- Auth cookie'si `SameSite=Strict` değilken CSRF koruması kapalıysa uygulama açılışta **uyarı** loglar (durmaz).
 
 ## Idempotency (tekrar eden istekler)
 
