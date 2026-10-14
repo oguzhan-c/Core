@@ -142,6 +142,7 @@ public class S3FileStorageTests
         Assert.Null(await storage.OpenReadAsync("yok.txt"));
 
         Assert.Equal(new[] { "ürünler/1/fotoğraf.png" }, await storage.ListAsync("ürünler").Select(f => f.Path).ToArrayAsync());
+        Assert.Equal(new[] { "ürünler/1/fotoğraf.png" }, await storage.ListAsync().Select(f => f.Path).ToArrayAsync()); // önek yok: "app//" olmamalı
 
         Assert.True(await storage.DeleteAsync("ürünler/1/fotoğraf.png"));
         Assert.False(await storage.DeleteAsync("ürünler/1/fotoğraf.png"));

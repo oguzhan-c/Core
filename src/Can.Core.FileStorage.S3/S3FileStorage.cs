@@ -188,7 +188,8 @@ public sealed class S3FileStorage : IFileStorage
     public async IAsyncEnumerable<StoredFileInfo> ListAsync(string? prefix = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         string normalized = StoragePath.NormalizePrefix(prefix);
-        string keyPrefix = StoragePath.Combine(_keyPrefix, normalized);
+        // "app" + "docs" → "app/docs/"; önek yoksa "app/" (Combine boş yolla "app/" verir, "//" olmasın)
+        string keyPrefix = string.Join('/', new[] { _keyPrefix, normalized }.Where(part => part.Length > 0));
         if (keyPrefix.Length > 0)
             keyPrefix += "/";
 
