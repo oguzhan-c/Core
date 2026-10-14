@@ -38,7 +38,7 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   istek bilgisiyle zenginleştirme); EF Core deposu.
 - **WebApi**: hata → ProblemDetails (çeviri destekli), `ICurrentUser`, tenant çözümleme, hız sınırlama, sağlık uç
   noktaları, harici giriş, idempotency anahtarı (`Idempotency-Key`), URL/başlık ile API sürümleme
-  (`Deprecation`/`Sunset`).
+  (`Deprecation`/`Sunset`); yapılandırma hataları ve eksik kayıtlar açılışta, tek mesajda.
 - **HTTP önbelleği**: kullanıcı/tenant+rol/herkese açık kapsamlı sunucu önbelleği (`WithResponseCache`), handler
   önbelleğiyle ortak etiketler, entity değişince otomatik silme (`AddCanEntityCacheInvalidation`, commit'ten sonra),
   ETag ve 304, Brotli/gzip sıkıştırma, güvenli `Cache-Control` varsayılanları, `WithNoStore`; Redis'te ortak önbellek

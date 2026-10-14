@@ -80,6 +80,7 @@ public static class SecurityStampExtensions
     public static IApplicationBuilder UseCanSecurityStampValidation(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        StartupValidation.Require<ISecurityStampValidator>(app, "UseCanSecurityStampValidation", "builder.Services.AddCanSecurityStampValidator<TContext, TUser, TId>()");
         return app.UseMiddleware<SecurityStampMiddleware>();
     }
 

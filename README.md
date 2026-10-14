@@ -708,6 +708,18 @@ app.MapPost("/products", (CreateProductCommand command, ISender sender, Cancella
 app.MapGet("/me", (ISender sender, CancellationToken ct) => sender.Send(new GetMeQuery(), ct));
 ```
 
+**Yapılandırma açılışta denetlenir.** Eksik ya da hatalı ayar ilk kullanıcının isteğinde 500 olarak değil, uygulama
+açılırken anlaşılır bir mesajla ortaya çıkar (Kubernetes'te yeni pod açılmaz, eski sürüm çalışmaya devam eder):
+
+- Ayarlar `AddCan...` çağrısında hemen doğrulanır: JWT anahtarı en az 32 karakter, `SameSite = None` iken `Secure`
+  zorunlu, cookie adları farklı, hız sınırı ve idempotency değerleri sıfırdan büyük, Redis/S3/Azure/SMTP bağlantı
+  bilgileri dolu. Bir ayarın birden çok hatası tek mesajda listelenir.
+- Paketler arası eksikler açılışta yakalanır: `AddCanJwtAuthentication` var ama `AddCanSecurity` yok,
+  `UseCanSecurityStampValidation` var ama doğrulayıcı kayıtlı değil, `UseCanIdempotency`/`UseCanRateLimiting`/
+  `UseCanAccessTokenRevocation` kendi `AddCan...` çağrısı olmadan eklenmiş... Mesaj eksik çağrıyı söyler.
+- Bağlantının kendisi (Redis'e ulaşılabiliyor mu) burada denetlenmez; o sağlık kontrollerinin işidir. Bir servisin
+  geçici olarak kapalı olması uygulamanın açılmasını engellememeli.
+
 **Hatalar** RFC 9457 ProblemDetails olarak döner (`application/problem+json`). 500'lerde iç ayrıntı yalnızca Development'ta gösterilir.
 
 **Result → HTTP.** `ToHttpResult()` başarıda 200 + değer (değer `Success` ise 204), hatada exception handler ile

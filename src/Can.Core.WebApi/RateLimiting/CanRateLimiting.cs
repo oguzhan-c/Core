@@ -2,11 +2,13 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Can.Core.MultiTenancy;
+using Can.Core.WebApi.DependencyInjection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Can.Core.WebApi.RateLimiting;
 
@@ -73,6 +75,16 @@ public static class CanRateLimitingExtensions
 
         var options = new CanRateLimitOptions();
         configure?.Invoke(options);
+        if (options.Enabled)
+        {
+            string[] errors = new[] { ("Global", options.Global), ("Auth", options.Auth), ("Sensitive", options.Sensitive) }
+                .SelectMany(r => RuleErrors(r.Item1, r.Item2))
+                .ToArray();
+            if (errors.Length > 0)
+                throw new InvalidOperationException("CanRateLimitOptions geçersiz:\n- " + string.Join("\n- ", errors));
+        }
+
+        services.TryAddSingleton(options);
 
         services.AddRateLimiter(limiter =>
         {
@@ -93,7 +105,24 @@ public static class CanRateLimitingExtensions
     public static IApplicationBuilder UseCanRateLimiting(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        StartupValidation.Require<CanRateLimitOptions>(app, "UseCanRateLimiting", "builder.Services.AddCanRateLimiting()");
         return app.UseRateLimiter();
+    }
+
+    private static IEnumerable<string> RuleErrors(string name, RateLimitRule? rule)
+    {
+        if (rule is null)
+        {
+            yield return $"{name} boş olamaz.";
+            yield break;
+        }
+
+        if (rule.PermitLimit <= 0)
+            yield return $"{name}.PermitLimit sıfırdan büyük olmalı (şu an {rule.PermitLimit}).";
+        if (rule.Window <= TimeSpan.Zero)
+            yield return $"{name}.Window sıfırdan büyük olmalı.";
+        if (rule.SegmentsPerWindow < 1)
+            yield return $"{name}.SegmentsPerWindow en az 1 olmalı.";
     }
 
     private static RateLimitPartition<string> Partition(HttpContext context, string key, RateLimitRule rule)

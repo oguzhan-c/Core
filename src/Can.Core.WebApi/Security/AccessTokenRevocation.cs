@@ -1,6 +1,7 @@
 using System.Globalization;
 using Can.Core.Security.Events;
 using Can.Core.Security.Tokens;
+using Can.Core.WebApi.DependencyInjection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Distributed;
@@ -101,6 +102,7 @@ public static class AccessTokenRevocationExtensions
     public static IApplicationBuilder UseCanAccessTokenRevocation(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        StartupValidation.Require<IAccessTokenDenylist>(app, "UseCanAccessTokenRevocation", "builder.Services.AddCanAccessTokenRevocation()");
         return app.UseMiddleware<AccessTokenRevocationMiddleware>();
     }
 

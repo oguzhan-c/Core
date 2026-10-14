@@ -38,6 +38,22 @@ public sealed class AuthCookieOptions
     /// cookie'den okunur (JavaScript token'a erişemez, XSS ile çalınamaz). Mobil/servis istemcileri için açılabilir.
     /// </summary>
     public bool AllowAuthorizationHeader { get; set; }
+
+    /// <summary>Tutarsız ayarları açılışta bildirir (hepsi tek mesajda).</summary>
+    internal void Validate()
+    {
+        var errors = new List<string>();
+        if (string.IsNullOrWhiteSpace(AccessTokenCookieName) || string.IsNullOrWhiteSpace(RefreshTokenCookieName))
+            errors.Add("AccessTokenCookieName ve RefreshTokenCookieName boş olamaz.");
+        else if (string.Equals(AccessTokenCookieName, RefreshTokenCookieName, StringComparison.Ordinal))
+            errors.Add("AccessTokenCookieName ile RefreshTokenCookieName aynı olamaz.");
+        if (string.IsNullOrWhiteSpace(RefreshTokenPath) || !RefreshTokenPath.StartsWith('/'))
+            errors.Add("RefreshTokenPath '/' ile başlamalı (ör. \"/auth/refresh\").");
+        if (SameSite == SameSiteMode.None && !Secure)
+            errors.Add("SameSite = None iken Secure kapatılamaz: tarayıcılar Secure olmayan SameSite=None cookie'yi reddeder (giriş sessizce çalışmaz).");
+        if (errors.Count > 0)
+            throw new InvalidOperationException("AuthCookieOptions geçersiz:\n- " + string.Join("\n- ", errors));
+    }
 }
 
 /// <summary>Giriş/çıkışta token cookie'lerini yazar, okur ve siler.</summary>
@@ -133,6 +149,8 @@ public static class JwtAuthenticationExtensions
 
         var cookieOptions = new AuthCookieOptions();
         configure?.Invoke(cookieOptions);
+        cookieOptions.Validate();
+        StartupValidation.Require<ITokenService>(services, "AddCanJwtAuthentication", "builder.Services.AddCanSecurity(o => ...) ile JWT ayarlarını ver.");
 
         services.TryAddSingleton(cookieOptions);
         services.TryAddSingleton<IAuthCookieService, AuthCookieService>();

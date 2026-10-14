@@ -105,6 +105,7 @@ public static class ApiVersioningExtensions
     public static IApplicationBuilder UseCanApiVersioning(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        DependencyInjection.StartupValidation.Require<CanApiVersioningOptions>(app, "UseCanApiVersioning", "builder.Services.AddCanApiVersioning(o => o.Add(new ApiVersionInfo(1)))");
         app.UseMiddleware<ApiVersionMiddleware>();
         return app.UseRouting();
     }

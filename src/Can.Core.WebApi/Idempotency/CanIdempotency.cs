@@ -1,3 +1,4 @@
+using Can.Core.WebApi.DependencyInjection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,23 @@ public sealed class CanIdempotencyOptions
 
     /// <summary>Tekrarda geri verilen yanıt başlıkları (Content-Type her zaman). Çerezler asla saklanmaz.</summary>
     public IList<string> ReplayedHeaders { get; } = ["Location", "ETag", "Last-Modified", "Content-Location"];
+
+    internal void Validate()
+    {
+        var errors = new List<string>();
+        if (string.IsNullOrWhiteSpace(HeaderName))
+            errors.Add("HeaderName boş olamaz.");
+        if (Expiration <= TimeSpan.Zero)
+            errors.Add("Expiration sıfırdan büyük olmalı.");
+        if (LockTimeout <= TimeSpan.Zero)
+            errors.Add("LockTimeout sıfırdan büyük olmalı.");
+        if (MaxKeyLength <= 0)
+            errors.Add("MaxKeyLength sıfırdan büyük olmalı.");
+        if (MaxResponseBodySize <= 0)
+            errors.Add("MaxResponseBodySize sıfırdan büyük olmalı.");
+        if (errors.Count > 0)
+            throw new InvalidOperationException("CanIdempotencyOptions geçersiz:\n- " + string.Join("\n- ", errors));
+    }
 }
 
 /// <summary>
@@ -55,6 +73,7 @@ public static class CanIdempotencyExtensions
         ArgumentNullException.ThrowIfNull(services);
         var options = new CanIdempotencyOptions();
         configure?.Invoke(options);
+        options.Validate();
         services.RemoveAll<CanIdempotencyOptions>();
         services.AddSingleton(options);
         services.AddDistributedMemoryCache(); // TryAdd: Redis kayıtlıysa o kalır
@@ -69,6 +88,7 @@ public static class CanIdempotencyExtensions
     public static IApplicationBuilder UseCanIdempotency(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        StartupValidation.Require<CanIdempotencyOptions>(app, "UseCanIdempotency", "builder.Services.AddCanIdempotency()");
         return app.UseMiddleware<IdempotencyMiddleware>();
     }
 

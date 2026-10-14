@@ -63,6 +63,7 @@ public static class WebApiExtensions
     public static IApplicationBuilder UseCanExceptionHandler(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        StartupValidation.Require<CanWebApiOptions>(app, "UseCanExceptionHandler", "builder.Services.AddCanWebApi()");
         return app.UseExceptionHandler();
     }
 
@@ -96,6 +97,7 @@ public static class WebApiExtensions
     public static IApplicationBuilder UseCanTenantResolution(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        StartupValidation.Require<CanWebApiOptions>(app, "UseCanTenantResolution", "builder.Services.AddCanWebApi()");
         return app.UseMiddleware<TenantResolutionMiddleware>();
     }
 }
