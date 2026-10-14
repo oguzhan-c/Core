@@ -1,6 +1,7 @@
 using Can.Core.Security.Hashing;
 using Can.Core.Security.Otp;
 using Can.Core.Security.Passkeys;
+using Can.Core.Security.RecoveryCodes;
 using Can.Core.Security.Tokens;
 using Can.Core.Security.VerificationCodes;
 using Fido2NetLib;
@@ -18,8 +19,9 @@ public sealed class CanSecurityOptions
     public int PasswordHashIterations { get; set; } = Pbkdf2PasswordHasher.DefaultIterations;
 
     /// <summary>
-    /// E-posta/SMS doğrulama kodlarını HMAC'lemek için gizli anahtar (en az 32 karakter, JWT anahtarından farklı).
-    /// Verilmezse <see cref="IVerificationCodeService"/> kaydedilmez.
+    /// E-posta/SMS doğrulama kodlarını ve 2FA kurtarma kodlarını HMAC'lemek için gizli anahtar (en az 32 karakter, JWT
+    /// anahtarından farklı; her kullanım için ayrı anahtar türetilir). Verilmezse <see cref="IVerificationCodeService"/>
+    /// ve <see cref="IRecoveryCodeService"/> kaydedilmez.
     /// </summary>
     public string? VerificationCodeKey { get; set; }
 
@@ -64,6 +66,7 @@ public static class SecurityServiceCollectionExtensions
         {
             services.TryAddSingleton<IVerificationCodeService>(sp =>
                 new VerificationCodeService(codeKey, sp.GetRequiredService<TimeProvider>()));
+            services.TryAddSingleton<IRecoveryCodeService>(new RecoveryCodeService(codeKey));
         }
 
         if (options.Passkey is { } passkey)

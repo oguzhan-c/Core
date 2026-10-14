@@ -62,8 +62,9 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
     public string? PasswordHash { get; protected set; }
 
     /// <summary>
-    /// Şifre, e-posta ya da 2FA ayarı değiştiğinde yenilenir. Token'lara/oturumlara yazılırsa eski
-    /// oturumları geçersiz kılmak için kullanılabilir.
+    /// Şifre, e-posta, 2FA ya da dış hesap bağlantısı değiştiğinde yenilenir. Access token'a
+    /// (<c>TokenSubject.SecurityStamp</c>) ve refresh token kaydına yazılır; değişince eski oturumlar geçersiz olur
+    /// (WebApi: <c>UseCanSecurityStampValidation()</c>, yenilemede <c>RefreshToken.IsValidFor</c>).
     /// </summary>
     [DisableAuditing]
     public string SecurityStamp { get; protected set; }
@@ -163,12 +164,24 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
 
     public void ConfirmEmail() => EmailConfirmed = true;
 
-    /// <summary>Hash'lenmiş şifreyi ayarlar (<c>IPasswordHasher.Hash</c> ile üret).</summary>
+    /// <summary>
+    /// Şifreyi değiştirir (<c>IPasswordHasher.Hash</c> ile üret): güvenlik damgası yenilenir, diğer oturumlar kapanır.
+    /// </summary>
     public void SetPasswordHash(string passwordHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
         PasswordHash = passwordHash;
         RotateSecurityStamp();
+    }
+
+    /// <summary>
+    /// AYNI şifrenin hash'ini yeniler (girişte <c>SuccessRehashNeeded</c>: iterasyon artırıldı). Şifre değişmediği için
+    /// güvenlik damgası yenilenmez; kullanıcının diğer oturumları açık kalır.
+    /// </summary>
+    public void UpgradePasswordHash(string passwordHash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
+        PasswordHash = passwordHash;
     }
 
     public void SetAuthenticator(AuthenticatorType authenticatorType)

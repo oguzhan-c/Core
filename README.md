@@ -496,7 +496,7 @@ tüketicide bir kez işlenir: handler'ların `TContext` değişiklikleri ve inbo
 hata verirse ikisi birden geri alınır). Veritabanı dışı yan etkileri (e-posta, HTTP) idempotent yaz. Eski kayıtlar
 `Retention` (7 gün) sonra silinir. Tek örnekli uygulamalarda `AddCanInMemoryInbox()`.
 
-Gerçek broker'a karşı testler (Northwind `docker compose up -d rabbitmq kafka`):
+Gerçek broker'a karşı testler (`./build/ci.sh services` ile servisleri aç):
 `CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/ CAN_KAFKA_BOOTSTRAP=localhost:9092 dotnet test --project tests/Can.Core.EventBus.Brokers.Tests`.
 Azure için gerçek ad alanı ya da [Service Bus emülatörü](https://learn.microsoft.com/azure/service-bus-messaging/overview-emulator):
 `CAN_AZURE_SERVICEBUS_CONNECTION="Endpoint=...;UseDevelopmentEmulator=true;"`.
@@ -760,9 +760,66 @@ Sağlayıcı konsolunda dönüş adresi `https://<site>/signin-{provider}` olara
   siteler arası olduğu için `SameSite=Strict` oturum cookie'si gelmez.
 - Hata olursa `ErrorPath?externalError=kod` adresine dönülür (`denied`, `failed`, ya da uygulamanın hata kodu).
 
-Güvenlik notları: imza anahtarlarını koda/appsettings'e yazma (User Secrets, ortam değişkeni, Key Vault);
-`OtpAuthenticator.SecretKey`'i veritabanında şifreli sakla; refresh token yeniden kullanımı tespit edilirse
-kullanıcının tüm token'larını iptal et (bkz. `RefreshToken<TId>` açıklaması).
+**Oturumların kapanması (security stamp).** Şifre, e-posta, 2FA ya da dış hesap bağlantısı değişince kullanıcının
+damgası yenilenir. Damga access token'a ve refresh token kaydına yazılırsa eski oturumlar token süresi dolmadan kapanır:
+
+```csharp
+_tokens.CreateAccessToken(new TokenSubject(user.Id.ToString(), ..., SecurityStamp: user.SecurityStamp));
+new RefreshToken<Guid>(user.Id, refreshToken, now, ip, user.SecurityStamp);
+if (!token.IsValidFor(now, user.SecurityStamp)) { /* yenileme reddedilir */ }
+
+builder.Services.AddCanSecurityStampValidator<AppDbContext, AppUser, Guid>();   // damga 1 dk önbellekte
+app.UseAuthentication();
+app.UseCanTenantResolution();
+app.UseCanSecurityStampValidation();   // eski damgalı token: 401 session_revoked + cookie'ler silinir
+app.UseAuthorization();
+```
+
+Damgayı değiştiren işlemden sonra işlemi yapan oturuma yeni token'lar ver (diğer oturumlar kapanır, bu oturum açık
+kalır) ve `ISecurityStampValidator.Invalidate(userId)` çağır. Girişte iterasyon yükseltmesi için `UpgradePasswordHash`
+kullan (`SetPasswordHash` damgayı yeniler, kullanıcının diğer oturumlarını kapatır). Değişiklik aynı sunucuda hemen,
+diğer sunucularda en geç önbellek süresi (`CacheDuration`) sonra geçerli olur.
+
+**Çıkışta access token'ı geri alma (jti engel listesi).** JWT sunucuya sorulmadan doğrulandığı için çıkışta cookie
+silinse de kopyalanmış bir token kalan süresinde (en çok 15 dk) çalışırdı. Çıkışta token'ın `jti`'si engel listesine
+yazılır, liste her istekte kontrol edilir; kayıt token'ın süresi dolunca kendiliğinden silinir:
+
+```csharp
+builder.Services.AddCanAccessTokenRevocation();   // IDistributedCache: tek sunucuda bellek, çok sunucuda Redis
+app.UseCanAccessTokenRevocation();                 // UseAuthentication'dan sonra
+
+auth.MapPost("/logout", async (HttpContext http, IAuthCookieService cookies) =>
+{
+    await http.RevokeCurrentAccessTokenAsync();    // bu token artık 401 session_revoked
+    cookies.Clear(http.Response);
+    ...
+});
+```
+
+Tek token içindir; kullanıcının tüm oturumlarını kapatmak (şifre değişti, hesap engellendi) için damgayı yenile.
+
+**Kurtarma kodları.** 2FA cihazı kaybolursa kullanıcı tek kullanımlık kodlardan biriyle girer. `IRecoveryCodeService`
+(`VerificationCodeKey` verilince kayıtlı) 10 kod üretir (`ABCDE-FGH23`, ≈ 50 bit); veritabanında yalnızca anahtarlı
+HMAC'leri `RecoveryCode<TId>` olarak saklanır. Kodlar kullanıcıya bir kez gösterilir; yeniden üretilince ya da 2FA
+kapatılınca eskileri silinir. Girişte `Hash(girilen)` ile kullanılmamış kod aranır, bulunursa `MarkUsed`; hatalı
+denemeler şifre hataları gibi sayılmalı (hesap kilitleme).
+
+**TOTP anahtarlarının şifrelenmesi.** Veritabanı sızarsa 2FA anahtarları açıkta kalmasın:
+
+```csharp
+builder.Services.AddCanSecretProtection();   // ASP.NET Data Protection (anahtar halkası çok sunucuda paylaşılmalı)
+
+public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant tenant, ISecretProtector? protector = null) ...
+modelBuilder.ApplyCanSecurityModel<AppUser, Guid>(o => o.SecretProtector = _protector);
+
+await ProtectedSecret.ProtectExistingOtpSecretsAsync<Guid>(db);   // eski düz anahtarları bir kez şifrele
+```
+
+Şifreleme sonradan açılabilir: önceden düz kaydedilmiş anahtarlar okunmaya devam eder. Data Protection anahtar halkası
+kaybolursa şifreli anahtarlar okunamaz (kullanıcılar 2FA'yı yeniden kurar): halkayı kalıcı ve yedekli sakla.
+
+Güvenlik notları: imza anahtarlarını koda/appsettings'e yazma (User Secrets, ortam değişkeni, Key Vault); refresh
+token yeniden kullanımı tespit edilirse kullanıcının tüm token'larını iptal et (bkz. `RefreshToken<TId>` açıklaması).
 
 ## Multi-tenancy: tek veritabanı ya da tenant başına veritabanı
 
@@ -1136,7 +1193,7 @@ const client = createReportingClient({ baseUrl: "/api/reporting" }); // bileşen
 Sürükle-bırak tasarımcı (alan listesi, dört bölge, öğe ayarları, hesaplanmış alan), ara toplamlı ve daraltılabilir
 tablo, SVG grafikler (sütun, çizgi, pasta), Excel/PDF/CSV, kaydet/paylaş. `PivotTable` ve `ReportChart` tek başına da
 kullanılır (ör. panoda kayıtlı bir raporun sonucu). Metinler `labels` ile çevrilir; renkler `--cr-*` CSS
-değişkenleriyle uygulamanın temasına bağlanır (örnek: Northwind `index.css`). Kurulum: uygulamanın `package.json`'ına
+değişkenleriyle uygulamanın temasına bağlanır. Kurulum: uygulamanın `package.json`'ına
 `"@can-core/reporting-react": "file:<yol>/clients/reporting-react"` ve `.npmrc`'ye `install-links=true` (paket kopya
 olarak kurulur, React tek kopya kalır). Paket değişince `npm install @can-core/reporting-react`.
 

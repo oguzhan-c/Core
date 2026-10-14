@@ -1,3 +1,4 @@
+using Can.Core.Security;
 using Can.Core.Security.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,13 @@ public sealed class SecurityModelOptions
 
     /// <summary>Tablo adlarının ön eki (ör. <c>"Auth"</c> → <c>AuthUsers</c>).</summary>
     public string TablePrefix { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Verilirse TOTP anahtarları (<c>OtpAuthenticator.SecretKey</c>) veritabanında şifreli saklanır (ASP.NET Data
+    /// Protection: <c>AddCanSecretProtection()</c>, DbContext'e enjekte edip buraya ver). Önceden şifresiz kaydedilmiş
+    /// anahtarlar okunmaya devam eder; <c>ProtectExistingOtpSecretsAsync</c> ile bir kez şifrelenir.
+    /// </summary>
+    public ISecretProtector? SecretProtector { get; set; }
 }
 
 public static class SecurityModelBuilderExtensions
@@ -31,7 +39,7 @@ public static class SecurityModelBuilderExtensions
     /// <remarks>
     /// <para>
     /// Yapılandırılan tablolar: Users, Roles, UserRoles, UserLogins, OperationClaims, RoleOperationClaims, UserOperationClaims,
-    /// RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys.
+    /// RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys, RecoveryCodes.
     /// </para>
     /// <para>
     /// E-posta benzersizliği silinmiş (soft delete) kullanıcıları da kapsar; silinen kullanıcının e-postası tekrar
@@ -141,6 +149,7 @@ public static class SecurityModelBuilderExtensions
             b.Property(t => t.CreatedByIp).HasMaxLength(64);
             b.Property(t => t.RevokedByIp).HasMaxLength(64);
             b.Property(t => t.RevokedReason).HasMaxLength(256);
+            b.Property(t => t.SecurityStamp).HasMaxLength(64);
             b.HasIndex(t => t.TokenHash).IsUnique();
             b.HasIndex(t => t.UserId);
             b.HasOne<TUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -150,7 +159,9 @@ public static class SecurityModelBuilderExtensions
         {
             b.ToTable(Table("OtpAuthenticators"), options.Schema);
             b.HasKey(a => a.Id);
-            b.Property(a => a.SecretKey).HasMaxLength(256).IsRequired();
+            var secret = b.Property(a => a.SecretKey).HasMaxLength(512).IsRequired();
+            if (options.SecretProtector is { } protector)
+                secret.HasConversion(ProtectedSecret.Converter(protector), ProtectedSecret.Comparer);
             b.HasIndex(a => a.UserId).IsUnique();
             b.HasOne<TUser>().WithMany().HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -177,6 +188,15 @@ public static class SecurityModelBuilderExtensions
             b.HasIndex(p => p.CredentialId).IsUnique();
             b.HasIndex(p => p.UserId);
             b.HasOne<TUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RecoveryCode<TId>>(b =>
+        {
+            b.ToTable(Table("RecoveryCodes"), options.Schema);
+            b.HasKey(c => c.Id);
+            b.Property(c => c.CodeHash).HasMaxLength(128).IsRequired();
+            b.HasIndex(c => new { c.UserId, c.CodeHash }).IsUnique();
+            b.HasOne<TUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         return modelBuilder;

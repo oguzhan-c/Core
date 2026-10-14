@@ -15,6 +15,8 @@ namespace Can.Core.Security.Entities;
 /// <see cref="Revoke"/> ile "yenisiyle değiştirildi" olarak kapatılır.</item>
 /// <item>Kayıt bulunur ama zaten iptal edilmişse token çalınmış olabilir: kullanıcının TÜM aktif
 /// refresh token'larını iptal et (yeniden kullanım tespiti).</item>
+/// <item>Kullanıcının güvenlik damgası token oluşturulduğundan beri değiştiyse (şifre/2FA değişti) token geçersizdir:
+/// <see cref="IsValidFor"/>.</item>
 /// </list>
 /// </remarks>
 public class RefreshToken<TId> : Entity<TId>
@@ -26,7 +28,12 @@ public class RefreshToken<TId> : Entity<TId>
         TokenHash = string.Empty;
     }
 
-    public RefreshToken(TId userId, RefreshTokenValue token, DateTimeOffset createdAt, string? createdByIp)
+    /// <param name="userId">Kullanıcı.</param>
+    /// <param name="token">Yeni token (<c>ITokenService.CreateRefreshToken</c>).</param>
+    /// <param name="createdAt">Oluşturma anı.</param>
+    /// <param name="createdByIp">İstemcinin IP'si.</param>
+    /// <param name="securityStamp">Kullanıcının o anki güvenlik damgası; değişirse token geçersiz olur.</param>
+    public RefreshToken(TId userId, RefreshTokenValue token, DateTimeOffset createdAt, string? createdByIp, string? securityStamp = null)
     {
         ArgumentNullException.ThrowIfNull(token);
 
@@ -35,6 +42,7 @@ public class RefreshToken<TId> : Entity<TId>
         ExpiresAt = token.ExpiresAt;
         CreatedAt = createdAt;
         CreatedByIp = createdByIp;
+        SecurityStamp = securityStamp;
     }
 
     public TId UserId { get; protected set; }
@@ -58,11 +66,22 @@ public class RefreshToken<TId> : Entity<TId>
     [DisableAuditing]
     public string? ReplacedByTokenHash { get; protected set; }
 
+    /// <summary>Oluşturulduğu andaki güvenlik damgası (eski kayıtlarda boş: denetlenmez).</summary>
+    [DisableAuditing]
+    public string? SecurityStamp { get; protected set; }
+
     public bool IsRevoked => RevokedAt is not null;
 
     public bool IsExpired(DateTimeOffset now) => now >= ExpiresAt;
 
     public bool IsActive(DateTimeOffset now) => !IsRevoked && !IsExpired(now);
+
+    /// <summary>
+    /// Yenilemede kullan: aktif mi ve kullanıcının güvenlik damgası token oluşturulduğundan beri değişmedi mi
+    /// (değiştiyse şifre/2FA değişmiştir, eski oturum devam etmemeli).
+    /// </summary>
+    public bool IsValidFor(DateTimeOffset now, string currentSecurityStamp) =>
+        IsActive(now) && (SecurityStamp is null || string.Equals(SecurityStamp, currentSecurityStamp, StringComparison.Ordinal));
 
     public void Revoke(DateTimeOffset now, string? ip, string reason, string? replacedByTokenHash = null)
     {

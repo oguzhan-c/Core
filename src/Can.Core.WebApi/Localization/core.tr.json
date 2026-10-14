@@ -22,5 +22,6 @@
   "idempotency_key_reused": "Bu anahtar farklı bir istekle kullanılmış; yeni istek için yeni anahtar üret.",
   "feature_disabled": "Bu özellik kullanılamıyor.",
   "api_version_unsupported": "Bu API sürümü desteklenmiyor.",
-  "api_version_retired": "Bu API sürümü kapatıldı; yeni sürüme geç."
+  "api_version_retired": "Bu API sürümü kapatıldı; yeni sürüme geç.",
+  "session_revoked": "Oturum sonlandırıldı; tekrar giriş yap."
 }

@@ -20,6 +20,10 @@ namespace Can.Core.Security.Tokens;
 /// Yetkiler (<c>permission</c>). Token (ve cookie) boyutu büyümesin diye çok sayıda yetkiyi tek tek değil,
 /// mümkünse joker (<c>"products.*"</c>) olarak ver.
 /// </param>
+/// <param name="SecurityStamp">
+/// Kullanıcının güvenlik damgası (<c>sstamp</c>). Verilirse ve WebApi'de <c>UseCanSecurityStampValidation()</c> açıksa,
+/// şifre/2FA değişince bu token süresi dolmadan geçersiz olur.
+/// </param>
 public sealed record TokenSubject(
     string UserId,
     string? UserName = null,
@@ -27,7 +31,8 @@ public sealed record TokenSubject(
     IReadOnlyCollection<string>? Roles = null,
     string? TenantId = null,
     IReadOnlyCollection<Claim>? AdditionalClaims = null,
-    IReadOnlyCollection<string>? Permissions = null);
+    IReadOnlyCollection<string>? Permissions = null,
+    string? SecurityStamp = null);
 
 public sealed record AccessToken(string Token, DateTimeOffset ExpiresAt);
 
@@ -62,6 +67,7 @@ public sealed class TokenService : ITokenService
     public const string RoleClaimType = "role";
     public const string TenantClaimType = "tenant_id";
     public const string PermissionClaimType = "permission";
+    public const string SecurityStampClaimType = "sstamp";
 
     private readonly JwtOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -106,6 +112,9 @@ public sealed class TokenService : ITokenService
 
         if (!string.IsNullOrWhiteSpace(subject.TenantId))
             claims.Add(new Claim(TenantClaimType, subject.TenantId));
+
+        if (!string.IsNullOrWhiteSpace(subject.SecurityStamp))
+            claims.Add(new Claim(SecurityStampClaimType, subject.SecurityStamp));
 
         if (subject.AdditionalClaims is not null)
             claims.AddRange(subject.AdditionalClaims);

@@ -22,5 +22,6 @@
   "idempotency_key_reused": "This key was used with a different request; generate a new key for a new request.",
   "feature_disabled": "This feature is not available.",
   "api_version_unsupported": "This API version is not supported.",
-  "api_version_retired": "This API version has been retired; move to a newer version."
+  "api_version_retired": "This API version has been retired; move to a newer version.",
+  "session_revoked": "Your session has ended; please sign in again."
 }
