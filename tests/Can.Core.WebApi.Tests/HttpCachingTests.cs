@@ -190,7 +190,8 @@ public class HttpCachingTests
         {
             HttpResponseMessage response = await client.SendAsync(Get("/versioned", "u1"), TestContext.Current.CancellationToken);
             Assert.Equal("\"v7\"", response.Headers.ETag?.ToString());
-            Assert.Equal("private, no-cache", response.Headers.CacheControl?.ToString());
+            Assert.True(response.Headers.CacheControl?.Private);
+            Assert.True(response.Headers.CacheControl?.NoCache);
 
             HttpRequestMessage conditional = Get("/versioned", "u1");
             conditional.Headers.TryAddWithoutValidation("If-None-Match", "W/\"v7\"");
