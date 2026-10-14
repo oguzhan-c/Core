@@ -1478,6 +1478,104 @@ app.MapApiVersion(2).MapGet("/orders", GetOrdersV2);   // /api/v2/orders
 Yalnızca ana sürüm (`v1`, `v2`) desteklenir: geriye uyumlu değişiklikler aynı sürümde yapılır, kırıcı değişiklik yeni
 sürüm demektir.
 
+## HTTP önbelleği, ETag ve sıkıştırma
+
+Tek çağrıyla dört şey açılır (`AddCanHttpCaching` + `UseCanHttpCaching`):
+
+| Özellik | Ne kazandırır |
+|---|---|
+| **Sunucu önbelleği** (`WithResponseCache`) | İşaretli GET uç noktasının yanıtı saklanır; aynı istek handler'a ve veritabanına hiç gitmez. Aynı anda gelen aynı istekler tek çalıştırmayı bekler (cache stampede yok). |
+| **ETag + 304** | Her GET 200 yanıtına gövde özeti eklenir. İstemci `If-None-Match` ile aynı değeri gönderirse gövdesiz **304** döner: veri değişmediyse ağdan tekrar inmez. |
+| **Sıkıştırma** | Brotli ya da gzip (istemcinin `Accept-Encoding`'ine göre). JSON genelde 5–10 kat küçülür. |
+| **`Cache-Control` varsayılanları** | Giriş yapmış kullanıcıya `private, no-cache` (CDN ve kurum proxy'leri saklamaz, tarayıcı ETag ile doğrular), diğerlerine `no-cache`. |
+
+```csharp
+builder.Services.AddCanHttpCaching();                 // ayarlar: o => o.DefaultDuration = TimeSpan.FromMinutes(2) ...
+builder.Services.AddCanEntityCacheInvalidation();     // isteğe bağlı: entity değişince etiketleri kendiliğinden sil
+
+app.UseAuthentication();
+app.UseCanTenantResolution();
+app.UseAuthorization();
+app.UseCanHttpCaching();                              // bu üçünden SONRA
+
+app.MapGet("/products", ListProducts)
+   .WithResponseCache(ResponseCacheScope.Tenant, CacheTags.Entity<Product>());        // varsayılan süre (60 sn)
+app.MapGet("/countries", ListCountries)
+   .WithResponseCache(ResponseCacheScope.Public, TimeSpan.FromHours(1), "countries");
+app.MapGet("/me/orders", MyOrders).WithResponseCache();                              // kullanıcıya özel
+app.MapGet("/me/recovery-codes", GetCodes).WithNoStore();                            // hiçbir yerde saklanmaz
+```
+
+Controller'larda aynısı öznitelikle: `[CachedResponse(ResponseCacheScope.Tenant, Tags = new[] { "products" })]`, `[NoStoreResponse]`.
+
+**Kapsam: yanıt kimlerle paylaşılır?** Yanlış kapsam veri sızdırır; emin değilsen varsayılanı (`User`) kullan.
+
+| Kapsam | Anahtar | Ne için |
+|---|---|---|
+| `User` (varsayılan) | tenant + kullanıcı | kullanıcının kendi verisi |
+| `Tenant` | tenant + **rol/yetki kümesi** | tenant içinde herkese aynı olan veri (katalog, kategori) |
+| `Public` | yok | herkese açık veri (giriş yapmamışlar dahil) |
+
+Her kapsamda anahtara dil, API sürümü, `Accept` ve tüm sorgu parametreleri de girer (`?page=2` ayrı kayıttır).
+`Tenant` kapsamında rolleri ya da yetkileri farklı iki kullanıcı birbirinin yanıtını **alamaz**. Yine de yanıt
+kullanıcıya göre değişiyorsa (ör. handler `ICurrentUser.Id`'ye göre filtreliyorsa) `User` kullan.
+
+> **Yetki notu:** Önbellekten dönen yanıtta handler çalışmaz; dolayısıyla `ISecuredRequest` kontrolü de çalışmaz.
+> Uç noktayı ayrıca `.RequireAuthorization(...)` ile koru (o, önbellekten önce çalışır). `User` kapsamında bir
+> kullanıcının yetkisi alınırsa önbellekteki yanıtını en fazla kayıt süresi kadar daha görebilir; kısa süre ver.
+
+**Ne saklanmaz:** yalnızca GET ve 200 saklanır. `Set-Cookie` içeren (ör. token yenileyen) ya da `Cache-Control:
+no-store` diyen yanıtlar asla saklanmaz.
+
+**Önbelleği silmek (etiketler).** Etiketler handler önbelleğiyle (`ICachableRequest`) ortaktır; tek silme ikisini birden
+temizler:
+
+```csharp
+public sealed record UpdateProductCommand(...) : IRequest<Result>, ICacheRemoverRequest
+{
+    public IReadOnlyCollection<string> CacheTagsToRemove => [CacheTags.Entity<Product>()];
+}
+```
+
+`AddCanEntityCacheInvalidation()` açıksa bunu elle yazmana da gerek kalmaz: bir `Product` eklendiğinde, değiştiğinde ya
+da silindiğinde `entity:Product` etiketi kendiliğinden silinir. Transaction içindeyse silme **commit'ten sonra** yapılır
+(önce yapılsaydı başka bir istek commit'ten önce eski veriyi okuyup tekrar önbelleğe yazabilirdi); geri alınan
+transaction hiçbir şey silmez. Varsayılan kapalıdır, çünkü her kayıtta değişen tip başına bir silme yapar (Redis'te
+bir ağ çağrısı).
+
+**ETag ayrıntıları.**
+- Uç nokta kendi ETag'ini verirse (ör. satır sürümünden: `response.Headers.ETag = $"\"{product.Version}\""`) o
+  kullanılır; gövde özetlenmez.
+- Yanıt `MaximumETagBodySize`'a (1 MB) kadar bellekte tutulur. Daha büyük yanıtlar ve `text/event-stream` (SSE) ETag'siz,
+  akış olarak gönderilir.
+- ETag zayıftır (`W/"..."`): sıkıştırılmış ve sıkıştırılmamış gövde aynı kabul edilir.
+- Tarayıcı `If-None-Match`'i kendisi gönderir. React'te `fetch` varsayılan önbellek moduyla bunu yapar; ek kod gerekmez.
+
+**Sıkıştırma ayrıntıları.**
+- Düzey `Fastest`'tır: dinamik yanıtta `Optimal` biraz daha küçük çıktı için çok daha fazla CPU harcar.
+- Reverse proxy (nginx, Azure Front Door, CloudFront) zaten sıkıştırıyorsa `o.UseCompression = false`.
+- HTTPS yanıtları da sıkıştırılır (`CompressHttps`). ASP.NET'in varsayılanı kapalıdır, çünkü BREACH saldırısı gizli bir
+  değer ile saldırganın kontrol ettiği metin **aynı gövdede** sıkıştırıldığında işe yarar. Burada token'lar gövdede
+  değil, cookie'dedir. Gövdesinde gizli değer dönen uç noktalara `.WithNoStore()` ver ya da `CompressHttps = false` yap.
+
+**Birden çok sunucu.** Önbellek varsayılan olarak her sunucunun belleğindedir (`OutputCacheSizeLimit`, 100 MB). Tüm
+sunucuların aynı önbelleği ve aynı etiket silmelerini görmesi için:
+
+```csharp
+builder.Services.AddCanRedisScaleOut(o => { o.ConnectionString = redis; o.ApplicationName = "shop"; })
+    .UseForOutputCache();
+```
+
+Redis'e ulaşılamazsa site durmaz: istekler önbelleksiz yanıtlanır.
+
+| Ayar | Varsayılan |
+|---|---|
+| `UseOutputCache` / `UseETags` / `UseCompression` / `SetDefaultCacheControl` | açık |
+| `DefaultDuration` | 60 sn |
+| `MaximumCachedBodySize` | 1 MB (daha büyük yanıt sunucuda saklanmaz) |
+| `MaximumETagBodySize` | 1 MB |
+| `CompressionLevel` | `Fastest` |
+
 ## Idempotency (tekrar eden istekler)
 
 Ağ koptuğunda istemci isteği tekrar gönderir; sipariş, ödeme gibi işlemler iki kez yapılmamalı. İstemci her işlem için

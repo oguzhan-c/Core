@@ -1,5 +1,6 @@
 using Can.Core.Application;
 using Can.Core.BackgroundJobs;
+using Can.Core.Persistence.Caching;
 using Can.Core.Persistence.AuditTrail;
 using Can.Core.EventBus;
 using Can.Core.Persistence.Inbox;
@@ -67,6 +68,10 @@ public static class ServiceCollectionExtensions
                     serviceProvider.GetRequiredService<AuditTrailInterceptor>(),
                     serviceProvider.GetRequiredService<DomainEventInterceptor>()
                 );
+
+                // AddCanEntityCacheInvalidation() çağrıldıysa: kaydedilen entity'lerin önbellek etiketleri silinir.
+                if (serviceProvider.GetService<EntityCacheInvalidationInterceptor>() is { } cacheInvalidation)
+                    options.AddInterceptors(cacheInvalidation, serviceProvider.GetRequiredService<EntityCacheInvalidationTransactionInterceptor>());
             }
         );
 
@@ -74,6 +79,34 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IUnitOfWork, UnitOfWork>();
         services.TryAddScoped(typeof(IRepository<,>), typeof(EfRepository<,>));
 
+        return services;
+    }
+
+    /// <summary>
+    /// Kaydedilen entity'lerin önbellek etiketlerini (<see cref="CacheTags.Entity{TEntity}"/>, ör. <c>entity:Product</c>)
+    /// kendiliğinden siler: handler önbelleği (<c>ICachableRequest</c>) ve HTTP önbelleği (<c>WithResponseCache</c>) bu
+    /// etiketi taşıyorsa, o tipten bir kayıt eklendiğinde, değiştiğinde ya da silindiğinde eski yanıt dönmez.
+    /// Transaction içindeyse silme commit'ten sonra yapılır.
+    /// </summary>
+    /// <remarks>
+    /// Varsayılan kapalıdır: her kayıtta değişen tip başına bir silme yapılır (Redis kullanılıyorsa bir ağ çağrısı).
+    /// <c>ICacheRemoverRequest.CacheTagsToRemove</c> ile elle silme her durumda çalışır.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// services.AddCanPersistence&lt;AppDbContext&gt;(o =&gt; o.UseNpgsql(connectionString));
+    /// services.AddCanEntityCacheInvalidation();
+    ///
+    /// // sorgu: public IReadOnlyCollection&lt;string&gt; CacheTags =&gt; [Can.Core.Application.CacheTags.Entity&lt;Product&gt;()];
+    /// // uç nokta: app.MapGet("/products", ...).WithResponseCache(ResponseCacheScope.Tenant, CacheTags.Entity&lt;Product&gt;());
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddCanEntityCacheInvalidation(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.TryAddScoped<EntityCacheInvalidationState>();
+        services.TryAddScoped<EntityCacheInvalidationInterceptor>();
+        services.TryAddScoped<EntityCacheInvalidationTransactionInterceptor>();
         return services;
     }
 

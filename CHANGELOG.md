@@ -34,6 +34,10 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 - **WebApi**: hata → ProblemDetails (çeviri destekli), `ICurrentUser`, tenant çözümleme, hız sınırlama, sağlık uç
   noktaları, harici giriş, idempotency anahtarı (`Idempotency-Key`), URL/başlık ile API sürümleme
   (`Deprecation`/`Sunset`).
+- **HTTP önbelleği**: kullanıcı/tenant+rol/herkese açık kapsamlı sunucu önbelleği (`WithResponseCache`), handler
+  önbelleğiyle ortak etiketler, entity değişince otomatik silme (`AddCanEntityCacheInvalidation`, commit'ten sonra),
+  ETag ve 304, Brotli/gzip sıkıştırma, güvenli `Cache-Control` varsayılanları, `WithNoStore`; Redis'te ortak önbellek
+  (`UseForOutputCache`).
 - **Ayarlar**: tipli uygulama/tenant ayarları, doğrulama, gizli (şifreli) değerler, önbellek; EF Core deposu; yönetim
   uç noktaları.
 - **Event bus**: zarf, sabit event adları, tenant'ı koruyan dağıtım, ortak tüketim akışı (anında ve gecikmeli deneme,

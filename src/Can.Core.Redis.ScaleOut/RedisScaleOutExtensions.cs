@@ -2,6 +2,7 @@ using Can.Core.Application;
 using Can.Core.WebApi.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.StackExchangeRedis;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +51,20 @@ public sealed class RedisScaleOutBuilder
         return this;
     }
 
+    /// <summary>
+    /// HTTP çıktı önbelleği (<c>AddCanHttpCaching</c> / <c>WithResponseCache</c>) sunucuların hepsinde ortak: bir sunucunun
+    /// önbelleğe aldığı yanıtı diğeri de verir; etiket silme (<c>CacheTagsToRemove</c>, entity değişikliği) hepsinde geçerli.
+    /// </summary>
+    public RedisScaleOutBuilder UseForOutputCache()
+    {
+        Services.RemoveAll<IOutputCacheStore>();
+        Services.AddSingleton<IOutputCacheStore>(sp => new RedisOutputCacheStore(
+            sp.GetRequiredService<RedisConnection>(),
+            sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            sp.GetRequiredService<ILogger<RedisOutputCacheStore>>()));
+        return this;
+    }
+
     private string ApplicationName() =>
         (Services.First(d => d.ServiceType == typeof(RedisScaleOutOptions)).ImplementationInstance as RedisScaleOutOptions)!.ApplicationName;
 }
@@ -64,7 +79,8 @@ public static class RedisScaleOutExtensions
     /// builder.Services.AddCanRedisScaleOut(o =&gt; { o.ConnectionString = "localhost:6379"; o.ApplicationName = "northwind"; })
     ///     .PersistDataProtectionKeys()
     ///     .UseForRateLimiting()
-    ///     .UseForDistributedLocks();
+    ///     .UseForDistributedLocks()
+    ///     .UseForOutputCache();
     /// builder.Services.AddCanSignalR().AddCanRedisBackplane();
     /// </code>
     /// </example>

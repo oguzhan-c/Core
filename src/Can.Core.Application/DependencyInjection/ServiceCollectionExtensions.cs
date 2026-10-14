@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ICurrentTenant>(NullCurrentTenant.Instance);
         services.TryAddSingleton<IDistributedLock>(sp => new Locking.InMemoryDistributedLock(sp.GetService<TimeProvider>())); // Redis: Can.Core.Redis.ScaleOut
         services.AddHybridCache();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ICacheInvalidationTarget, HybridCacheInvalidationTarget>());
         services.AddCanFeatureFlagDefaults(); // AddCanFeatureFlags(...) önce ya da sonra çağrılabilir
 
         services.AddCanMediator(cfg =>

@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Can.Core.Application;
 using Can.Core.WebApi.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -172,6 +173,48 @@ public class RedisScaleOutIntegrationTests
         await stale.DisposeAsync();
         Assert.Null(await locks1.TryAcquireAsync("job", TimeSpan.FromSeconds(30), cancellationToken: ct));
         await fresh.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Output_cache_is_shared_and_tag_eviction_reaches_every_server()
+    {
+        Assert.SkipWhen(string.IsNullOrWhiteSpace(Url), "CAN_REDIS_URL verilmedi.");
+        string application = NewApplication();
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        await using ServiceProvider server1 = Server(application, b => b.UseForOutputCache());
+        await using ServiceProvider server2 = Server(application, b => b.UseForOutputCache());
+        IOutputCacheStore store1 = server1.GetRequiredService<IOutputCacheStore>();
+        IOutputCacheStore store2 = server2.GetRequiredService<IOutputCacheStore>();
+
+        await store1.SetAsync("products:1", [1, 2, 3], ["products"], TimeSpan.FromMinutes(1), ct);
+        await store1.SetAsync("orders:1", [4], ["orders"], TimeSpan.FromMinutes(1), ct);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await store2.GetAsync("products:1", ct));
+
+        await store2.EvictByTagAsync("products", ct);
+        Assert.Null(await store1.GetAsync("products:1", ct));
+        Assert.Equal(new byte[] { 4 }, await store1.GetAsync("orders:1", ct)); // başka etiket etkilenmez
+
+        await store1.SetAsync("short", [9], null, TimeSpan.FromMilliseconds(200), ct);
+        await Task.Delay(500, ct);
+        Assert.Null(await store2.GetAsync("short", ct));
+    }
+
+    [Fact]
+    public async Task Output_cache_outage_is_a_cache_miss_not_an_error()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCanRedisScaleOut(o =>
+        {
+            o.ConnectionString = "127.0.0.1:1,connectTimeout=200,syncTimeout=200,asyncTimeout=200";
+            o.ApplicationName = NewApplication();
+        }).UseForOutputCache();
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        IOutputCacheStore store = provider.GetRequiredService<IOutputCacheStore>();
+
+        await store.SetAsync("k", [1], ["t"], TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+        Assert.Null(await store.GetAsync("k", TestContext.Current.CancellationToken));
     }
 
     [Fact]
