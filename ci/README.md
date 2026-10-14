@@ -14,7 +14,7 @@ diğerlerini silebilirsin; betik değişmediği için sistem değiştirmek yaln�
 | AWS CodeBuild | `ci/aws/buildspec.yml` | Build projesinde buildspec yolu olarak ver; **Privileged** açık | `docker compose` (`ci/docker-compose.ci.yml`) |
 | Google Cloud Build | `ci/gcp/cloudbuild.yaml` | Trigger'da yapılandırma dosyası olarak ver | `ci/gcp/start-services.sh` (`cloudbuild` ağında, adla) |
 
-Hepsinde RabbitMQ, Kafka, Redis ve Elasticsearch testleri çalışır. Azure Service Bus'ın container'ı olmadığı için
+Hepsinde RabbitMQ, Kafka, Redis, Elasticsearch ve Azure Blob (Azurite emülatörü) testleri çalışır. Azure Service Bus'ın container'ı olmadığı için
 bağlantı dizesi sistemin gizli değişkenlerine `CAN_AZURE_SERVICEBUS_CONNECTION` adıyla eklenirse çalışır, yoksa
 atlanır (her dosyada yeri yorum olarak gösterildi). Bağlantı dizesini repoya yazma.
 

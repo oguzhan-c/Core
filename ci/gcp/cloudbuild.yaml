@@ -23,6 +23,7 @@ steps:
       - CAN_KAFKA_BOOTSTRAP=kafka:9092
       - CAN_REDIS_URL=redis:6379
       - CAN_ELASTICSEARCH_URL=http://elasticsearch:9200
+      - CAN_AZURITE_URL=http://azurite:10000/devstoreaccount1
     # secretEnv: ["CAN_AZURE_SERVICEBUS_CONNECTION", "NUGET_API_KEY"]
 
   - id: client

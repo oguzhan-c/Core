@@ -27,3 +27,7 @@ docker run -d --network cloudbuild --name elasticsearch \
   -e ES_SETTING_XPACK_SECURITY_ENABLED=false \
   -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
   docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
+# Azure Blob emülatörü; adla erişildiği için yol biçimli adres (http://azurite:10000/hesap)
+docker run -d --network cloudbuild --name azurite mcr.microsoft.com/azure-storage/azurite:3.34.0 \
+  azurite-blob --blobHost 0.0.0.0 --disableProductStyleUrl

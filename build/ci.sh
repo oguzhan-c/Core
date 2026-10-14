@@ -10,7 +10,8 @@
 # Ortam değişkenleri:
 #   CONFIGURATION   Release (varsayılan) / Debug
 #   ARTIFACTS       çıktı klasörü (varsayılan: artifacts)
-#   CAN_RABBITMQ_URL, CAN_KAFKA_BOOTSTRAP, CAN_REDIS_URL, CAN_ELASTICSEARCH_URL, CAN_AZURE_SERVICEBUS_CONNECTION
+#   CAN_RABBITMQ_URL, CAN_KAFKA_BOOTSTRAP, CAN_REDIS_URL, CAN_ELASTICSEARCH_URL, CAN_AZURITE_URL,
+#   CAN_AZURE_SERVICEBUS_CONNECTION
 #                   verilen entegrasyon testleri çalışır (servis hazır olana kadar beklenir), verilmeyenler atlanır.
 #   NUGET_API_KEY   yayın anahtarı (yalnızca publish); NUGET_SOURCE yayın adresi (varsayılan nuget.org)
 set -euo pipefail
@@ -25,7 +26,7 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=true
 log() { printf '\n==> %s\n' "$*"; }
 
 # Azure DevOps tanımsız değişkeni "$(AD)" metni olarak geçirir: bunları tanımsız say
-for variable in CAN_AZURE_SERVICEBUS_CONNECTION CAN_RABBITMQ_URL CAN_KAFKA_BOOTSTRAP CAN_REDIS_URL CAN_ELASTICSEARCH_URL NUGET_API_KEY NUGET_SOURCE; do
+for variable in CAN_AZURE_SERVICEBUS_CONNECTION CAN_AZURITE_URL CAN_RABBITMQ_URL CAN_KAFKA_BOOTSTRAP CAN_REDIS_URL CAN_ELASTICSEARCH_URL NUGET_API_KEY NUGET_SOURCE; do
   if [[ "${!variable:-}" == '$('*')' ]]; then unset "$variable"; fi
 done
 
@@ -80,7 +81,7 @@ host_port() {
 }
 
 wait_for_services() {
-  for pair in "RabbitMQ:CAN_RABBITMQ_URL" "Kafka:CAN_KAFKA_BOOTSTRAP" "Redis:CAN_REDIS_URL" "Elasticsearch:CAN_ELASTICSEARCH_URL"; do
+  for pair in "RabbitMQ:CAN_RABBITMQ_URL" "Kafka:CAN_KAFKA_BOOTSTRAP" "Redis:CAN_REDIS_URL" "Elasticsearch:CAN_ELASTICSEARCH_URL" "Azurite:CAN_AZURITE_URL"; do
     local name="${pair%%:*}" variable="${pair#*:}"
     local value="${!variable:-}"
     if [[ -n "$value" ]]; then
@@ -127,6 +128,7 @@ services_up() {
       export CAN_KAFKA_BOOTSTRAP=localhost:9092
       export CAN_REDIS_URL=localhost:6379
       export CAN_ELASTICSEARCH_URL=http://localhost:9200
+      export CAN_AZURITE_URL=http://localhost:10000/devstoreaccount1
 VARS
 }
 

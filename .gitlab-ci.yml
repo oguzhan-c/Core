@@ -42,11 +42,16 @@ dotnet:
         ES_SETTING_DISCOVERY_TYPE: single-node
         ES_SETTING_XPACK_SECURITY_ENABLED: "false"
         ES_JAVA_OPTS: -Xms512m -Xmx512m
+    - name: mcr.microsoft.com/azure-storage/azurite:3.34.0
+      alias: azurite
+      # adla erişildiği için yol biçimli adres (http://azurite:10000/hesap) zorunlu
+      command: ["azurite-blob", "--blobHost", "0.0.0.0", "--disableProductStyleUrl"]
   variables:
     CAN_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     CAN_KAFKA_BOOTSTRAP: kafka:9092
     CAN_REDIS_URL: redis:6379
     CAN_ELASTICSEARCH_URL: http://elasticsearch:9200
+    CAN_AZURITE_URL: http://azurite:10000/devstoreaccount1
     # CAN_AZURE_SERVICEBUS_CONNECTION: Settings → CI/CD → Variables'ta (masked) tanımlanırsa Service Bus testleri çalışır
     # NUGET_API_KEY (masked, protected) ve isteğe bağlı NUGET_SOURCE: etiketli derlemede yayın için
     NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages

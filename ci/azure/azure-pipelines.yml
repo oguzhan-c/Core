@@ -34,6 +34,9 @@ resources:
         ES_SETTING_DISCOVERY_TYPE: single-node
         ES_SETTING_XPACK_SECURITY_ENABLED: "false"
         ES_JAVA_OPTS: -Xms512m -Xmx512m
+    - container: azurite
+      image: mcr.microsoft.com/azure-storage/azurite:3.34.0
+      ports: ["10000:10000"]
 
 jobs:
   - job: dotnet
@@ -46,11 +49,13 @@ jobs:
       kafka: kafka
       redis: redis
       elasticsearch: elasticsearch
+      azurite: azurite
     variables:
       CAN_RABBITMQ_URL: amqp://guest:guest@localhost:5672/
       CAN_KAFKA_BOOTSTRAP: localhost:9092
       CAN_REDIS_URL: localhost:6379
       CAN_ELASTICSEARCH_URL: http://localhost:9200
+      CAN_AZURITE_URL: http://localhost:10000/devstoreaccount1
     steps:
       - task: UseDotNet@2
         displayName: .NET 10 SDK

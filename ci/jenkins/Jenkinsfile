@@ -22,6 +22,7 @@ pipeline {
         CAN_KAFKA_BOOTSTRAP = 'localhost:9092'
         CAN_REDIS_URL = 'localhost:6379'
         CAN_ELASTICSEARCH_URL = 'http://localhost:9200'
+        CAN_AZURITE_URL = 'http://localhost:10000/devstoreaccount1'
         // Service Bus testleri: Jenkins kimlik bilgisi (Secret text) tanımlanırsa
         // CAN_AZURE_SERVICEBUS_CONNECTION = credentials('can-azure-servicebus')
     }

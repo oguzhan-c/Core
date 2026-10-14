@@ -24,6 +24,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.EventBus.AzureServiceBus` | Azure.Messaging.ServiceBus | Topic + subscription (correlation filtreleri), zamanlanmış deneme, yerleşik DLQ |
 | `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
 | `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
+| `Can.Core.FileStorage.AzureBlob` | Extensions.Http | Azure Blob Storage (ve Azurite); SDK'sız REST, Shared Key / SAS / Entra ID, süreli adres (SAS) |
 | `Can.Core.Search` | yok | `ISearchIndex<T>`: tam metin arama, filtre, sıralama, vurgulama, toplama, tenant yalıtımı; bellek içi motor |
 | `Can.Core.Search.Elasticsearch` | Extensions.Http | Elasticsearch / OpenSearch motoru; resmî istemci yerine HttpClient + Query DSL |
 | `Can.Core.Reporting` | DI.Abstractions | Pivot rapor motoru: satır/sütun gruplama, ara/genel toplam, 14 özet (ortanca, yüzdelik, std. sapma ...), yüzde/kümülatif/fark/sıra gösterimleri, Top N + "Diğer", ifade dili, veritabanında GROUP BY, CSV/Excel/PDF (paketsiz) |
@@ -48,7 +49,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Testing.EntityFrameworkCore` | EF Core SQLite | `SqliteTestDatabase`: test başına bellekte gerçek ilişkisel veritabanı |
 | `Can.Core.Testing.AspNetCore` | ASP.NET Core TestHost | Test kimlik doğrulaması (`client.AsUser(...)`), `CanTestApp` |
 | `Can.Core.Observability.OpenTelemetry` | OpenTelemetry | Can.Core ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
-| `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>` — EF'e bağımlı değil |
+| `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>`, `ICursorPage<T>` — EF'e bağımlı değil |
 | `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
 
 ```bash
@@ -366,6 +367,48 @@ bool ok = spec.IsSatisfiedBy(product);                               // bellekte
 ```
 
 Birleştirmede koşullar tek parametreye indirgenir (SQL'e çevrilir); include/sıralama soldaki specification'dan alınır.
+
+**İmleçli (cursor / keyset) sayfalama**
+
+Sayfa numaralı sayfalama (`GetListAsync`, `ToPaginateAsync`) olduğu gibi duruyor; hangisini kullanacağına uygulama
+karar verir:
+
+| | Sayfa numaralı (offset) | İmleçli (cursor) |
+|---|---|---|
+| Sorgu | `OFFSET 10000 LIMIT 20`: atlanan 10.000 satır yine okunur | `WHERE (ad, id) > (son görülen) LIMIT 21`: index'ten doğrudan |
+| Derin sayfa | sayfa ilerledikçe yavaşlar | her sayfa aynı hızda |
+| Toplam sayı / "5. sayfaya git" | var (ayrı bir `COUNT` sorgusu) | yok |
+| Sayfalar arası ekleme/silme | kayıt atlanır ya da tekrar gelir | atlama ve tekrar olmaz |
+| Uygun olduğu yer | yönetim tabloları, numaralı sayfalar | sonsuz kaydırma, mobil, akış (feed), büyük tablolar, dışa aktarma |
+
+```csharp
+// Repository: Id sıralamanın sonuna kendiliğinden eklenir (eşit değerli kayıtlar kaybolmasın)
+var order = CursorOrder<Product>.ByDescending(p => p.CreatedAt);
+ICursorPage<Product> page = await repository.GetCursorPageAsync(order, request.Cursor, size: 20,
+    predicate: p => p.CategoryId == request.CategoryId, cancellationToken: ct);
+
+return page.Map(p => new ProductDto(p.Id, p.Name));
+// JSON: { "items": [...], "size": 20, "nextCursor": "eyJkIjoiYSIs...", "previousCursor": null, "hasNext": true, "hasPrevious": false }
+
+// IQueryable üzerinde (projeksiyon, özel sorgu): son anahtarın benzersiz olmasını sen sağlarsın
+ICursorPage<Order> orders = await db.Orders.Where(o => o.CustomerId == customerId)
+    .ToCursorPageAsync(CursorOrder<Order>.ByDescending(o => o.PlacedAt).ThenByDescending(o => o.Id), cursor, 50, ct);
+```
+
+İstemci yalnızca `nextCursor` ya da `previousCursor`'ı bir sonraki isteğe olduğu gibi verir (`GET /products?cursor=...`);
+imlecin içini yorumlamaz. Kurallar:
+
+- **Anahtarlar birlikte benzersiz olmalı.** Son anahtar genelde Id'dir. Repository Id'yi kendiliğinden ekler; IQueryable
+  üzerinde kendin eklersin.
+- **Anahtarlar null olamaz.** Null olabilen bir kolon için birleşik ifade kullan: `p => p.PublishedAt ?? p.CreatedAt`.
+  Null olabilen tipler hemen hata verir. `string` kolonunun veritabanında `NOT NULL` olduğundan emin ol.
+- **Index:** Sıralamayla aynı kolonlara bileşik bir index koy (`HasIndex(p => new { p.CreatedAt, p.Id })`). Hız farkını
+  sağlayan budur.
+- **Bozuk ya da başka bir sıralamaya ait imleç** 400 döner (`code: "cursor_invalid"`). İmleç bir sıralamaya bağlıdır;
+  sıralama değişince istemci ilk sayfadan başlar.
+- İmleç değerleri SQL'e sabit olarak değil **parametre** olarak gider: her sayfada aynı sorgu planı kullanılır.
+- İmleç gizli değildir: içinde son kaydın sıralama değerleri (ör. tarih ve Id) bulunur. Gizli bir kolonla sıralama
+  yapıyorsan bunu göz önünde bulundur.
 
 **Outbox: kaybolmaması gereken event'ler**
 
@@ -1202,11 +1245,16 @@ olarak kurulur, React tek kopya kalır). Paket değişince `npm install @can-cor
 ```csharp
 builder.Services.AddCanLocalFileStorage(o => o.RootPath = "/var/app-files");               // yerel / ağ diski
 builder.Services.AddCanS3FileStorage(o => builder.Configuration.GetSection("Storage:S3").Bind(o)); // ya da S3 uyumlu
+builder.Services.AddCanAzureBlobFileStorage(o =>                                              // ya da Azure Blob
+{
+    o.ConnectionString = builder.Configuration["Storage:Azure:ConnectionString"];             // user-secrets / Key Vault
+    o.Container = "files";
+});
 
 // handler: yollar göreli, "/" ile ayrılır
 await storage.SaveAsync($"products/{id}/photo.jpg", stream, new FileSaveOptions { Overwrite = true }, ct);
 await using Stream? file = await storage.OpenReadAsync($"products/{id}/photo.jpg", ct);
-Uri? link = await storage.GetTemporaryUrlAsync(path, TimeSpan.FromMinutes(10), ct);   // S3: presigned; yerel: null
+Uri? link = await storage.GetTemporaryUrlAsync(path, TimeSpan.FromMinutes(10), ct);   // S3: presigned, Azure: SAS; yerel: null
 ```
 
 - **Tenant yalıtımı** varsayılan: yollar otomatik `tenants/{tenantId}/...` (tenant yoksa `host/...`) altına gider;
@@ -1217,6 +1265,26 @@ Uri? link = await storage.GetTemporaryUrlAsync(path, TimeSpan.FromMinutes(10), c
 - S3: AWS SDK yok; `HttpClient` + Signature V4. MinIO/R2 için `ForcePathStyle = true` (varsayılan), R2'de
   `Region = "auto"`. `Overwrite = false` iken `If-None-Match: *` ile yazar. Gövde imzalanmaz (`UNSIGNED-PAYLOAD`,
   HTTPS gerekir); anahtarlar user-secrets'ta.
+- Azure Blob: Azure SDK yok; `HttpClient` + REST API. Kimlik doğrulama üç yoldan biri:
+
+  | Yol | Ayar | Süreli adres |
+  |---|---|---|
+  | Hesap anahtarı (Shared Key) | `ConnectionString` ya da `AccountName` + `AccountKey` | var (yalnızca o blob, yalnızca okuma SAS'ı) |
+  | Paylaşılan erişim imzası | `SasToken` | yok (`null`) |
+  | Entra ID (Managed Identity) | `AccessTokenProvider` (ör. `Azure.Identity` ile) | yok (`null`) |
+
+  Üretimde anahtar saklamamak için Entra ID önerilir: uygulamanın kimliğine "Storage Blob Data Contributor" rolü
+  verilir, token'ı `DefaultAzureCredential` üretir (`Azure.Identity` paketini uygulama ekler; core eklemez):
+
+  ```csharp
+  var credential = new DefaultAzureCredential();
+  o.ServiceUrl = new Uri("https://acme.blob.core.windows.net");
+  o.AccessTokenProvider = async ct => (await credential.GetTokenAsync(new(["https://storage.azure.com/.default"]), ct)).Token;
+  ```
+
+  Dosya tek `Put Blob` isteğiyle yazılır (5000 MiB'a kadar). `Overwrite = false` iken `If-None-Match: *` ile yazar.
+  `CreateContainerIfMissing = true` container'ı ilk yazmada açar (geliştirme için; üretimde container'ı önceden aç).
+  Yerelde Azurite: `ConnectionString = "UseDevelopmentStorage=true"` (`./build/ci.sh services` başlatır).
 
 ## Anlık bildirim (SignalR)
 

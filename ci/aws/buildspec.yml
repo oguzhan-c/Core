@@ -16,6 +16,7 @@ env:
     CAN_KAFKA_BOOTSTRAP: localhost:9092
     CAN_REDIS_URL: localhost:6379
     CAN_ELASTICSEARCH_URL: http://localhost:9200
+    CAN_AZURITE_URL: http://localhost:10000/devstoreaccount1
   # Gizli değerler (Secrets Manager):
   # secrets-manager:
   #   CAN_AZURE_SERVICEBUS_CONNECTION: can-core/ci:servicebus

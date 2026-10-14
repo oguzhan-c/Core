@@ -21,6 +21,8 @@ definitions:
         ES_SETTING_DISCOVERY_TYPE: single-node
         ES_SETTING_XPACK_SECURITY_ENABLED: "false"
         ES_JAVA_OPTS: -Xms512m -Xmx512m
+    azurite:
+      image: mcr.microsoft.com/azure-storage/azurite:3.34.0
 
   steps:
     - step: &dotnet
@@ -29,12 +31,13 @@ definitions:
         size: 2x   # servisler (Kafka, Elasticsearch) için 8 GB
         max-time: 40
         caches: [nuget]
-        services: [rabbitmq, kafka, redis, elasticsearch]
+        services: [rabbitmq, kafka, redis, elasticsearch, azurite]
         script:
           - export CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
           - export CAN_KAFKA_BOOTSTRAP=localhost:9092
           - export CAN_REDIS_URL=localhost:6379
           - export CAN_ELASTICSEARCH_URL=http://localhost:9200
+          - export CAN_AZURITE_URL=http://localhost:10000/devstoreaccount1
           # CAN_AZURE_SERVICEBUS_CONNECTION: Repository variables'ta (Secured) tanımlanırsa Service Bus testleri çalışır
           - ./build/ci.sh restore
           - ./build/ci.sh build

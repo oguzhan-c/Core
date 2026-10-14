@@ -26,7 +26,7 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 - **Özellik bayrakları**: kullanıcı/rol/tenant hedefleme, sabit yüzdelik açılım, zaman aralığı, tenant hariç tutma,
   ayarlardan canlı yükleme; `IFeatureGatedRequest`, `.RequireFeature()`, `/api/features`.
 - **Persistence**: `CanDbContext`, repository ve unit of work, `DynamicQuery` (izin listeli alanlar), sayfalama,
-  outbox (üstel geri çekilme, ölü mesajlar, yeniden kuyruklama, sağlık kontrolü, metrikler), inbox, değişiklik geçmişi,
+  imleçli (keyset) sayfalama (`GetCursorPageAsync`, `ToCursorPageAsync`), outbox (üstel geri çekilme, ölü mesajlar, yeniden kuyruklama, sağlık kontrolü, metrikler), inbox, değişiklik geçmişi,
   seed.
 - **Multi-tenancy**: tek veritabanı ya da tenant başına veritabanı, tenant yalnızca imzalı token'dan.
 - **Security**: PBKDF2 parola özeti, JWT (cookie'de), yenileme token'ı, OTP, doğrulama kodları, passkey (FIDO2);
@@ -45,7 +45,7 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 - **Raporlama**: pivot motoru (14 özet, gösterim dönüşümleri, Top N, ifade dili), veritabanında GROUP BY, tanım
   denetimi, bellek moduna düşme nedeni, CSV/Excel/PDF (formül enjeksiyonuna karşı korumalı); EF Core deposu, uç noktalar;
   React arayüzü (`clients/reporting-react`).
-- **Diğer**: arka plan işleri (bellek içi ve Hangfire), Redis önbellek ve scale-out, dosya depolama (yerel, S3),
+- **Diğer**: arka plan işleri (bellek içi ve Hangfire), Redis önbellek ve scale-out, dosya depolama (yerel, S3, Azure Blob),
   arama (bellek içi, Elasticsearch), e-posta (MailKit, SendGrid), SMS, SignalR bildirimleri, dayanıklılık
   (retry, circuit breaker, hedging ...), JSON yerelleştirme, Serilog, OpenTelemetry.
 - **Test yardımcıları**: `TestClock`, `TestCurrentUser`/`TestCurrentTenant`, `SqliteTestDatabase`, test kimlik

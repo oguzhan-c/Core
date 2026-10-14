@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Can.Core.FileStorage.S3\Can.Core.FileStorage.S3.csproj" />
+    <ProjectReference Include="..\..\src\Can.Core.FileStorage.AzureBlob\Can.Core.FileStorage.AzureBlob.csproj" />
   </ItemGroup>
 
   <ItemGroup>
