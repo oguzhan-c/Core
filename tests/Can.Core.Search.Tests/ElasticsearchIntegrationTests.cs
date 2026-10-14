@@ -5,7 +5,7 @@ namespace Can.Core.Search.Tests;
 
 /// <summary>
 /// Gerçek sunucuya karşı: <c>CAN_ELASTICSEARCH_URL=http://localhost:9200</c> verilmezse atlanır.
-/// <c>docker compose up -d elasticsearch</c> (samples/Northwind) ile çalıştırılabilir.
+/// <c>./build/ci.sh services</c> ile çalıştırılabilir.
 /// </summary>
 public class ElasticsearchIntegrationTests
 {

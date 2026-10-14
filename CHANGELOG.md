@@ -46,6 +46,5 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   (retry, circuit breaker, hedging ...), JSON yerelleştirme, Serilog, OpenTelemetry.
 - **Test yardımcıları**: `TestClock`, `TestCurrentUser`/`TestCurrentTenant`, `SqliteTestDatabase`, test kimlik
   doğrulaması ve `CanTestApp`.
-- **Örnek**: Northwind (PostgreSQL, multi-tenant, React 19 arayüzü).
 - **CI**: GitHub Actions, GitLab CI/CD, Azure DevOps, Bitbucket Pipelines, Jenkins, AWS CodeBuild ve Google Cloud Build
   yapılandırmaları (ortak `build/ci.sh`); etiketle NuGet yayını, Source Link ve sembol paketleri.

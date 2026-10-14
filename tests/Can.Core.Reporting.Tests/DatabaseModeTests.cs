@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Can.Core.Reporting.Tests;
 
-/// <summary>Veritabanı satırı: SQLite decimal toplayamadığı için fiyat double (Northwind'de PostgreSQL decimal toplar).</summary>
+/// <summary>Veritabanı satırı: SQLite decimal toplayamadığı için fiyat double (PostgreSQL decimal toplar).</summary>
 public sealed class SaleRow
 {
     public int Id { get; set; }

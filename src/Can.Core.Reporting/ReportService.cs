@@ -146,7 +146,7 @@ public sealed class CanReportingBuilder
     /// </summary>
     /// <example>
     /// <code>
-    /// .AddSource("sales", sp =&gt; sp.GetRequiredService&lt;NorthwindDbContext&gt;().OrderLines.AsNoTracking(), o =&gt; o
+    /// .AddSource("sales", sp =&gt; sp.GetRequiredService&lt;AppDbContext&gt;().OrderLines.AsNoTracking(), o =&gt; o
     ///     .Field("unitPrice", "Birim fiyat", "C2")
     ///     .Hide("id", "tenantId"))
     /// </code>

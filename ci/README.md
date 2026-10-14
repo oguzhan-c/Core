@@ -48,7 +48,7 @@ Etiketle tetikleme her sistemde açık; ek ayar gerekenler: Jenkins (Multibranch
 ./build/ci.sh                     # restore + build + test + pack (Release); CAN_* verilmezse entegrasyon testleri atlanır
 ./build/ci.sh version             # hesaplanan sürüm
 
-./build/ci.sh services            # servisleri docker compose ile başlat (Northwind'in container'ları açıksa önce durdur: aynı portlar)
+./build/ci.sh services            # servisleri docker compose ile başlat
 export CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/ CAN_KAFKA_BOOTSTRAP=localhost:9092 \
        CAN_REDIS_URL=localhost:6379 CAN_ELASTICSEARCH_URL=http://localhost:9200
 ./build/ci.sh
