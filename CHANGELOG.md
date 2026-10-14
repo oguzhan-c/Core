@@ -46,6 +46,8 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 - **OpenAPI** (`Can.Core.WebApi.OpenApi`): API sürümü başına belge, kullanımdan kalkan sürümler, cookie/Bearer güvenlik
   şeması, ProblemDetails hata yanıtları, `Idempotency-Key` başlığı, CDN'den yüklenen Scalar arayüzü; Production'da
   varsayılan kapalı.
+- **İstek aktivite logu** (varsayılan kapalı): kim/ne zaman/hangi tenant/uç nokta/sonuç/süre/IP; isteği bekletmeyen
+  kuyruk ve partili yazma, maskelenen sorgu parametreleri, veritabanı deposu, kendi sink'in.
 - **Ayarlar**: tipli uygulama/tenant ayarları, doğrulama, gizli (şifreli) değerler, önbellek; EF Core deposu; yönetim
   uç noktaları.
 - **Event bus**: zarf, sabit event adları, tenant'ı koruyan dağıtım, ortak tüketim akışı (anında ve gecikmeli deneme,

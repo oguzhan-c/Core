@@ -34,6 +34,7 @@ public static class CanTelemetrySources
         "Can.Core.Resilience",      // can.resilience.events
         "Can.Core.Reporting",       // can.report.runs, can.report.duration
         "Can.Core.Security",        // can.security.events
+        "Can.Core.WebApi",          // can.activity.dropped
     ];
 }
 

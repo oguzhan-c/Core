@@ -1850,6 +1850,54 @@ Paket `Microsoft.AspNetCore.OpenApi` (Microsoft'un kendi belge üreticisi) üzer
   origin'den gittiği için giriş yapılmışsa cookie ile yetkilenir.
 - Belge adları (`Documents`) elle de verilebilir; o zaman sürümlemeden bağımsızdır.
 
+## İstek aktivite logu
+
+Her isteğin kaydı: kim, ne zaman, hangi tenant'ta, hangi uç noktayı çağırdı, sonuç ne oldu, ne kadar sürdü, hangi
+IP'den ve tarayıcıdan geldi. **Varsayılan kapalıdır**; açmak için:
+
+```csharp
+builder.Services.AddCanRequestActivityLog(o => o.IncludeReads = true);   // ayarlar aşağıda
+builder.Services.AddCanRequestActivityStore<AppDbContext>();               // veritabanına yaz (isteğe bağlı)
+
+// DbContext
+modelBuilder.AddCanRequestActivityLog();                                   // RequestActivities tablosu
+
+app.UseAuthentication();
+app.UseCanTenantResolution();
+app.UseCanRequestActivityLog();                                            // kullanıcı ve tenant bilindikten sonra
+```
+
+**Sentry gibi ön yüz araçlarından farkı.** İkisi birbirinin yerine geçmez. Ön yüz araçları tarayıcıdaki JavaScript
+hatalarını, sayfa hızını ve kullanıcının tıklamalarını görür. Bu log ise sunucuya gerçekten ne geldiğini görür ve
+güvenilir tek kaynaktır: reklam engelleyici onu kapatamaz, API'yi Postman/curl ile doğrudan çağıran da kaydedilir,
+mobil ve dış entegrasyonlar dahil her istemci tek yerde toplanır, kullanıcı ve tenant imzalı token'dan okunur. İkisini
+bağlamak için her kayda iz kimliği (`TraceId`) yazılır; Sentry `traceparent` başlığını gönderiyorsa ön yüzdeki bir
+hatadan bu kayda gidilebilir.
+
+**OpenTelemetry iz'lerinden (trace) farkı.** İzler genelde örneklenir (isteklerin bir kısmı) ve kısa süre tutulur;
+amaçları performans analizidir. Bu log her isteği kalıcı tutar ve "bu kullanıcı geçen ay ne yaptı?" sorusunu cevaplar.
+Değişiklik geçmişi (audit trail) yalnızca veri değişikliklerini tutar; bu log okumaları da tutar.
+
+| Ayar | Varsayılan | Açıklama |
+|---|---|---|
+| `ExcludedPaths` | `/health`, `/metrics`, `/openapi`, `/docs` | Kaydedilmeyen yollar (ön ek). |
+| `MaskedQueryKeys` | `token`, `password`, `secret`, `code`, `key`, `signature`, `sig`, `otp` | Adında bunlar geçen sorgu parametrelerinin değeri `***` olur. |
+| `IncludeReads` | açık | Kapatılırsa yalnızca veri değiştiren istekler (POST/PUT/PATCH/DELETE). |
+| `IncludeAnonymous` | açık | Kapatılırsa yalnızca giriş yapmış kullanıcılar. |
+| `Filter` | yok | Kendi koşulun (`ctx => ...`). |
+| `WriteToLog` | kapalı | Kayıtlar loga da yazılır. |
+| `Capacity` / `BatchSize` / `FlushInterval` | 10.000 / 500 / 2 sn | Kuyruk ve yazma partileri. |
+
+- **İsteği yavaşlatmaz:** kayıt bellekteki kuyruğa bırakılır, arka planda partiler halinde yazılır. Yazma yavaşlar ve
+  kuyruk dolarsa en eski kayıt düşer (`can.activity.dropped` metriği), istek hiç beklemez. Kapanışta kuyrukta kalanlar
+  yazılır.
+- **Gövde kaydedilmez:** istek ve yanıt gövdesi (parola, kişisel veri) hiçbir zaman tutulmaz; yalnızca meta veri.
+- İşlenmemiş hatalar 500 olarak kaydedilir. Uç noktanın yol şablonu da tutulur (`/api/orders/{id}`): "en çok hangi
+  uç nokta hata veriyor" gibi gruplamalar için.
+- Kendi hedefin için `IRequestActivitySink` (Elasticsearch, SIEM). Saklama süresi:
+  `AddCanDataRetention` ile `o.Keep<RequestActivityRecord>(TimeSpan.FromDays(90), a => a.Timestamp)`.
+- **KVKK:** IP, kullanıcı ve tarayıcı bilgisi kişisel veridir. Aydınlatma metninde belirt ve saklama süresi koy.
+
 ## Idempotency (tekrar eden istekler)
 
 Ağ koptuğunda istemci isteği tekrar gönderir; sipariş, ödeme gibi işlemler iki kez yapılmamalı. İstemci her işlem için
