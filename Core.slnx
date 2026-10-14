@@ -39,6 +39,7 @@
     <Project Path="src/Can.Core.Mailing.SendGrid/Can.Core.Mailing.SendGrid.csproj" />
     <Project Path="src/Can.Core.Logging.Serilog/Can.Core.Logging.Serilog.csproj" />
     <Project Path="src/Can.Core.WebApi/Can.Core.WebApi.csproj" />
+    <Project Path="src/Can.Core.WebApi.OpenApi/Can.Core.WebApi.OpenApi.csproj" />
     <Project Path="src/Can.Core.Settings/Can.Core.Settings.csproj" />
     <Project Path="src/Can.Core.Settings.EntityFrameworkCore/Can.Core.Settings.EntityFrameworkCore.csproj" />
     <Project Path="src/Can.Core.Settings.AspNetCore/Can.Core.Settings.AspNetCore.csproj" />

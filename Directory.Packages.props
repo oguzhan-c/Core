@@ -35,14 +35,16 @@
     <!-- Hangfire.Core 11.0.1 çekiyor (GHSA-5crp-9r3c-p9vr); en son sürüme sabitlenir. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
 
+    <!-- Yalnızca Can.Core.WebApi.OpenApi -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <!-- AspNetCore.OpenApi 10.0.x yalnızca 2.x ile uyumlu (>= 2.12, < 3); en son 2.x. -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
+
     <!-- Örnek uygulama (samples) -->
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
-    <!-- AspNetCore.OpenApi 10.0.x yalnızca 2.x ile uyumlu (>= 2.12, < 3); en son 2.x. -->
-    <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.17.13" />
     <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
     <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />

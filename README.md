@@ -42,6 +42,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 | `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
 | `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
+| `Can.Core.WebApi.OpenApi` | WebApi, AspNetCore.OpenApi | Sürüm başına OpenAPI belgesi, cookie güvenlik şeması, ProblemDetails yanıtları, paketsiz Scalar arayüzü |
 | `Can.Core.Settings` | Caching.Hybrid | Tipli uygulama/tenant ayarları: tenant → uygulama → varsayılan, doğrulama, gizli (şifreli) değerler, önbellek |
 | `Can.Core.Settings.EntityFrameworkCore` | EF Core | `SettingValues` tablosu ve deposu: `ApplyCanSettingsModel()`, `UseEntityFrameworkStore<TContext>()` |
 | `Can.Core.Settings.AspNetCore` | ASP.NET Core | `MapCanSettings()`: listele/değiştir/sıfırla (düzey bazlı yetki), istemci ayarları; `UseDataProtection()` |
@@ -436,6 +437,36 @@ builder.Services.AddCanQueryDiagnostics(o =>
 - Sayaçlar DI scope'u (HTTP isteği, arka plan işi) başınadır. Testlerde `ThrowOnViolation = true` ile N+1 hatası testi düşürür.
 - Etiket her farklı kaynak için ayrı bir sorgu metni üretir. Veritabanı sorgu planlarını kaynak başına bir kez önbelleğe alır;
   istemiyorsan `TagQueries = false`.
+
+**Veri saklama ve temizlik.** Denetim kayıtları, güvenlik olayları ve süresi dolmuş token'lar sürekli büyür.
+**Varsayılan olarak hiçbir kayıt silinmez**; tabloların hangi süreden sonra temizleneceğine uygulama karar verir.
+Kayıtların tamamı saklanacaksa (yasal zorunluluk, analiz) bu özellik hiç açılmaz.
+
+```csharp
+builder.Services.AddCanDataRetention<AppDbContext>(o =>
+{
+    o.Keep<AuditLog>(TimeSpan.FromDays(365), a => a.Timestamp);                     // değişiklik geçmişi: 1 yıl
+    o.Keep<SecurityEventRecord>(TimeSpan.FromDays(180), e => e.OccurredAt);         // güvenlik olayları: 6 ay
+    o.Keep<RefreshToken<Guid>>(TimeSpan.FromDays(30), t => t.ExpiresAt);            // süresi dolalı 30 gün olan token'lar
+    o.Keep<TrustedDevice<Guid>>(TimeSpan.FromDays(90), d => d.RevokedAt);           // kaldırılalı 90 gün olan cihazlar
+    o.Keep<SecurityEventRecord>(TimeSpan.FromDays(30), e => e.OccurredAt,
+        where: e => e.Type == SecurityEventTypes.LoginSucceeded);                     // başarılı girişler daha kısa
+    o.DryRun = true;                                                                  // ilk açılışta: yalnızca say ve logla
+});
+```
+
+- Her saat (`Interval`) çalışır; kural başına süresi dolan kayıtlar `BatchSize` (5000) kayıtlık partilerle silinir.
+  Bir çalışmada kural başına en çok `MaxBatchesPerRun` (100) parti silinir; kalan sonraki çalışmaya kalır. Böylece ilk
+  açılışta milyonlarca satır tek seferde silinmez, tablo kilitlenmez.
+- Zamanı boş olan kayıtlar silinmez (ör. `RevokedAt` boş: cihaz hâlâ kayıtlı). `DateTime` kolonları UTC olmalı.
+- Silme tenant ve soft delete filtrelerinden bağımsızdır: süresi dolan kayıt kime ait olursa olsun gider. Tenant başına
+  veritabanında `PerTenantDatabases = true`: her tenant'ın veritabanında ayrı çalışır.
+- Birden çok sunucuda aynı anda yalnızca biri çalışır (`IDistributedLock`, Redis: `UseForDistributedLocks()`).
+- `DryRun = true` hiçbir şey silmez, kaç kaydın silineceğini loglar. Kuralları ilk kez açarken önce böyle çalıştır.
+- Silinen kayıtlar loglanır ve `can.retention.deleted` metriğiyle sayılır. Bir tablonun hatası diğerlerini durdurmaz.
+- Kolona index koy (`OccurredAt`, `Timestamp`, `ExpiresAt`): silme sorgusu index'ten okur. Güvenlik olaylarının index'i
+  `ApplyCanSecurityEventLog` ile gelir.
+- Outbox ve inbox kendi temizliklerini yapar (`OutboxOptions.RetainProcessedMessagesFor`, `InboxOptions.Retention`).
 
 **Outbox: kaybolmaması gereken event'ler**
 
@@ -1778,6 +1809,34 @@ Redis'e ulaşılamazsa site durmaz: istekler önbelleksiz yanıtlanır.
 | `MaximumCachedBodySize` | 1 MB (daha büyük yanıt sunucuda saklanmaz) |
 | `MaximumETagBodySize` | 1 MB |
 | `CompressionLevel` | `Fastest` |
+
+## OpenAPI
+
+```csharp
+builder.Services.AddCanApiVersioning(o => { o.Add(new ApiVersionInfo(1) { DeprecatedAt = ..., Sunset = ... }); o.Add(new ApiVersionInfo(2)); });
+builder.Services.AddCanOpenApi(o => { o.Title = "Mağaza API"; o.Description = "..."; });   // sürümlemeden SONRA
+
+app.MapCanOpenApi();   // /openapi/v1.json, /openapi/v2.json ve /docs (Scalar arayüzü); yalnızca Development
+```
+
+Paket `Microsoft.AspNetCore.OpenApi` (Microsoft'un kendi belge üreticisi) üzerine kurulur. Her projenin elle eklediği
+şeyleri kendisi ekler:
+
+| Ne | Nasıl |
+|---|---|
+| Sürüm başına belge | `MapApiVersion(n)` uç noktaları `vN` belgesinde; sürümsüz uç noktalar her belgede. |
+| Kullanımdan kalkan sürüm | Belge açıklamasında kapanış tarihi ve geçiş adresi; uç noktaları `deprecated: true`. |
+| Güvenlik şeması | Cookie'deki access token (`cookieAuth`, cookie adı `AuthCookieOptions`'tan); `AllowAuthorizationHeader` açıksa ayrıca `bearerAuth`. Yetki isteyen uç noktalara güvenlik gereksinimi eklenir, `AllowAnonymous` olanlara eklenmez. |
+| Hata yanıtları | ProblemDetails (`application/problem+json`): parametresi olan uç noktaya 400 (alan bazında `errors`), yetki isteyene 401, politika/rol isteyene 403, hepsine 500. Uç noktanın kendi bildirdiği yanıt değiştirilmez. |
+| Idempotency | `.WithIdempotency()` olan uç noktaya `Idempotency-Key` başlığı ile 409 ve 422 yanıtları. |
+
+- **Production'da kapalıdır:** belge API'nin tüm yüzeyini (uç noktalar, alanlar, hata kodları) gösterir.
+  Açmak için `o.ExposeInProduction = true` ve tercihen yetki: `app.MapCanOpenApi()` sonrası belge yoluna
+  politika ekle ya da yalnızca iç ağdan eriş.
+- **Arayüz paketsizdir:** `/docs` sayfası Scalar'ı CDN'den yükler (`ReferenceScriptUrl`). İnternete kapalı
+  ortamda betiği kendi sunucundan ver; arayüz istemiyorsan `ReferencePath = null`. Arayüzden gönderilen istekler aynı
+  origin'den gittiği için giriş yapılmışsa cookie ile yetkilenir.
+- Belge adları (`Documents`) elle de verilebilir; o zaman sürümlemeden bağımsızdır.
 
 ## Idempotency (tekrar eden istekler)
 

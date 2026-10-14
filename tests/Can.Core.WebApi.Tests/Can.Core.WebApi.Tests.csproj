@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Can.Core.WebApi\Can.Core.WebApi.csproj" />
+    <ProjectReference Include="..\..\src\Can.Core.WebApi.OpenApi\Can.Core.WebApi.OpenApi.csproj" />
   </ItemGroup>
 
   <ItemGroup>

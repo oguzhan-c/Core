@@ -27,7 +27,8 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   ayarlardan canlı yükleme; `IFeatureGatedRequest`, `.RequireFeature()`, `/api/features`.
 - **Persistence**: `CanDbContext`, repository ve unit of work, `DynamicQuery` (izin listeli alanlar), sayfalama,
   imleçli (keyset) sayfalama (`GetCursorPageAsync`, `ToCursorPageAsync`), veritabanı tanılaması (yavaş sorgu, SQL'e
-  kaynak etiketi, komut metrikleri, N+1 dedektörü), outbox (üstel geri çekilme, ölü mesajlar, yeniden kuyruklama, sağlık kontrolü, metrikler), inbox, değişiklik geçmişi,
+  kaynak etiketi, komut metrikleri, N+1 dedektörü), isteğe bağlı veri saklama ve temizlik (tablo başına süre,
+  partili silme, deneme modu, sunucular arası kilit), outbox (üstel geri çekilme, ölü mesajlar, yeniden kuyruklama, sağlık kontrolü, metrikler), inbox, değişiklik geçmişi,
   seed.
 - **Multi-tenancy**: tek veritabanı ya da tenant başına veritabanı, tenant yalnızca imzalı token'dan.
 - **Security**: PBKDF2 parola özeti, JWT (cookie'de), yenileme token'ı, OTP, doğrulama kodları, passkey (FIDO2);
@@ -42,6 +43,9 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   önbelleğiyle ortak etiketler, entity değişince otomatik silme (`AddCanEntityCacheInvalidation`, commit'ten sonra),
   ETag ve 304, Brotli/gzip sıkıştırma, güvenli `Cache-Control` varsayılanları, `WithNoStore`; Redis'te ortak önbellek
   (`UseForOutputCache`).
+- **OpenAPI** (`Can.Core.WebApi.OpenApi`): API sürümü başına belge, kullanımdan kalkan sürümler, cookie/Bearer güvenlik
+  şeması, ProblemDetails hata yanıtları, `Idempotency-Key` başlığı, CDN'den yüklenen Scalar arayüzü; Production'da
+  varsayılan kapalı.
 - **Ayarlar**: tipli uygulama/tenant ayarları, doğrulama, gizli (şifreli) değerler, önbellek; EF Core deposu; yönetim
   uç noktaları.
 - **Event bus**: zarf, sabit event adları, tenant'ı koruyan dağıtım, ortak tüketim akışı (anında ve gecikmeli deneme,
