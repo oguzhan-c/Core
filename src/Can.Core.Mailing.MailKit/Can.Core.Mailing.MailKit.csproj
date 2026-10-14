@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" />
+    <!-- Güvenlik açığı olan geçişli sürümün yerine düzeltilmiş sürüm (Directory.Packages.props) -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
   </ItemGroup>
 
