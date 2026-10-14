@@ -36,20 +36,29 @@ internal sealed class DistributedCacheAccessTokenDenylist(IDistributedCache cach
     private static string Key(string tokenId) => "can:jti:" + tokenId;
 }
 
-/// <summary>Geri alınmış token'la gelen isteği 401 <c>session_revoked</c> ile reddeder ve cookie'leri siler.</summary>
+/// <summary>
+/// Geri alınmış token'la (<c>jti</c>) ya da kapatılmış oturumdan (<c>sid</c>) gelen isteği 401 <c>session_revoked</c> ile
+/// reddeder ve cookie'leri siler.
+/// </summary>
 internal sealed class AccessTokenRevocationMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        if (context.User.Identity?.IsAuthenticated == true && context.User.FindFirst("jti")?.Value is { Length: > 0 } tokenId)
+        if (context.User.Identity?.IsAuthenticated == true)
         {
-            IAccessTokenDenylist denylist = context.RequestServices.GetService<IAccessTokenDenylist>()
-                ?? throw new InvalidOperationException("UseCanAccessTokenRevocation için AddCanAccessTokenRevocation() çağrılmalı.");
-
-            if (await denylist.IsRevokedAsync(tokenId, context.RequestAborted).ConfigureAwait(false))
+            string? tokenId = context.User.FindFirst("jti")?.Value;
+            string? sessionId = context.GetSessionId();
+            if (!string.IsNullOrEmpty(tokenId) || !string.IsNullOrEmpty(sessionId))
             {
-                await SessionRejection.WriteAsync(context).ConfigureAwait(false);
-                return;
+                IAccessTokenDenylist denylist = context.RequestServices.GetService<IAccessTokenDenylist>()
+                    ?? throw new InvalidOperationException("UseCanAccessTokenRevocation için AddCanAccessTokenRevocation() çağrılmalı.");
+
+                if ((!string.IsNullOrEmpty(tokenId) && await denylist.IsRevokedAsync(tokenId, context.RequestAborted).ConfigureAwait(false))
+                    || (!string.IsNullOrEmpty(sessionId) && await denylist.IsRevokedAsync(AccessTokenDenylistKeys.Session(sessionId), context.RequestAborted).ConfigureAwait(false)))
+                {
+                    await SessionRejection.WriteAsync(context).ConfigureAwait(false);
+                    return;
+                }
             }
         }
 
@@ -69,6 +78,13 @@ public static class AccessTokenRevocationExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IAccessTokenDenylist, DistributedCacheAccessTokenDenylist>();
         return services;
+    }
+
+    /// <summary>Access token'daki oturum kimliği (<c>sid</c>; <c>TokenSubject.SessionId</c>); yoksa <see langword="null"/>.</summary>
+    public static string? GetSessionId(this HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return context.User.Identity?.IsAuthenticated == true ? context.User.FindFirst(TokenService.SessionIdClaimType)?.Value : null;
     }
 
     /// <summary>Geri alınmış token'ları reddeder. <c>UseAuthentication()</c>'dan sonra, <c>UseAuthorization()</c>'dan önce ekle.</summary>

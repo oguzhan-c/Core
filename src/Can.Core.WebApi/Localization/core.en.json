@@ -23,5 +23,8 @@
   "feature_disabled": "This feature is not available.",
   "api_version_unsupported": "This API version is not supported.",
   "api_version_retired": "This API version has been retired; move to a newer version.",
-  "session_revoked": "Your session has ended; please sign in again."
+  "session_revoked": "Your session has ended; please sign in again.",
+  "session_not_found": "Session not found.",
+  "session_unknown": "This session has no identifier; please sign in again.",
+  "cursor_invalid": "The page cursor is invalid or belongs to another sort order; start from the first page."
 }

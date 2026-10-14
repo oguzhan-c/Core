@@ -24,6 +24,10 @@ namespace Can.Core.Security.Tokens;
 /// Kullanıcının güvenlik damgası (<c>sstamp</c>). Verilirse ve WebApi'de <c>UseCanSecurityStampValidation()</c> açıksa,
 /// şifre/2FA değişince bu token süresi dolmadan geçersiz olur.
 /// </param>
+/// <param name="SessionId">
+/// Oturum kimliği (<c>sid</c>; <c>RefreshToken.SessionId</c>). Verilirse ve WebApi'de <c>UseCanAccessTokenRevocation()</c>
+/// açıksa, kullanıcı o oturumu kapattığında bu token süresi dolmadan geçersiz olur.
+/// </param>
 public sealed record TokenSubject(
     string UserId,
     string? UserName = null,
@@ -32,7 +36,8 @@ public sealed record TokenSubject(
     string? TenantId = null,
     IReadOnlyCollection<Claim>? AdditionalClaims = null,
     IReadOnlyCollection<string>? Permissions = null,
-    string? SecurityStamp = null);
+    string? SecurityStamp = null,
+    string? SessionId = null);
 
 public sealed record AccessToken(string Token, DateTimeOffset ExpiresAt);
 
@@ -68,6 +73,7 @@ public sealed class TokenService : ITokenService
     public const string TenantClaimType = "tenant_id";
     public const string PermissionClaimType = "permission";
     public const string SecurityStampClaimType = "sstamp";
+    public const string SessionIdClaimType = "sid";
 
     private readonly JwtOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -115,6 +121,9 @@ public sealed class TokenService : ITokenService
 
         if (!string.IsNullOrWhiteSpace(subject.SecurityStamp))
             claims.Add(new Claim(SecurityStampClaimType, subject.SecurityStamp));
+
+        if (!string.IsNullOrWhiteSpace(subject.SessionId))
+            claims.Add(new Claim(SessionIdClaimType, subject.SessionId));
 
         if (subject.AdditionalClaims is not null)
             claims.AddRange(subject.AdditionalClaims);

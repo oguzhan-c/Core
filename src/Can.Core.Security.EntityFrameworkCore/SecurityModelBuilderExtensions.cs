@@ -39,7 +39,7 @@ public static class SecurityModelBuilderExtensions
     /// <remarks>
     /// <para>
     /// Yapılandırılan tablolar: Users, Roles, UserRoles, UserLogins, OperationClaims, RoleOperationClaims, UserOperationClaims,
-    /// RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys, RecoveryCodes.
+    /// RefreshTokens, OtpAuthenticators, EmailAuthenticators, UserPasskeys, RecoveryCodes, TrustedDevices.
     /// </para>
     /// <para>
     /// E-posta benzersizliği silinmiş (soft delete) kullanıcıları da kapsar; silinen kullanıcının e-postası tekrar
@@ -150,8 +150,13 @@ public static class SecurityModelBuilderExtensions
             b.Property(t => t.RevokedByIp).HasMaxLength(64);
             b.Property(t => t.RevokedReason).HasMaxLength(256);
             b.Property(t => t.SecurityStamp).HasMaxLength(64);
+            b.Property(t => t.SessionId).HasMaxLength(32).IsRequired();
+            b.Property(t => t.DeviceId).HasMaxLength(SessionDevice.DeviceIdMaxLength);
+            b.Property(t => t.DeviceName).HasMaxLength(SessionDevice.DeviceNameMaxLength);
+            b.Property(t => t.UserAgent).HasMaxLength(SessionDevice.UserAgentMaxLength);
+            b.Property(t => t.LastUsedIp).HasMaxLength(64);
             b.HasIndex(t => t.TokenHash).IsUnique();
-            b.HasIndex(t => t.UserId);
+            b.HasIndex(t => new { t.UserId, t.SessionId });
             b.HasOne<TUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -188,6 +193,19 @@ public static class SecurityModelBuilderExtensions
             b.HasIndex(p => p.CredentialId).IsUnique();
             b.HasIndex(p => p.UserId);
             b.HasOne<TUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TrustedDevice<TId>>(b =>
+        {
+            b.ToTable(Table("TrustedDevices"), options.Schema);
+            b.HasKey(d => d.Id);
+            b.Property(d => d.DeviceId).HasMaxLength(TrustedDevice<TId>.DeviceIdMaxLength).IsRequired();
+            b.Property(d => d.Name).HasMaxLength(TrustedDevice<TId>.NameMaxLength).IsRequired();
+            b.Property(d => d.Platform).HasMaxLength(TrustedDevice<TId>.PlatformMaxLength);
+            b.Property(d => d.PublicKey).HasMaxLength(256).IsRequired();
+            b.Property(d => d.LastChallengeIssuedAt).IsConcurrencyToken(); // aynı meydan okuma iki kez kabul edilmesin
+            b.HasIndex(d => new { d.UserId, d.DeviceId }).IsUnique();
+            b.HasOne<TUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<RecoveryCode<TId>>(b =>

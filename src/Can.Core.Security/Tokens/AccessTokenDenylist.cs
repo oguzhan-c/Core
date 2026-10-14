@@ -19,3 +19,18 @@ public interface IAccessTokenDenylist
 
     ValueTask<bool> IsRevokedAsync(string tokenId, CancellationToken cancellationToken = default);
 }
+
+/// <summary><see cref="IAccessTokenDenylist"/> anahtarları.</summary>
+public static class AccessTokenDenylistKeys
+{
+    /// <summary>
+    /// Bir oturumun (<c>sid</c>) tüm access token'larını geri almak için anahtar. Kayıt, o an verilmiş en uzun ömürlü
+    /// access token'ın bitişine kadar (şimdi + <c>AccessTokenLifetime</c>) tutulmalı.
+    /// </summary>
+    /// <param name="sessionId">Oturum kimliği.</param>
+    public static string Session(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        return "sid:" + sessionId;
+    }
+}

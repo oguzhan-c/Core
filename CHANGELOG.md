@@ -31,7 +31,9 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   seed.
 - **Multi-tenancy**: tek veritabanı ya da tenant başına veritabanı, tenant yalnızca imzalı token'dan.
 - **Security**: PBKDF2 parola özeti, JWT (cookie'de), yenileme token'ı, OTP, doğrulama kodları, passkey (FIDO2);
-  EF Core deposu.
+  güvenlik damgası denetimi, kurtarma kodları, şifreli TOTP anahtarları, access token geri alma; aktif oturumlar
+  (listeleme, tek cihazdan / diğer cihazlardan çıkış, `MapCanSessions`), kayıtlı cihazlar (ECDSA P-256 cihaz
+  bağlama, tek kullanımlık meydan okuma); EF Core deposu.
 - **WebApi**: hata → ProblemDetails (çeviri destekli), `ICurrentUser`, tenant çözümleme, hız sınırlama, sağlık uç
   noktaları, harici giriş, idempotency anahtarı (`Idempotency-Key`), URL/başlık ile API sürümleme
   (`Deprecation`/`Sunset`).

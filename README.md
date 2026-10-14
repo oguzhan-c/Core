@@ -868,6 +868,63 @@ auth.MapPost("/logout", async (HttpContext http, IAuthCookieService cookies) =>
 
 Tek token içindir; kullanıcının tüm oturumlarını kapatmak (şifre değişti, hesap engellendi) için damgayı yenile.
 
+**Aktif oturumlar ("oturumlarım", "diğer cihazlardan çıkış").** Her giriş bir oturum başlatır (`RefreshToken.SessionId`);
+token yenilendikçe aynı oturum sürer. Oturumun cihaz adı, tarayıcı/uygulama bilgisi, IP'si ve son kullanımı tutulur;
+kullanıcı listeyi görür ve tek bir cihazdan ya da diğer tüm cihazlardan çıkış yapabilir:
+
+```csharp
+builder.Services.AddCanUserSessions<AppDbContext, Guid>();
+builder.Services.AddCanAccessTokenRevocation();   // kapatılan oturumun access token'ı da hemen 401 olsun
+app.UseCanAccessTokenRevocation();
+app.MapCanSessions().RequireAuthorization();       // GET /api/sessions, DELETE /api/sessions/{id}, POST /api/sessions/revoke-others
+
+// girişte: oturumu başlat, oturum kimliğini access token'a yaz
+var refresh = new RefreshToken<Guid>(user.Id, tokens.CreateRefreshToken(), now, ip, user.SecurityStamp,
+    new SessionDevice(DeviceId: request.DeviceId, DeviceName: request.DeviceName, UserAgent: http.Request.Headers.UserAgent));
+AccessToken access = tokens.CreateAccessToken(new TokenSubject(user.Id.ToString(), ..., SecurityStamp: user.SecurityStamp, SessionId: refresh.SessionId));
+
+// yenilemede: aynı oturum sürer (eski token "rotated" olarak kapanır)
+RefreshToken<Guid> next = current.Rotate(tokens.CreateRefreshToken(), now, ip, user.SecurityStamp);
+db.Add(next);
+AccessToken access = tokens.CreateAccessToken(new TokenSubject(..., SessionId: next.SessionId));
+```
+
+- Oturum kapatılınca refresh token'ları iptal edilir; access token'ın `sid`'i engel listesine yazılır, o cihazın sonraki
+  isteği 401 `session_revoked` alır (15 dakika beklenmez).
+- Kullanıcı kendi oturumunu kapatırsa cookie'leri de silinir. Başkasının oturumu kapatılamaz (404).
+- Cihaz adı ve User-Agent istemciden gelir; yalnızca gösterim içindir, güvenlik kararı için kayıtlı cihaz doğrulaması
+  kullanılır (aşağıda). Uzun değerler kırpılır.
+- Bu sürümden önceki token'ların oturum kimliği yoktur: listede görünmez, `RevokeAllAsync` ile kapanır.
+
+**Kayıtlı cihazlar (cihaz bağlama).** Bankacılık uygulamalarındaki "bu telefonu kaydet": mobil uygulama cihazın güvenli
+donanımında (iOS Secure Enclave, Android Keystore) bir ECDSA P-256 anahtar çifti üretir. Gizli anahtar cihazdan hiç
+çıkmaz; sunucuya yalnızca açık anahtar kaydedilir. Sonra sunucu tek kullanımlık bir meydan okuma verir, cihaz imzalar:
+imza doğruysa istek gerçekten o telefondan gelmektedir. Şifre çalınsa bile başka cihazdan bu kanıt üretilemez.
+Anahtarın kullanımı cihazda biyometriye bağlanabilir (Face ID / parmak izi).
+
+```csharp
+builder.Services.AddCanSecurity(o => { ...; o.VerificationCodeKey = builder.Configuration["Security:VerificationCodeKey"]; });
+builder.Services.AddCanTrustedDevices<AppDbContext, Guid>();
+
+// 1) kayıt: giriş yapmış (tercihen 2FA'yı az önce geçmiş) kullanıcı
+await devices.RegisterAsync(userId, request.DeviceId, "Ayşe'nin iPhone'u", "ios", request.PublicKey, ct); // base64 SPKI
+
+// 2) doğrulama: giriş, ödeme onayı, hassas işlem
+DeviceChallenge challenge = devices.CreateChallenge(deviceId);                  // istemciye ver (2 dk geçerli)
+bool ok = await devices.VerifyAsync(userId, deviceId, challenge.Challenge, request.Signature, ct);
+
+// 3) kaldırma: cihaz ve o cihazdaki oturumlar kapanır
+await devices.RevokeAsync(userId, deviceId, ct);
+```
+
+- Meydan okuma sunucunun anahtarıyla imzalıdır, yalnızca o cihaz için ve 2 dakika geçerlidir; bir kez kullanılır
+  (tekrar gönderilen imza reddedilir; aynı anda iki istek gelse de yalnızca biri kabul edilir).
+- İmza DER (Android, iOS `ecdsaSignatureMessageX962SHA256`) ya da 64 bayt `r||s` (WebCrypto) olabilir; imzalanan
+  metin meydan okumanın UTF-8 baytlarıdır.
+- Uygulama yeniden kurulup aynı cihaz kimliğiyle tekrar kaydolursa anahtar yenilenir.
+- Hangi işlemin kayıtlı cihaz isteyeceği uygulamanın kararıdır: örneğin yeni cihazdan girişte 2FA zorunlu, kayıtlı
+  cihazda değil; ödemeler yalnızca kayıtlı cihazdan. Web için aynı güvence passkey'lerle (`IPasskeyService`) sağlanır.
+
 **Kurtarma kodları.** 2FA cihazı kaybolursa kullanıcı tek kullanımlık kodlardan biriyle girer. `IRecoveryCodeService`
 (`VerificationCodeKey` verilince kayıtlı) 10 kod üretir (`ABCDE-FGH23`, ≈ 50 bit); veritabanında yalnızca anahtarlı
 HMAC'leri `RecoveryCode<TId>` olarak saklanır. Kodlar kullanıcıya bir kez gösterilir; yeniden üretilince ya da 2FA

@@ -1,3 +1,4 @@
+using Can.Core.Security.Devices;
 using Can.Core.Security.Hashing;
 using Can.Core.Security.Otp;
 using Can.Core.Security.Passkeys;
@@ -20,8 +21,8 @@ public sealed class CanSecurityOptions
 
     /// <summary>
     /// E-posta/SMS doğrulama kodlarını ve 2FA kurtarma kodlarını HMAC'lemek için gizli anahtar (en az 32 karakter, JWT
-    /// anahtarından farklı; her kullanım için ayrı anahtar türetilir). Verilmezse <see cref="IVerificationCodeService"/>
-    /// ve <see cref="IRecoveryCodeService"/> kaydedilmez.
+    /// anahtarından farklı; her kullanım için ayrı anahtar türetilir). Verilmezse <see cref="IVerificationCodeService"/>,
+    /// <see cref="IRecoveryCodeService"/> ve <see cref="IDeviceBindingService"/> kaydedilmez.
     /// </summary>
     public string? VerificationCodeKey { get; set; }
 
@@ -67,6 +68,7 @@ public static class SecurityServiceCollectionExtensions
             services.TryAddSingleton<IVerificationCodeService>(sp =>
                 new VerificationCodeService(codeKey, sp.GetRequiredService<TimeProvider>()));
             services.TryAddSingleton<IRecoveryCodeService>(new RecoveryCodeService(codeKey));
+            services.TryAddSingleton<IDeviceBindingService>(sp => new DeviceBindingService(codeKey, sp.GetRequiredService<TimeProvider>()));
         }
 
         if (options.Passkey is { } passkey)

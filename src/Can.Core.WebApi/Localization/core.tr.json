@@ -23,5 +23,8 @@
   "feature_disabled": "Bu özellik kullanılamıyor.",
   "api_version_unsupported": "Bu API sürümü desteklenmiyor.",
   "api_version_retired": "Bu API sürümü kapatıldı; yeni sürüme geç.",
-  "session_revoked": "Oturum sonlandırıldı; tekrar giriş yap."
+  "session_revoked": "Oturum sonlandırıldı; tekrar giriş yap.",
+  "session_not_found": "Oturum bulunamadı.",
+  "session_unknown": "Bu oturumun kimliği yok; tekrar giriş yap.",
+  "cursor_invalid": "Sayfa imleci geçersiz ya da bu sıralamaya ait değil; ilk sayfadan başla."
 }
