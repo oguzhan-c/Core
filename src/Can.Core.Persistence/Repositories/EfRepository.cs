@@ -99,6 +99,29 @@ public class EfRepository<TEntity, TId> : IRepository<TEntity, TId>
         return query.ToPaginateAsync(index, size, cancellationToken: cancellationToken);
     }
 
+    public virtual Task<ICursorPage<TEntity>> GetCursorPageAsync(
+        CursorOrder<TEntity>? order = null,
+        string? cursor = null,
+        int size = 20,
+        Expression<Func<TEntity, bool>>? predicate = null,
+        Func<IQueryable<TEntity>, IQueryable<TEntity>>? include = null,
+        bool withDeleted = false,
+        bool enableTracking = true,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<TEntity> query = Query(withDeleted, enableTracking);
+
+        if (include is not null)
+            query = include(query);
+
+        if (predicate is not null)
+            query = query.Where(predicate);
+
+        // Id son anahtar değilse eklenir: eşit değerli kayıtlar sayfa sınırında atlanmaz ya da tekrar etmez.
+        order = order is null ? CursorOrder<TEntity>.By(e => e.Id) : order.EnsureUniqueBy(e => e.Id);
+        return query.ToCursorPageAsync(order, cursor, size, cancellationToken);
+    }
+
     public virtual Task<IPaginate<TEntity>> GetListByDynamicAsync(
         DynamicQuery dynamicQuery,
         Expression<Func<TEntity, bool>>? predicate = null,

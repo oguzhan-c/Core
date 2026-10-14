@@ -31,4 +31,28 @@ public static class QueryablePaginateExtensions
 
         return new Paginate<T>(items, index, size, count, from);
     }
+
+    /// <summary>
+    /// İmleçli (keyset) sayfa. OFFSET yerine "son görülen kayıttan sonrası" sorgulanır: sayfa ne kadar derin olursa olsun
+    /// aynı hızdadır, sayfalar arasında kayıt eklenip silinse de atlama ya da tekrar olmaz. Toplam sayı sorgulanmaz.
+    /// </summary>
+    /// <param name="source">Filtrelenmiş, SIRALANMAMIŞ sorgu (sıralamayı <paramref name="order"/> belirler).</param>
+    /// <param name="order">Benzersiz sıralama (son anahtar genelde Id).</param>
+    /// <param name="cursor">İstemcinin gönderdiği imleç; ilk sayfa için <see langword="null"/>.</param>
+    /// <param name="size">Sayfa boyutu.</param>
+    /// <param name="cancellationToken">İptal belirteci.</param>
+    /// <exception cref="Can.Core.Domain.Exceptions.BusinessException">İmleç geçersiz (<c>cursor_invalid</c>, 400).</exception>
+    public static async Task<ICursorPage<T>> ToCursorPageAsync<T>(
+        this IQueryable<T> source,
+        CursorOrder<T> order,
+        string? cursor,
+        int size,
+        CancellationToken cancellationToken = default)
+    {
+        CursorQuery<T> query = CursorPaging.Prepare(source, order, cursor, size);
+        List<T> fetched = query.Query.Provider is IAsyncQueryProvider
+            ? await query.Query.ToListAsync(cancellationToken).ConfigureAwait(false)
+            : query.Query.ToList();
+        return query.Complete(fetched);
+    }
 }

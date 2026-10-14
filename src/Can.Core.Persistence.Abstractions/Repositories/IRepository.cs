@@ -52,6 +52,30 @@ public interface IRepository<TEntity, TId>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// İmleçli (keyset) sayfa: sayfa ne kadar derin olursa olsun aynı hızda (OFFSET yok, toplam sayı yok). Sonsuz kaydırma,
+    /// mobil listeler ve büyük tablolar için. Sıralamanın sonuna Id kendiliğinden eklenir (benzersizlik).
+    /// </summary>
+    /// <param name="order">Sıralama; boşsa Id'ye göre artan.</param>
+    /// <param name="cursor">İstemcinin gönderdiği imleç (<see cref="ICursorPage{T}.NextCursor"/> ya da
+    /// <see cref="ICursorPage{T}.PreviousCursor"/>); ilk sayfa için <see langword="null"/>.</param>
+    /// <param name="size">Sayfa boyutu.</param>
+    /// <param name="predicate">Koşul.</param>
+    /// <param name="include">İlişkili veriler.</param>
+    /// <param name="withDeleted">Silinmişler dahil mi.</param>
+    /// <param name="enableTracking">Değişiklik izleme açık mı.</param>
+    /// <param name="cancellationToken">İptal belirteci.</param>
+    /// <exception cref="Can.Core.Domain.Exceptions.BusinessException">İmleç geçersiz (<c>cursor_invalid</c>, 400).</exception>
+    Task<ICursorPage<TEntity>> GetCursorPageAsync(
+        CursorOrder<TEntity>? order = null,
+        string? cursor = null,
+        int size = 20,
+        Expression<Func<TEntity, bool>>? predicate = null,
+        Func<IQueryable<TEntity>, IQueryable<TEntity>>? include = null,
+        bool withDeleted = false,
+        bool enableTracking = true,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// İstemciden gelen <see cref="DynamicQuery"/> (filtre + sıralama) ile sayfalı liste.
     /// </summary>
     /// <param name="dynamicQuery">Filtre ve sıralama.</param>
