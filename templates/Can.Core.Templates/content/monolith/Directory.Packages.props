@@ -1,4 +1,5 @@
 <Project>
+  <!-- Bu çözüm Can.Core.Templates TEMPLATE_PACKAGE_VERSION ile oluşturuldu. -->
   <PropertyGroup>
     <!-- Can.Core paketlerinin sürümü: tek yerden güncellenir. -->
     <CanCoreVersion>CANCORE_VERSION</CanCoreVersion>

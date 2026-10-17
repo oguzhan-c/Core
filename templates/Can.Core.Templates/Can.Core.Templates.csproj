@@ -2,13 +2,14 @@
 
   <!--
     Can.Core proje şablonları (dotnet new / Visual Studio / Rider "New Solution"):
-      dotnet pack templates/Can.Core.Templates -o artifacts/templates
-      dotnet new install artifacts/templates/Can.Core.Templates.<sürüm>.nupkg
+      build/pack-local.sh: Core, can-gen ve şablonu aynı yerel sürümle paketler (install argümanıyla kurar da).
   -->
   <PropertyGroup>
     <PackageType>Template</PackageType>
     <PackageId>Can.Core.Templates</PackageId>
-    <Version>0.1.0-local</Version>
+    <!-- Sürüm tek yerden: kökteki Directory.Build.props'taki VersionPrefix. Yerel paketleme build/pack-local.sh ile
+         ("-p:Version=0.1.0-local.<zaman>"), CI'da build/ci.sh ile verilir. -->
+    <VersionPrefix>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../Directory.Build.props')), '&lt;VersionPrefix&gt;(.*?)&lt;/VersionPrefix&gt;').Groups[1].Value)</VersionPrefix>
     <Title>Can.Core Templates</Title>
     <Authors>Can</Authors>
     <Description>Can.Core paketlerini kullanan monolith ve mikroservis çözüm şablonları.</Description>

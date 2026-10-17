@@ -37,7 +37,7 @@ ve ProblemDetails yanıtına çevrilir.
 ## Entity ekleme (can-gen)
 
 Entity'yi `CanAppTemplate.Domain/Entities` içinde yaz, ardından Rider'da entity dosyasına sağ tıkla → **Can.Core → Generate
-CRUD** (ya da `can-gen crud Brand`). Üretilen dosyalar:
+CRUD** (ya da terminalde `can-gen generate crud Brand`; komut/sorgu eklemek için `can-gen generate command|query`). Üretilen dosyalar:
 
 - `Application/Features/Brands/Commands/{Create,Update,Delete}/` — komut + handler, validator, `Created/Updated/DeletedBrandResponse`
 - `Application/Features/Brands/Queries/{GetById,GetList,GetListByDynamic}/` — sorgu + handler, `GetByIdBrandResponse`, `GetListBrandListItemDto`
