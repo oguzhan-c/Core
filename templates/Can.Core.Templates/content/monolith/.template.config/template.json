@@ -229,6 +229,48 @@
           "exclude": [
             "src/CanAppTemplate.Application/Services/Settings/RuntimeSettings.cs"
           ]
+        },
+        {
+          "condition": "(!Redis)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/Caching/RedisServiceRegistration.cs"
+          ]
+        },
+        {
+          "condition": "(!Sms)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/Sms/SmsServiceRegistration.cs"
+          ]
+        },
+        {
+          "condition": "(!FileStorage)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/FileStorage/FileStorageServiceRegistration.cs"
+          ]
+        },
+        {
+          "condition": "(!Search)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/Search/SearchServiceRegistration.cs"
+          ]
+        },
+        {
+          "condition": "(!EventBus)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/Messaging/EventBusServiceRegistration.cs"
+          ]
+        },
+        {
+          "condition": "(!Hangfire)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/BackgroundJobs/HangfireServiceRegistration.cs"
+          ]
+        },
+        {
+          "condition": "(!Realtime)",
+          "exclude": [
+            "src/CanAppTemplate.Infrastructure/Realtime/RealtimeServiceRegistration.cs"
+          ]
         }
       ]
     }

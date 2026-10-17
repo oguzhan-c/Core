@@ -10,8 +10,10 @@ src/
                                   ApplicationServiceRegistration.cs
   CanAppTemplate.Persistence      Contexts/BaseDbContext, EntityConfigurations/, Repositories/, Seeding/
                                   PersistenceServiceRegistration.cs
-  CanAppTemplate.Infrastructure   dış servisler (e-posta, dosya, arama, event bus, Redis, Hangfire ...)
-                                  InfrastructureServiceRegistration.cs
+  CanAppTemplate.Infrastructure   dış bağlantılar, her biri kendi klasöründe:
+                                  Mailing/, Sms/, FileStorage/, Search/, Messaging/ (event bus), BackgroundJobs/ (Hangfire),
+                                  Caching/ (Redis), Realtime/ (SignalR) → {Ad}ServiceRegistration.cs
+                                  InfrastructureServiceRegistration.cs (yalnızca hepsini çağırır)
   CanAppTemplate.WebAPI           Controllers/, kimlik akışı (JWT HttpOnly cookie'de), Program.cs
 ```
 
