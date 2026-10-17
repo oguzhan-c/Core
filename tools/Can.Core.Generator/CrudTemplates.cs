@@ -779,6 +779,16 @@ internal static class CrudTemplates
                     GetListResponse<GetListByDynamic{{E}}ListItemDto> response = await Mediator.Send(getListByDynamic{{E}}Query, cancellationToken);
                     return Ok(response);
                 }
+
+                /// <summary>
+                /// Aynı sorgu HTTP QUERY metoduyla (RFC 10008): gövde taşır ama GET gibi güvenli ve tekrarlanabilirdir.
+                /// OpenAPI 3.1 QUERY'yi tanımlamadığı için belgede yalnızca POST görünür; POST eski istemciler için kalır.
+                /// </summary>
+                [AcceptVerbs("QUERY", Route = "GetList/ByDynamic")]
+                [Consumes("application/json")]
+                [ApiExplorerSettings(IgnoreApi = true)]
+                public Task<IActionResult> QueryListByDynamic([FromQuery] PageRequest pageRequest, [FromBody] DynamicQuery? dynamicQuery, CancellationToken cancellationToken) =>
+                    GetListByDynamic(pageRequest, dynamicQuery, cancellationToken);
             """;
     }
 

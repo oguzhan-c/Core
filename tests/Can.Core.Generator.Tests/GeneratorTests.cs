@@ -286,6 +286,8 @@ public sealed class CrudGeneratorTests
         Assert.True(solution.Exists(Feature + "Queries/GetListByDynamic/GetListByDynamicBrandQuery.cs"));
         string controller = solution.Read("src/Shop.WebAPI/Controllers/BrandsController.cs");
         Assert.Contains("[HttpPost(\"GetList/ByDynamic\")]", controller);
+        Assert.Contains("[AcceptVerbs(\"QUERY\", Route = \"GetList/ByDynamic\")]", controller);
+        Assert.Equal(1, controller.Split("public Task<IActionResult> QueryListByDynamic").Length - 1);
         Assert.Contains("using Shop.Application.Features.Brands.Queries.GetListByDynamic;", controller);
         Assert.Contains("CreateMap<Brand, GetListByDynamicBrandListItemDto>();", solution.Read(Feature + "Profiles/MappingProfiles.cs"));
     }
