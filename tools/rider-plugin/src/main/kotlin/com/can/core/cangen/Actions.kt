@@ -6,78 +6,63 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.VirtualFile
 import java.io.File
 
 /**
- * Seçili / açık entity dosyası (.cs) için CRUD üretir. Dosyanın bir entity olup olmadığını can-gen denetler
- * (Entity&lt;TId&gt; / AggregateRoot&lt;TId&gt; ya da Audited türevlerinden türemeli).
+ * Entity dosyasına sağ tıklayınca görünür ve o entity için CRUD üretir. Yalnızca Domain projesindeki, doğrudan
+ * Entity&lt;TId&gt; / AggregateRoot&lt;TId&gt; ya da Audited türevlerinden türeyen sınıflarda etkindir (can-gen ile aynı kural);
+ * diğer .cs dosyalarında menüde görünmez.
  */
 class GenerateCrudAction : AnAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
-        val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
-        e.presentation.isEnabledAndVisible = e.project != null && file != null && !file.isDirectory && file.extension == "cs"
+        val entity = if (e.project != null) e.getData(CommonDataKeys.VIRTUAL_FILE)?.let(EntityDetector::entityName) else null
+        e.presentation.isEnabledAndVisible = entity != null
+        if (entity != null) e.presentation.text = "Can.Core: Generate CRUD for $entity..."
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
-        CanGenActions.generateFor(project, file.nameWithoutExtension, file.path, directoryOf(file))
+        val entity = EntityDetector.entityName(file) ?: return
+        CanGenActions.generateFor(project, entity, file.path, directoryOf(file))
     }
 
     private fun directoryOf(file: VirtualFile): String = file.parent?.path ?: File(file.path).parent
 }
 
-/** Domain'deki entity'leri listeler (can-gen entities), seçileni üretir. */
-class ChooseEntityAction : AnAction() {
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+/** Dosyanın can-gen'in kabul edeceği bir entity olup olmadığını hızlıca (metinden) anlar. */
+internal object EntityDetector {
+    private const val MAX_SIZE = 512 * 1024
 
-    override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project?.basePath != null
+    private val entityClass = Regex(
+        """\bclass\s+(\w+)\s*(?:<[^>{]*>)?\s*(?:\([^)]*\))?\s*:\s*(?:[\w.]+\.)?""" +
+            """(?:Entity|AggregateRoot|AuditedEntity|AuditedAggregateRoot|FullAuditedEntity|FullAuditedAggregateRoot)\s*<"""
+    )
+
+    /** Entity sınıfının adı; entity değilse ya da Domain projesinde değilse null. */
+    fun entityName(file: VirtualFile): String? {
+        if (file.isDirectory || file.extension != "cs" || file.length > MAX_SIZE) return null
+        if (!isInDomainProject(file)) return null
+
+        val text = FileDocumentManager.getInstance().getCachedDocument(file)?.text
+            ?: runCatching { String(file.contentsToByteArray(), file.charset) }.getOrNull()
+            ?: return null
+        return entityClass.find(text)?.groupValues?.get(1)
     }
 
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val start = e.getData(CommonDataKeys.VIRTUAL_FILE)?.let { if (it.isDirectory) it.path else it.parent?.path } ?: project.basePath ?: return
-
-        val result = ProgressManager.getInstance().runProcessWithProgressSynchronously<CanGenResult, RuntimeException>(
-            { CanGenRunner.run(start, "entities") },
-            "can-gen: entity'ler okunuyor",
-            true,
-            project,
-        )
-
-        if (!result.ok) {
-            Messages.showErrorDialog(project, result.error ?: "Entity'ler okunamadı.", "can-gen")
-            return
+    /** Dosyanın yukarısında adı ".Domain" ile biten bir proje klasörü (ya da .csproj) var mı. */
+    private fun isInDomainProject(file: VirtualFile): Boolean {
+        var dir = file.parent
+        while (dir != null) {
+            if (dir.name.endsWith(".Domain", ignoreCase = true)) return true
+            if (dir.children.any { it.extension == "csproj" }) return dir.children.any { it.name.endsWith(".Domain.csproj", ignoreCase = true) }
+            dir = dir.parent
         }
-
-        val entities = result.json["entities"].arr().map { it.obj() }.mapNotNull { e2 ->
-            val name = e2.str("name") ?: return@mapNotNull null
-            name to (e2.str("filePath") ?: "")
-        }
-
-        if (entities.isEmpty()) {
-            Messages.showInfoMessage(project, "Domain projesinde entity bulunamadı.", "can-gen")
-            return
-        }
-
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(entities.map { it.first })
-            .setTitle("CRUD üretilecek entity")
-            .setNamerForFiltering { it }
-            .setItemChosenCallback { name ->
-                val path = entities.first { it.first == name }.second
-                CanGenActions.generateFor(project, name, path, File(path).parent ?: start)
-            }
-            .createPopup()
-            .showCenteredInCurrentWindow(project)
+        return false
     }
 }
 

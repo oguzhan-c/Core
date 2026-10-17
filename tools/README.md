@@ -33,4 +33,4 @@ Core, can-gen ve şablon aynı sürümle paketlenir: `build/pack-local.sh --inst
 
 ## Rider eklentisi
 
-`tools/rider-plugin`: Rider'da sağ tık → Can.Core → Generate CRUD. Derleme ve kurulum: [rider-plugin/README.md](rider-plugin/README.md).
+`tools/rider-plugin`: Rider'da sağ tık → Can.Core: Generate CRUD. Derleme ve kurulum: [rider-plugin/README.md](rider-plugin/README.md).

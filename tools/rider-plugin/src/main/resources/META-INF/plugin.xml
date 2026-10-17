@@ -19,15 +19,12 @@
   </extensions>
 
   <actions>
-    <group id="CanGen.Group" text="Can.Core" popup="true" icon="AllIcons.Actions.Lightning">
-      <action id="CanGen.GenerateCrud" class="com.can.core.cangen.GenerateCrudAction"
-              text="Generate CRUD..." description="Seçili entity için CRUD kodunu üretir (can-gen crud)"/>
-      <action id="CanGen.ChooseEntity" class="com.can.core.cangen.ChooseEntityAction"
-              text="Generate CRUD for Entity..." description="Domain'deki entity'lerden birini seçip CRUD üretir"/>
+    <action id="CanGen.GenerateCrud" class="com.can.core.cangen.GenerateCrudAction"
+            text="Can.Core: Generate CRUD..." description="Seçili entity için CRUD kodunu üretir (can-gen crud)"
+            icon="AllIcons.Actions.Lightning">
       <add-to-group group-id="SolutionExplorerPopupMenu" anchor="last"/>
       <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
       <add-to-group group-id="EditorPopupMenu" anchor="last"/>
-      <add-to-group group-id="ToolsMenu" anchor="last"/>
-    </group>
+    </action>
   </actions>
 </idea-plugin>

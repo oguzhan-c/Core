@@ -1,7 +1,6 @@
 # can-gen Rider eklentisi
 
-Rider'da entity dosyasına sağ tık → **Can.Core → Generate CRUD...** (Solution Explorer, editör ya da Tools menüsü).
-Tools → Can.Core → **Generate CRUD for Entity...** Domain'deki entity'leri listeler.
+Rider'da entity dosyasına sağ tık (Solution Explorer ya da editör) → **Can.Core: Generate CRUD...**
 
 Eklenti yalnızca arayüzdür: kodu `can-gen` komut satırı aracı üretir (`--json` ile çağrılır). Önce aracı kur:
 
@@ -23,7 +22,7 @@ export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
 
 cd tools/rider-plugin
 gradle wrapper --gradle-version 9.1.0     # bir kez; gradlew dosyaları commit'lenir
-./gradlew buildPlugin                     # → build/distributions/can-gen-rider-0.1.0.zip
+./gradlew buildPlugin                     # → build/distributions/can-gen-rider-<pluginVersion>.zip
 ```
 
 `gradle.properties` içindeki `platformVersion` yüklü Rider'ın ana sürümü olmalı (Rider → About).
