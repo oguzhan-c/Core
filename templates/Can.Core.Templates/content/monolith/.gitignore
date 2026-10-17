@@ -1,0 +1,17 @@
+bin/
+obj/
+.idea/
+.vs/
+*.user
+*.DotSettings.user
+.DS_Store
+*.log
+
+# Geliştirmede yazılan e-posta, SMS, dosya ve loglar
+**/mails/
+**/sms/
+**/files/
+**/logs/
+*.db
+*.db-shm
+*.db-wal

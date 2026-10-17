@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Can.Core proje şablonları (dotnet new / Visual Studio / Rider "New Solution"):
+      dotnet pack templates/Can.Core.Templates -o artifacts/templates
+      dotnet new install artifacts/templates/Can.Core.Templates.<sürüm>.nupkg
+  -->
+  <PropertyGroup>
+    <PackageType>Template</PackageType>
+    <PackageId>Can.Core.Templates</PackageId>
+    <Version>0.1.0-local</Version>
+    <Title>Can.Core Templates</Title>
+    <Authors>Can</Authors>
+    <Description>Can.Core paketlerini kullanan monolith ve mikroservis çözüm şablonları.</Description>
+    <PackageTags>dotnet-new;templates;can-core;clean-architecture;cqrs</PackageTags>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <NoWarn>$(NoWarn);NU5128;NU5110;NU5111</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**;content\**\.idea\**;content\**\.vs\**;content\**\*.user" />
+  </ItemGroup>
+
+</Project>

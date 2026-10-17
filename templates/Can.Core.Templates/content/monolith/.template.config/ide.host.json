@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json.schemastore.org/vs-2017.3.host",
+  "order": 0,
+  "uiFilters": [
+    "oneaspnet"
+  ],
+  "symbolInfo": [
+    {
+      "id": "Database",
+      "name": {
+        "text": "Veritabanı"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "MultiTenancy",
+      "name": {
+        "text": "Tenancy: Multi-tenancy"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Otp",
+      "name": {
+        "text": "Security: OTP (authenticator)"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "EmailTwoFactor",
+      "name": {
+        "text": "Security: 2FA (e-posta kodu)"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Passkey",
+      "name": {
+        "text": "Security: Passkey"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "ExternalLogin",
+      "name": {
+        "text": "Security: Dış hesapla giriş"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Redis",
+      "name": {
+        "text": "Altyapı: Redis"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "EventBus",
+      "name": {
+        "text": "Altyapı: Event bus + outbox"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Hangfire",
+      "name": {
+        "text": "Altyapı: Hangfire"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "FileStorage",
+      "name": {
+        "text": "Altyapı: Dosya depolama"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Search",
+      "name": {
+        "text": "Altyapı: Arama"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Realtime",
+      "name": {
+        "text": "Altyapı: SignalR"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Sms",
+      "name": {
+        "text": "Altyapı: SMS"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "AuditTrail",
+      "name": {
+        "text": "Modül: Değişiklik geçmişi"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Settings",
+      "name": {
+        "text": "Modül: Ayarlar"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "Reporting",
+      "name": {
+        "text": "Modül: Raporlama"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "OpenTelemetry",
+      "name": {
+        "text": "Modül: OpenTelemetry"
+      },
+      "isVisible": true,
+      "persistenceScope": "templateGroup"
+    },
+    {
+      "id": "CanCoreVersion",
+      "name": {
+        "text": "Can.Core sürümü"
+      },
+      "isVisible": true,
+      "persistenceScope": "shared"
+    },
+    {
+      "id": "CanCoreFeed",
+      "name": {
+        "text": "Can.Core paket kaynağı"
+      },
+      "isVisible": true,
+      "persistenceScope": "shared"
+    }
+  ]
+}

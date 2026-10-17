@@ -1,0 +1,12 @@
+{
+  // Uygulamanın hata kodları → metin (ProblemDetails "detail"). {ad} yer tutucuları hata metadata'sından dolar.
+  // TODO(can-gen): Generator'ın ürettiği hata kodlarının (ör. "brand.not_found") çevirilerini buraya ve en.json'a ekle.
+  "invalid_credentials": "E-posta ya da şifre hatalı.",
+  "locked_out": "Çok fazla hatalı deneme yapıldı; hesap geçici olarak kilitlendi.",
+  "email_not_confirmed": "E-posta adresin henüz doğrulanmadı. Gönderdiğimiz kodu gir.",
+  "email_taken": "Bu e-posta adresiyle kayıtlı bir hesap var.",
+  "session_expired": "Oturumun süresi doldu; tekrar giriş yap.",
+  "invalid_verification_code": "Kod geçersiz ya da süresi dolmuş; yeni kod iste.",
+  "invalid_two_factor_code": "Kod geçersiz ya da süresi dolmuş.",
+  "two_factor_expired": "Doğrulama süresi doldu; tekrar giriş yap."
+}

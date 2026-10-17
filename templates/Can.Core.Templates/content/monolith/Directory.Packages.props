@@ -1,0 +1,85 @@
+<Project>
+  <PropertyGroup>
+    <!-- Can.Core paketlerinin sürümü: tek yerden güncellenir. -->
+    <CanCoreVersion>CANCORE_VERSION</CanCoreVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Can.Core -->
+    <PackageVersion Include="Can.Core.Domain" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Security" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Security.EntityFrameworkCore" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Application" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Mapping" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Persistence" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Persistence.Abstractions" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.MultiTenancy" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.BackgroundJobs" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Mailing" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Mailing.MailKit" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Mailing.SendGrid" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.WebApi" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.WebApi.OpenApi" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Localization" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Logging.Serilog" Version="$(CanCoreVersion)" />
+<!--#if (EventBus)-->
+    <PackageVersion Include="Can.Core.EventBus" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.EventBus.RabbitMQ" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Sms)-->
+    <PackageVersion Include="Can.Core.Sms" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Realtime)-->
+    <PackageVersion Include="Can.Core.Realtime" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Realtime.SignalR" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Search)-->
+    <PackageVersion Include="Can.Core.Search" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Search.Elasticsearch" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (FileStorage)-->
+    <PackageVersion Include="Can.Core.FileStorage" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.FileStorage.S3" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.FileStorage.AzureBlob" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageVersion Include="Can.Core.Settings" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Settings.AspNetCore" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Settings.EntityFrameworkCore" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Reporting)-->
+    <PackageVersion Include="Can.Core.Reporting" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Reporting.AspNetCore" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Reporting.EntityFrameworkCore" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Redis)-->
+    <PackageVersion Include="Can.Core.Caching.Redis" Version="$(CanCoreVersion)" />
+    <PackageVersion Include="Can.Core.Redis.ScaleOut" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (Hangfire)-->
+    <PackageVersion Include="Can.Core.BackgroundJobs.Hangfire" Version="$(CanCoreVersion)" />
+<!--#endif-->
+<!--#if (OpenTelemetry)-->
+    <PackageVersion Include="Can.Core.Observability.OpenTelemetry" Version="$(CanCoreVersion)" />
+<!--#endif-->
+
+    <!-- Veritabanı -->
+<!--#if (UsePostgreSql)-->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+<!--#elif (UseSqlServer)-->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+<!--#else-->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+<!--#endif-->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.13" />
+<!--#if (Hangfire && UsePostgreSql)-->
+    <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
+<!--#elif (Hangfire && UseSqlServer)-->
+    <PackageVersion Include="Hangfire.SqlServer" Version="1.8.25" />
+<!--#elif (Hangfire)-->
+    <PackageVersion Include="Hangfire.InMemory" Version="1.0.0" />
+<!--#endif-->
+  </ItemGroup>
+</Project>

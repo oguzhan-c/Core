@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>canapptemplate-USER_SECRETS_ID</UserSecretsId>
+  </PropertyGroup>
+
+  <!--
+    Uç noktalar ve dış servis bağlantıları (e-posta, SMS, dosya, arama, event bus, Redis, Hangfire ...). Hepsi Can.Core
+    paketleri olduğundan ayrı bir Infrastructure katmanına gerek yok. Veritabanı Persistence'ta.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Persistence\CanAppTemplate.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Can.Core.WebApi" />
+    <PackageReference Include="Can.Core.WebApi.OpenApi" />
+    <PackageReference Include="Can.Core.Localization" />
+    <PackageReference Include="Can.Core.Logging.Serilog" />
+    <PackageReference Include="Can.Core.Mailing.MailKit" />
+    <PackageReference Include="Can.Core.Mailing.SendGrid" />
+<!--#if (OpenTelemetry)-->
+    <PackageReference Include="Can.Core.Observability.OpenTelemetry" />
+<!--#endif-->
+<!--#if (Redis)-->
+    <PackageReference Include="Can.Core.Caching.Redis" />
+    <PackageReference Include="Can.Core.Redis.ScaleOut" />
+<!--#endif-->
+<!--#if (Realtime)-->
+    <PackageReference Include="Can.Core.Realtime.SignalR" />
+<!--#endif-->
+<!--#if (Search)-->
+    <PackageReference Include="Can.Core.Search.Elasticsearch" />
+<!--#endif-->
+<!--#if (EventBus)-->
+    <PackageReference Include="Can.Core.EventBus.RabbitMQ" />
+<!--#endif-->
+<!--#if (FileStorage)-->
+    <PackageReference Include="Can.Core.FileStorage.S3" />
+    <PackageReference Include="Can.Core.FileStorage.AzureBlob" />
+<!--#endif-->
+<!--#if (Reporting)-->
+    <PackageReference Include="Can.Core.Reporting.AspNetCore" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="Can.Core.Settings.AspNetCore" />
+<!--#endif-->
+<!--#if (Hangfire)-->
+    <PackageReference Include="Can.Core.BackgroundJobs.Hangfire" />
+<!--#if (UsePostgreSql)-->
+    <PackageReference Include="Hangfire.PostgreSql" />
+<!--#elif (UseSqlServer)-->
+    <PackageReference Include="Hangfire.SqlServer" />
+<!--#else-->
+    <PackageReference Include="Hangfire.InMemory" />
+<!--#endif-->
+<!--#endif-->
+    <!-- dotnet ef migrations add ... için -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Hata ve metin çevirileri (tr/en) -->
+    <Content Update="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

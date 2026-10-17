@@ -1,0 +1,10 @@
+{
+  "invalid_credentials": "Email or password is incorrect.",
+  "locked_out": "Too many failed attempts; the account is temporarily locked.",
+  "email_not_confirmed": "Your email address is not verified yet. Enter the code we sent.",
+  "email_taken": "An account with this email already exists.",
+  "session_expired": "Your session has expired; please sign in again.",
+  "invalid_verification_code": "The code is invalid or expired; request a new one.",
+  "invalid_two_factor_code": "The code is invalid or expired.",
+  "two_factor_expired": "Verification timed out; please sign in again."
+}

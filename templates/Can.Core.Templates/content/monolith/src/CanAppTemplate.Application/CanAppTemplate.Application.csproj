@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Kullanım senaryoları (CQRS: komut/sorgu + handler), doğrulama, yetki, eşleme. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Domain\CanAppTemplate.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Can.Core.Application" />
+    <PackageReference Include="Can.Core.Mapping" />
+    <PackageReference Include="Can.Core.Persistence.Abstractions" />
+    <PackageReference Include="Can.Core.Persistence" />
+    <PackageReference Include="Can.Core.MultiTenancy" />
+    <PackageReference Include="Can.Core.BackgroundJobs" />
+    <PackageReference Include="Can.Core.Mailing" />
+<!--#if (Sms)-->
+    <PackageReference Include="Can.Core.Sms" />
+<!--#endif-->
+<!--#if (Realtime)-->
+    <PackageReference Include="Can.Core.Realtime" />
+<!--#endif-->
+<!--#if (Search)-->
+    <PackageReference Include="Can.Core.Search" />
+<!--#endif-->
+<!--#if (FileStorage)-->
+    <PackageReference Include="Can.Core.FileStorage" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="Can.Core.Settings" />
+<!--#endif-->
+<!--#if (Reporting)-->
+    <PackageReference Include="Can.Core.Reporting" />
+<!--#endif-->
+  </ItemGroup>
+
+</Project>

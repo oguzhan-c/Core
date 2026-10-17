@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Veritabanıyla ilgili her şey: DbContext, tablo eşlemeleri (Configurations), seed. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Application\CanAppTemplate.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Can.Core.Security.EntityFrameworkCore" />
+<!--#if (Reporting)-->
+    <PackageReference Include="Can.Core.Reporting.EntityFrameworkCore" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="Can.Core.Settings.EntityFrameworkCore" />
+<!--#endif-->
+<!--#if (UsePostgreSql)-->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+<!--#elif (UseSqlServer)-->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <!-- Microsoft.Data.SqlClient güvenlik açığı olan 9.0.x sürümünü çekiyor (GHSA-846f-f764-76mx, GHSA-2fmv-rv2c-59x7). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+<!--#else-->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+<!--#endif-->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+</Project>

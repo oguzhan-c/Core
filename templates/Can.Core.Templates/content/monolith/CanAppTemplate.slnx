@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CanAppTemplate.Domain/CanAppTemplate.Domain.csproj" />
+    <Project Path="src/CanAppTemplate.Application/CanAppTemplate.Application.csproj" />
+    <Project Path="src/CanAppTemplate.Persistence/CanAppTemplate.Persistence.csproj" />
+    <Project Path="src/CanAppTemplate.WebApi/CanAppTemplate.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="nuget.config" />
+    <File Path="README.md" />
+  </Folder>
+</Solution>
