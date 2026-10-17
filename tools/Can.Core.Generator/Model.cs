@@ -32,6 +32,12 @@ public sealed record EntityModel
     /// <summary><c>public ... Update(...)</c>.</summary>
     public EntityMethod? Update { get; init; }
 
+    /// <summary>Public constructor'lar (eşleyici bunlardan biriyle nesne oluşturabilir).</summary>
+    public IReadOnlyList<EntityMethod> PublicConstructors { get; init; } = [];
+
+    /// <summary>Fabrika metodu yoksa eşleyicinin kullanabileceği bir public constructor var mı.</summary>
+    public bool HasPublicConstructor => PublicConstructors.Count > 0;
+
     /// <summary>Entity'deki <c>const int</c> alanlar (ör. <c>NameMaxLength</c>).</summary>
     public required IReadOnlySet<string> IntConstants { get; init; }
 
@@ -61,7 +67,7 @@ public enum PropertyKind
     Complex,
 }
 
-public sealed record EntityProperty(string Name, string Type, bool IsNullable, PropertyKind Kind, bool HasSetter)
+public sealed record EntityProperty(string Name, string Type, bool IsNullable, PropertyKind Kind, bool HasSetter, bool HasPublicSetter = false)
 {
     /// <summary>Nullable işareti olmadan tip (ör. <c>int?</c> → <c>int</c>).</summary>
     public string BareType => Type.TrimEnd('?');

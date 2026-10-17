@@ -10,27 +10,27 @@ internal sealed class TestSolution : IDisposable
         Write("src/Shop.Domain/Shop.Domain.csproj", "<Project />");
         Write("src/Shop.Application/Shop.Application.csproj", "<Project />");
         Write("src/Shop.Persistence/Shop.Persistence.csproj", "<Project />");
-        Write("src/Shop.WebApi/Shop.WebApi.csproj", "<Project />");
+        Write("src/Shop.WebAPI/Shop.WebAPI.csproj", "<Project />");
 
-        Write("src/Shop.Persistence/AppDbContext.cs", """
+        Write("src/Shop.Persistence/Contexts/BaseDbContext.cs", """
             using Can.Core.Persistence.Context;
             using Microsoft.EntityFrameworkCore;
 
-            namespace Shop.Persistence;
+            namespace Shop.Persistence.Contexts;
 
-            public sealed class AppDbContext
+            public sealed class BaseDbContext
             {
                 public DbSet<AppUser> Users => Set<AppUser>();
                 // can-gen:dbsets
             }
             """);
 
-        Write("src/Shop.Application/Common/AppPermissions.cs", """
-            using Shop.Domain.Identity;
+        Write("src/Shop.Application/Services/OperationClaims/AppOperationClaims.cs", """
+            using Shop.Domain.Constants;
 
-            namespace Shop.Application.Common;
+            namespace Shop.Application.Services.OperationClaims;
 
-            public static class AppPermissions
+            public static class AppOperationClaims
             {
                 public static IReadOnlyList<(string Name, string Description)> All { get; } =
                 [
@@ -47,42 +47,28 @@ internal sealed class TestSolution : IDisposable
             }
             """);
 
-        Write("src/Shop.Application/DependencyInjection.cs", """
+        Write("src/Shop.Persistence/PersistenceServiceRegistration.cs", """
             using Microsoft.Extensions.DependencyInjection;
 
-            namespace Shop.Application;
+            namespace Shop.Persistence;
 
-            public static class DependencyInjection
+            public static class PersistenceServiceRegistration
             {
-                public static IServiceCollection AddShopApplication(this IServiceCollection services)
+                public static IServiceCollection AddPersistenceServices(this IServiceCollection services)
                 {
-                    // can-gen:services
+                    // can-gen:repositories
                     return services;
                 }
             }
             """);
 
-        Write("src/Shop.WebApi/Endpoints/EndpointRegistration.cs", """
-            namespace Shop.WebApi.Endpoints;
-
-            internal static class EndpointRegistration
-            {
-                public static IEndpointRouteBuilder MapShopEndpoints(this IEndpointRouteBuilder app)
-                {
-                    // Uygulama uçları (can-gen her entity için bir satır ekler).
-                    // can-gen:endpoints
-                    return app;
-                }
-            }
-            """);
-
-        Write("src/Shop.WebApi/Localization/tr.json", """
+        Write("src/Shop.WebAPI/Localization/tr.json", """
             {
               // yorum
               "invalid_credentials": "E-posta ya da şifre hatalı."
             }
             """);
-        Write("src/Shop.WebApi/Localization/en.json", "{\n}\n");
+        Write("src/Shop.WebAPI/Localization/en.json", "{\n}\n");
     }
 
     public string Root { get; }

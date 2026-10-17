@@ -21,3 +21,7 @@ can-gen crud Category --plural Categories --force
 
 Seçenekler: `--project <klasör>`, `--plural <Çoğul>`, `--force` (var olan dosyaların üzerine yaz), `--dry-run`,
 `--json` (IDE eklentileri için).
+
+## Rider eklentisi
+
+`tools/rider-plugin`: Rider'da sağ tık → Can.Core → Generate CRUD. Derleme ve kurulum: [rider-plugin/README.md](rider-plugin/README.md).

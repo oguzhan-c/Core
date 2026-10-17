@@ -3,25 +3,28 @@ namespace Can.Core.Generator;
 /// <summary>Üretim seçenekleri.</summary>
 public sealed record CrudOptions
 {
-    /// <summary>Çoğul ad (klasör, tablo, adres). Boşsa İngilizce kurallarla türetilir.</summary>
+    /// <summary>Çoğul ad (klasör, sınıf, tablo, adres). Boşsa İngilizce kurallarla türetilir.</summary>
     public string? Plural { get; init; }
 }
 
 /// <summary>
-/// Bir entity için CRUD özelliğini üretir:
+/// Bir entity için CRUD özelliğini nArchitecture düzeninde üretir:
 /// <code>
 /// Application/Features/{Çoğul}/
-///   Commands/Create|Update|Delete/   {İşlem}{Entity}Command (+ Handler) ve Validator
-///   Queries/GetById/                 Get{Entity}ByIdQuery
-///   Queries/GetList/                 Get{Çoğul}Query (sayfalı, dinamik filtre/sıralama)
-///   Dtos/                            {Entity}Dto, {Entity}ListItemDto
-///   Constants/                       {Entity}Errors, {Entity}Permissions
-///   Rules/                           {Entity}Rules (Ensure{Entity}ExistsAsync ...)
-/// Persistence/Configurations/        {Entity}Configuration
-/// WebApi/Endpoints/                  {Entity}Endpoints (/api/v1/{çoğul})
+///   Commands/Create|Update|Delete/   {İşlem}{Entity}Command (+ Handler), Validator, {Created|Updated|Deleted}{Entity}Response
+///   Queries/GetById/                 GetById{Entity}Query, GetById{Entity}Response
+///   Queries/GetList/                 GetList{Entity}Query, GetList{Entity}ListItemDto
+///   Queries/GetListByDynamic/        GetListByDynamic{Entity}Query
+///   Constants/                       {Çoğul}Messages, {Çoğul}OperationClaims
+///   Profiles/                        MappingProfiles
+///   Rules/                           {Entity}BusinessRules
+/// Application/Services/Repositories/ I{Entity}Repository
+/// Persistence/Repositories/          {Entity}Repository
+/// Persistence/EntityConfigurations/  {Entity}Configuration
+/// WebAPI/Controllers/                {Çoğul}Controller (/api/v1/{çoğul})
 /// </code>
-/// ve <c>// can-gen:...</c> işaretli yerlere DbSet, yetki, servis kaydı, uç nokta kaydı ve çeviri ekler.
-/// Geliştiricinin tamamlaması gereken yerlere <c>TODO(can-gen)</c> yorumu bırakır.
+/// ve <c>// can-gen:...</c> işaretli yerlere DbSet, yetki, repository kaydı ve çeviri ekler. Geliştiricinin tamamlaması
+/// gereken yerlere <c>TODO(can-gen)</c> yorumu bırakır.
 /// </summary>
 public static class CrudGenerator
 {
@@ -33,42 +36,49 @@ public static class CrudGenerator
         var n = new CrudNames(layout, entity, options?.Plural);
         var plan = new GenerationPlan();
         string feature = Path.Combine(layout.Application, "Features", n.Plural);
+        string E = n.Entity;
 
-        plan.AddFile(Path.Combine(feature, "Constants", $"{n.Entity}Permissions.cs"), CrudTemplates.Permissions(n));
-        plan.AddFile(Path.Combine(feature, "Constants", $"{n.Entity}Errors.cs"), CrudTemplates.Errors(n));
-        plan.AddFile(Path.Combine(feature, "Rules", $"{n.Entity}Rules.cs"), CrudTemplates.Rules(n));
-        plan.AddFile(Path.Combine(feature, "Dtos", $"{n.Entity}Dto.cs"), CrudTemplates.Dto(n));
-        plan.AddFile(Path.Combine(feature, "Dtos", $"{n.Entity}ListItemDto.cs"), CrudTemplates.ListItemDto(n));
-        plan.AddFile(Path.Combine(feature, "Commands", "Create", $"Create{n.Entity}Command.cs"), CrudTemplates.CreateCommand(n));
-        plan.AddFile(Path.Combine(feature, "Commands", "Create", $"Create{n.Entity}CommandValidator.cs"), CrudTemplates.Validator(n, "Create", n.CreateParameters));
-        plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Update{n.Entity}Command.cs"), CrudTemplates.UpdateCommand(n));
-        plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Update{n.Entity}CommandValidator.cs"), CrudTemplates.Validator(n, "Update", n.UpdateParameters));
-        plan.AddFile(Path.Combine(feature, "Commands", "Delete", $"Delete{n.Entity}Command.cs"), CrudTemplates.DeleteCommand(n));
-        plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"Get{n.Entity}ByIdQuery.cs"), CrudTemplates.GetByIdQuery(n));
-        plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"Get{n.Plural}Query.cs"), CrudTemplates.GetListQuery(n));
-        plan.AddFile(Path.Combine(layout.Persistence, "Configurations", $"{n.Entity}Configuration.cs"), CrudTemplates.Configuration(n));
-        plan.AddFile(Path.Combine(layout.WebApi, "Endpoints", $"{n.Entity}Endpoints.cs"), CrudTemplates.Endpoints(n));
+        plan.AddFile(Path.Combine(feature, "Constants", $"{n.Plural}Messages.cs"), CrudTemplates.Messages(n));
+        plan.AddFile(Path.Combine(feature, "Constants", $"{n.Plural}OperationClaims.cs"), CrudTemplates.OperationClaims(n));
+        plan.AddFile(Path.Combine(feature, "Rules", $"{E}BusinessRules.cs"), CrudTemplates.BusinessRules(n));
+        plan.AddFile(Path.Combine(feature, "Profiles", "MappingProfiles.cs"), CrudTemplates.MappingProfiles(n));
+
+        plan.AddFile(Path.Combine(feature, "Commands", "Create", $"Create{E}Command.cs"), CrudTemplates.CreateCommand(n));
+        plan.AddFile(Path.Combine(feature, "Commands", "Create", $"Create{E}CommandValidator.cs"), CrudTemplates.Validator(n, "Create", n.CreateFields));
+        plan.AddFile(Path.Combine(feature, "Commands", "Create", $"Created{E}Response.cs"), CrudTemplates.Response(n, "Commands.Create", $"Created{E}Response", n.ResponseFields));
+        plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Update{E}Command.cs"), CrudTemplates.UpdateCommand(n));
+        plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Update{E}CommandValidator.cs"), CrudTemplates.Validator(n, "Update", n.UpdateFields));
+        plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Updated{E}Response.cs"), CrudTemplates.Response(n, "Commands.Update", $"Updated{E}Response", n.ResponseFields));
+        plan.AddFile(Path.Combine(feature, "Commands", "Delete", $"Delete{E}Command.cs"), CrudTemplates.DeleteCommand(n));
+        plan.AddFile(Path.Combine(feature, "Commands", "Delete", $"Deleted{E}Response.cs"), CrudTemplates.Response(n, "Commands.Delete", $"Deleted{E}Response", [new("Id", n.IdType)]));
+
+        plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"GetById{E}Query.cs"), CrudTemplates.GetByIdQuery(n));
+        plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"GetById{E}Response.cs"), CrudTemplates.Response(n, "Queries.GetById", $"GetById{E}Response", n.ResponseFields));
+        plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}Query.cs"), CrudTemplates.GetListQuery(n));
+        plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}ListItemDto.cs"), CrudTemplates.Response(n, "Queries.GetList", $"GetList{E}ListItemDto", n.ResponseFields, isDto: true));
+        plan.AddFile(Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}Query.cs"), CrudTemplates.GetListByDynamicQuery(n));
+
+        plan.AddFile(Path.Combine(layout.Application, "Services", "Repositories", $"I{E}Repository.cs"), CrudTemplates.RepositoryInterface(n));
+        plan.AddFile(Path.Combine(layout.Persistence, "Repositories", $"{E}Repository.cs"), CrudTemplates.Repository(n));
+        plan.AddFile(Path.Combine(layout.Persistence, "EntityConfigurations", $"{E}Configuration.cs"), CrudTemplates.Configuration(n));
+        plan.AddFile(Path.Combine(layout.WebApi, "Controllers", $"{n.Plural}Controller.cs"), CrudTemplates.Controller(n));
 
         plan.Inject(
-            MarkerFile(layout.Persistence, "can-gen:dbsets", "AppDbContext.cs"),
+            MarkerFile(layout.Persistence, "can-gen:dbsets", Path.Combine("Contexts", "BaseDbContext.cs")),
             "can-gen:dbsets",
-            $"public DbSet<{n.Entity}> {n.Plural} => Set<{n.Entity}>();",
+            $"public DbSet<{E}> {n.Plural} => Set<{E}>();",
             entity.Namespace);
 
-        string permissions = MarkerFile(layout.Application, "can-gen:permissions", Path.Combine("Common", "AppPermissions.cs"));
-        plan.Inject(permissions, "can-gen:permissions", $"..{n.Entity}Permissions.All,", n.ConstantsNamespace);
-        plan.Inject(permissions, "can-gen:user-grants", $"// {n.Entity}Permissions.Read, // TODO(can-gen): User rolü {n.Words} kayıtlarını görebilsin mi?");
-
         plan.Inject(
-            MarkerFile(layout.Application, "can-gen:services", "DependencyInjection.cs"),
-            "can-gen:services",
-            $"services.AddScoped<{n.Entity}Rules>();",
-            n.RulesNamespace);
+            MarkerFile(layout.Persistence, "can-gen:repositories", "PersistenceServiceRegistration.cs"),
+            "can-gen:repositories",
+            $"services.AddScoped<I{E}Repository, {E}Repository>();",
+            $"{n.Root}.Application.Services.Repositories",
+            $"{n.Root}.Persistence.Repositories");
 
-        plan.Inject(
-            MarkerFile(layout.WebApi, "can-gen:endpoints", Path.Combine("Endpoints", "EndpointRegistration.cs")),
-            "can-gen:endpoints",
-            $"app.Map{n.Entity}Endpoints();     // /api/v1/{n.Route}");
+        string claims = MarkerFile(layout.Application, "can-gen:permissions", Path.Combine("Services", "OperationClaims", "AppOperationClaims.cs"));
+        plan.Inject(claims, "can-gen:permissions", $"..{n.Plural}OperationClaims.All,", n.ConstantsNamespace);
+        plan.Inject(claims, "can-gen:user-grants", $"// {n.Plural}OperationClaims.Read, // TODO(can-gen): User rolü {n.Words} kayıtlarını görebilsin mi?");
 
         string localization = Path.Combine(layout.WebApi, "Localization");
         if (Directory.Exists(localization))
@@ -77,7 +87,7 @@ public static class CrudGenerator
             {
                 bool turkish = Path.GetFileNameWithoutExtension(file).StartsWith("tr", StringComparison.OrdinalIgnoreCase);
                 string message = turkish ? $"{n.Words} kaydı bulunamadı." : $"{n.Words} not found.";
-                plan.Edit(file, $"\"{n.ErrorPrefix}.not_found\" çevirisi", text => SourceEditor.AddJsonGroup(text, n.ErrorPrefix, "not_found", message));
+                plan.Edit(file, $"\"{n.ErrorPrefix}.not_exists\" çevirisi", text => SourceEditor.AddJsonGroup(text, n.ErrorPrefix, "not_exists", message));
             }
         }
 
@@ -93,7 +103,7 @@ public static class CrudGenerator
     }
 }
 
-/// <summary>Bir entity için üretilen tüm adlar.</summary>
+/// <summary>Bir entity için üretilen tüm adlar ve alan listeleri.</summary>
 internal sealed class CrudNames
 {
     public CrudNames(SolutionLayout layout, EntityModel entity, string? plural)
@@ -106,8 +116,8 @@ internal sealed class CrudNames
         Route = Names.Kebab(Plural);
         ErrorPrefix = Names.Snake(entity.Name);
         Variable = Names.Camel(entity.Name) is var v && v is "event" or "class" or "object" or "string" or "operator" ? "@" + v : Names.Camel(entity.Name);
-        Repository = "_" + Names.Camel(Plural);
-
+        Repository = $"_{Names.Camel(entity.Name)}Repository";
+        Rules = $"_{Names.Camel(entity.Name)}BusinessRules";
         FeatureNamespace = $"{Root}.Application.Features.{Plural}";
 
         List<MethodParameter> scalars = entity.ScalarProperties
@@ -115,8 +125,24 @@ internal sealed class CrudNames
             .Select(p => new MethodParameter(p.Name, p.Type))
             .ToList();
 
-        CreateParameters = entity.Factory?.Parameters.Select(Pascalize).ToList() ?? scalars;
-        UpdateParameters = entity.Update?.Parameters.Select(Pascalize).ToList() ?? scalars;
+        CreateFields = entity.Factory?.Parameters.Select(Pascalize).ToList() ?? scalars;
+        UpdateFields = entity.Update?.Parameters.Select(Pascalize).ToList() ?? scalars;
+
+        var response = new List<MethodParameter> { new("Id", entity.IdType) };
+        response.AddRange(scalars);
+        if (entity.IsAudited)
+        {
+            response.Add(new MethodParameter("CreatedAt", "DateTimeOffset"));
+            response.Add(new MethodParameter("UpdatedAt", "DateTimeOffset?"));
+        }
+
+        ResponseFields = response;
+
+        // Fabrika metodu yoksa eşleyici public constructor ya da public setter'larla oluşturur.
+        CreateWithMapper = entity.Factory is null && entity.HasPublicConstructor;
+        UpdateWithMapper = entity.Update is null
+            && UpdateFields.Count > 0
+            && UpdateFields.All(f => entity.Properties.FirstOrDefault(p => p.Name == f.Name) is { HasPublicSetter: true });
     }
 
     public EntityModel Model { get; }
@@ -130,7 +156,7 @@ internal sealed class CrudNames
     /// <summary>"Product category" (metinler).</summary>
     public string Words { get; }
 
-    /// <summary>"product-categories" (adres, yetki).</summary>
+    /// <summary>"product-categories" (yetki adları).</summary>
     public string Route { get; }
 
     /// <summary>"product_category" (hata kodu öneki).</summary>
@@ -139,8 +165,11 @@ internal sealed class CrudNames
     /// <summary>"brand" (yerel değişken).</summary>
     public string Variable { get; }
 
-    /// <summary>"_brands" (repository alanı).</summary>
+    /// <summary>"_brandRepository".</summary>
     public string Repository { get; }
+
+    /// <summary>"_brandBusinessRules".</summary>
+    public string Rules { get; }
 
     public string IdType => Model.IdType;
 
@@ -150,22 +179,23 @@ internal sealed class CrudNames
 
     public string RulesNamespace => FeatureNamespace + ".Rules";
 
-    public string DtosNamespace => FeatureNamespace + ".Dtos";
-
     /// <summary>Oluşturma komutunun alanları: fabrika metodunun parametreleri, yoksa entity'nin düz özellikleri.</summary>
-    public IReadOnlyList<MethodParameter> CreateParameters { get; }
+    public IReadOnlyList<MethodParameter> CreateFields { get; }
 
     /// <summary>Güncelleme komutunun alanları (Id hariç): Update metodunun parametreleri, yoksa düz özellikler.</summary>
-    public IReadOnlyList<MethodParameter> UpdateParameters { get; }
+    public IReadOnlyList<MethodParameter> UpdateFields { get; }
 
-    /// <summary>Adres kısıtı: <c>{id:guid}</c>.</summary>
-    public string RouteId => Model.IdType switch
-    {
-        "Guid" => "{id:guid}",
-        "int" or "Int32" => "{id:int}",
-        "long" or "Int64" => "{id:long}",
-        _ => "{id}",
-    };
+    /// <summary>Yanıt ve liste DTO'larının alanları (Id, düz özellikler, denetim tarihleri).</summary>
+    public IReadOnlyList<MethodParameter> ResponseFields { get; }
+
+    /// <summary>Oluşturma eşleyiciyle (<c>CreateMap&lt;CreateXCommand, X&gt;</c>) yapılır.</summary>
+    public bool CreateWithMapper { get; }
+
+    /// <summary>Güncelleme eşleyiciyle (<c>mapper.Map(request, entity)</c>) yapılır.</summary>
+    public bool UpdateWithMapper { get; }
+
+    /// <summary>Kimlik veritabanında üretiliyor mu (int/long): yanıt dönmeden önce kaydedilmeli.</summary>
+    public bool DatabaseGeneratedId => Model.IdType is not ("Guid" or "string" or "String");
 
     private static MethodParameter Pascalize(MethodParameter parameter) => parameter with { Name = Names.Pascal(parameter.Name) };
 }

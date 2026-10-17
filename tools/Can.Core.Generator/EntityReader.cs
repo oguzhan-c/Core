@@ -109,6 +109,16 @@ public static class EntityReader
             .Select(ToMethod)
             .FirstOrDefault();
 
+        List<EntityMethod> constructors = declaration.Members
+            .OfType<ConstructorDeclarationSyntax>()
+            .Where(c => IsPublic(c.Modifiers) && !c.Modifiers.Any(SyntaxKind.StaticKeyword))
+            .Select(c => new EntityMethod(name, c.ParameterList.Parameters.Select(p => new MethodParameter(p.Identifier.Text, p.Type?.ToString() ?? "object")).ToList(), name))
+            .ToList();
+
+        // Hiç constructor yazılmamışsa derleyicinin eklediği public parametresiz constructor vardır.
+        if (!declaration.Members.OfType<ConstructorDeclarationSyntax>().Any(c => !c.Modifiers.Any(SyntaxKind.StaticKeyword)))
+            constructors.Add(new EntityMethod(name, [], name));
+
         string baseName = baseType.Identifier.Text;
         return new EntityModel
         {
@@ -123,6 +133,7 @@ public static class EntityReader
             Properties = properties,
             Factory = factory,
             Update = update,
+            PublicConstructors = constructors,
             IntConstants = constants,
         };
     }
@@ -140,8 +151,9 @@ public static class EntityReader
             : bare is ArrayTypeSyntax || (bare is GenericNameSyntax g && CollectionTypes.Contains(g.Identifier.Text)) ? PropertyKind.Collection
             : PropertyKind.Complex;
 
-        bool hasSetter = property.AccessorList?.Accessors.Any(a => a.Kind() is SyntaxKind.SetAccessorDeclaration or SyntaxKind.InitAccessorDeclaration) == true;
-        return new EntityProperty(property.Identifier.Text, type.ToString(), nullable, kind, hasSetter);
+        AccessorDeclarationSyntax? setter = property.AccessorList?.Accessors.FirstOrDefault(a => a.Kind() is SyntaxKind.SetAccessorDeclaration or SyntaxKind.InitAccessorDeclaration);
+        bool publicSetter = setter is not null && setter.Modifiers.Count == 0 && setter.IsKind(SyntaxKind.SetAccessorDeclaration);
+        return new EntityProperty(property.Identifier.Text, type.ToString(), nullable, kind, setter is not null, publicSetter);
     }
 
     private static EntityMethod ToMethod(MethodDeclarationSyntax method) =>

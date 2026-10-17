@@ -2,7 +2,7 @@ namespace Can.Core.Generator;
 
 /// <summary>
 /// Can.Core şablonuyla oluşturulmuş çözümün katmanları: <c>{Kök}.Domain</c>, <c>{Kök}.Application</c>,
-/// <c>{Kök}.Persistence</c>, <c>{Kök}.WebApi</c>. Proje adları kök ad alanını da verir.
+/// <c>{Kök}.Persistence</c>, <c>{Kök}.WebAPI</c> (nArchitecture düzeni). Proje adları kök ad alanını da verir.
 /// </summary>
 public sealed record SolutionLayout(string Root, string RootNamespace, string Domain, string Application, string Persistence, string WebApi)
 {
@@ -36,11 +36,11 @@ public sealed record SolutionLayout(string Root, string RootNamespace, string Do
         string rootNamespace = Path.GetFileNameWithoutExtension(domain)[..^".Domain".Length];
 
         string Layer(string suffix) =>
-            projects.FirstOrDefault(p => Path.GetFileNameWithoutExtension(p) == rootNamespace + suffix) is { } path
+            projects.FirstOrDefault(p => string.Equals(Path.GetFileNameWithoutExtension(p), rootNamespace + suffix, StringComparison.OrdinalIgnoreCase)) is { } path
                 ? Path.GetDirectoryName(path)!
                 : throw new GeneratorException($"'{rootNamespace}{suffix}' projesi bulunamadı ({root}).");
 
-        return new SolutionLayout(root, rootNamespace, Path.GetDirectoryName(domain)!, Layer(".Application"), Layer(".Persistence"), Layer(".WebApi"));
+        return new SolutionLayout(root, rootNamespace, Path.GetDirectoryName(domain)!, Layer(".Application"), Layer(".Persistence"), Layer(".WebAPI"));
     }
 
     /// <summary>Klasördeki .cs dosyaları (bin/obj hariç).</summary>

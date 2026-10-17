@@ -37,13 +37,15 @@ int Crud(Arguments arguments)
     IReadOnlyList<ChangeResult> results = plan.Apply(arguments.Flag("force"), arguments.Flag("dry-run"));
 
     bool failed = results.Any(r => r.Kind == ChangeKind.Failed);
+    bool createTodo = entity.Factory is null && !entity.HasPublicConstructor;
+    bool updateTodo = entity.Update is null && !entity.ScalarProperties.Where(p => p.Name != "Id").All(p => p.HasPublicSetter);
     if (arguments.Json)
     {
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = !failed,
             solution = layout.Root,
-            entity = new { entity.Name, entity.Namespace, entity.IdType, entity.FilePath, HasFactory = entity.Factory is not null, HasUpdate = entity.Update is not null },
+            entity = new { entity.Name, entity.Namespace, entity.IdType, entity.FilePath, HasFactory = !createTodo, HasUpdate = !updateTodo, CreateTodo = createTodo, UpdateTodo = updateTodo },
             dryRun = arguments.Flag("dry-run"),
             changes = results,
         }, json));
@@ -65,10 +67,10 @@ int Crud(Arguments arguments)
         Console.WriteLine($"  {mark} {Path.GetRelativePath(layout.Root, result.Path)}{(result.Note is null ? string.Empty : $"  ({result.Note})")}");
     }
 
-    if (entity.Factory is null)
-        Console.WriteLine($"\nUyarı: {entity.Name}'de 'public static Result<{entity.Name}> Create(...)' yok; oluşturma handler'ında TODO bırakıldı.");
-    if (entity.Update is null)
-        Console.WriteLine($"Uyarı: {entity.Name}'de 'Update(...)' metodu yok; güncelleme handler'ında TODO bırakıldı.");
+    if (createTodo)
+        Console.WriteLine($"\nUyarı: {entity.Name}'de 'Create(...)' fabrika metodu ya da public constructor yok; oluşturma handler'ında TODO bırakıldı.");
+    if (updateTodo)
+        Console.WriteLine($"Uyarı: {entity.Name}'de 'Update(...)' metodu ya da public setter'lar yok; güncelleme handler'ında TODO bırakıldı.");
 
     Console.WriteLine("\nTamamlanacak yerler 'TODO(can-gen)' ile işaretli (Rider: View → Tool Windows → TODO).");
     return failed ? 1 : 0;
@@ -112,8 +114,9 @@ static string Help() => """
     can-gen — Can.Core kod üretici
 
     Komutlar:
-      crud <Entity | Entity.cs>   Entity için CRUD üretir: Create/Update/Delete komutları, GetById/GetList sorguları,
-                                  DTO'lar, Errors/Permissions/Rules, EF yapılandırması, uç noktalar.
+      crud <Entity | Entity.cs>   Entity için nArchitecture düzeninde CRUD üretir: Create/Update/Delete komutları ve
+                                  yanıtları, GetById/GetList/GetListByDynamic sorguları, Messages/OperationClaims,
+                                  MappingProfiles, BusinessRules, repository, EF yapılandırması, controller.
       entities                    Domain'deki entity'leri listeler.
       version                     Sürümü yazar.
 
