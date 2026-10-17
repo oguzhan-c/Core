@@ -18,6 +18,12 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ### Eklendi
 
+- **Rol / yetki yönetimi**: `PermissionSet` (joker dahil alt küme kontrolü, ad doğrulama), yetki yükseltmeyi engelleyen
+  `IAccessGrantGuard` (alt küme, kendini değiştirememe, sistem rolleri, son yönetici), `IdentityPermissions`
+  ("yetki verme yetkisi"), sunucu taraflı rol/yetki çözümleme (`IUserAuthorizationStore`,
+  `AddCanUserAuthorizationStore`, `UseCanPermissionResolution`: değişiklik token süresini beklemeden geçerli), kod →
+  veritabanı yetki kataloğu eşitleme (`SyncOperationClaimsAsync`, kullanımdan kalkan yetkiler); `Role.IsSystem`,
+  `Role.Description`, `OperationClaim.IsDeprecated`.
 - **Domain**: entity, aggregate root, value object, domain event, denetim (oluşturan/güncelleyen/silen) ve yumuşak
   silme, `Result`/`Error` tipleri, multi-tenant entity'ler.
 - **Mediator**: request/notification, pipeline behavior'ları; dış paket yok.
