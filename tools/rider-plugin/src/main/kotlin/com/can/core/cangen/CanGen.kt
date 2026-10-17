@@ -26,6 +26,13 @@ object CanGen {
                 add("--plural")
                 add(options.plural.trim())
             }
+            if (options.caching) add("--caching")
+            if (options.logging) add("--logging")
+            if (options.transaction) add("--transaction")
+            if (options.secured) add("--secured")
+            if (options.dynamicQuery) add("--dynamic-query")
+            // Hiçbiri seçilmezse can-gen "hepsi açık" sayar: en az birini gönder.
+            if (!options.caching && !options.logging && !options.transaction && !options.secured && !options.dynamicQuery) add("--no-mechanisms")
             if (options.force) add("--force")
             if (options.dryRun) add("--dry-run")
         }

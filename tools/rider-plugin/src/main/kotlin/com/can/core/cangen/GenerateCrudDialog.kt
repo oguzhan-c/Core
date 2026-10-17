@@ -13,6 +13,13 @@ class GenerateCrudOptions {
     var plural: String = ""
     var force: Boolean = false
     var dryRun: Boolean = false
+
+    // Mekanizmalar (nArchitecture'daki gibi)
+    var caching: Boolean = true
+    var logging: Boolean = true
+    var transaction: Boolean = true
+    var secured: Boolean = true
+    var dynamicQuery: Boolean = true
 }
 
 class GenerateCrudDialog(project: Project, private val entity: String, val options: GenerateCrudOptions) : DialogWrapper(project) {
@@ -34,6 +41,13 @@ class GenerateCrudDialog(project: Project, private val entity: String, val optio
                 .bindText(options::plural)
                 .align(AlignX.FILL)
                 .comment("Boşsa İngilizce kurallarla türetilir (Category → Categories). Klasör, tablo ve adres adı olur.")
+        }
+        group("Mekanizmalar") {
+            row { checkBox("Caching (sorgular önbelleğe alınır)").bindSelected(options::caching) }
+            row { checkBox("Logging (komutlar loglanır)").bindSelected(options::logging) }
+            row { checkBox("Transaction (kapalıysa handler kendisi kaydeder)").bindSelected(options::transaction) }
+            row { checkBox("Secured Operation (yetki kontrolü)").bindSelected(options::secured) }
+            row { checkBox("Dynamic Query (GetListByDynamic)").bindSelected(options::dynamicQuery) }
         }
         row {
             checkBox("Var olan dosyaların üzerine yaz (--force)").bindSelected(options::force)
