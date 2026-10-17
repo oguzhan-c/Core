@@ -97,8 +97,9 @@ public static class SecurityModelBuilderExtensions
         {
             b.ToTable(Table("Roles"), options.Schema);
             b.HasKey(r => r.Id);
-            b.Property(r => r.Name).HasMaxLength(256).IsRequired();
-            b.Property(r => r.NormalizedName).HasMaxLength(256).IsRequired();
+            b.Property(r => r.Name).HasMaxLength(Role<TId>.NameMaxLength).IsRequired();
+            b.Property(r => r.NormalizedName).HasMaxLength(Role<TId>.NameMaxLength).IsRequired();
+            b.Property(r => r.Description).HasMaxLength(Role<TId>.DescriptionMaxLength);
             b.Property(r => r.CreatedBy).HasMaxLength(128);
             b.Property(r => r.UpdatedBy).HasMaxLength(128);
             b.HasIndex(r => r.NormalizedName).IsUnique();

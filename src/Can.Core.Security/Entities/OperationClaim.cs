@@ -37,6 +37,16 @@ public class OperationClaim<TId> : AuditedEntity<TId>
 
     public string? Description { get; set; }
 
+    /// <summary>
+    /// Kod artık bu yetkiyi tanımlamıyor (katalogdan kaldırıldı). Silinmez (atama geçmişi korunur) ama etkin yetkilere
+    /// katılmaz ve yeniden verilemez; kod tekrar tanımlarsa <see cref="Restore"/> ile geri gelir.
+    /// </summary>
+    public bool IsDeprecated { get; protected set; }
+
+    public void Deprecate() => IsDeprecated = true;
+
+    public void Restore() => IsDeprecated = false;
+
     public void Rename(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

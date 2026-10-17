@@ -132,13 +132,13 @@ public class User<TId> : FullAuditedAggregateRoot<TId>
 
     /// <summary>
     /// Kullanıcının tüm yetki adları: rollerinden gelenler + doğrudan verilenler. <c>UserRoles.Role.OperationClaims.OperationClaim</c>
-    /// ve <c>OperationClaims.OperationClaim</c> yüklenmiş olmalı (yüklenmeyenler atlanır).
+    /// ve <c>OperationClaims.OperationClaim</c> yüklenmiş olmalı (yüklenmeyenler ve kullanımdan kalkmışlar atlanır).
     /// </summary>
     public IReadOnlyList<string> GetPermissionNames() =>
         UserRoles
             .SelectMany(ur => ur.Role is null ? Enumerable.Empty<RoleOperationClaim<TId>>() : ur.Role.OperationClaims)
-            .Select(rc => rc.OperationClaim?.Name)
-            .Concat(OperationClaims.Select(uc => uc.OperationClaim?.Name))
+            .Select(rc => rc.OperationClaim is { IsDeprecated: false } claim ? claim.Name : null)
+            .Concat(OperationClaims.Select(uc => uc.OperationClaim is { IsDeprecated: false } claim ? claim.Name : null))
             .OfType<string>()
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)

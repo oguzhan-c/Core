@@ -35,6 +35,28 @@ public class Role<TId> : AuditedEntity<TId>
 
     public string NormalizedName { get; protected set; }
 
+    public const int NameMaxLength = 256;
+
+    public const int DescriptionMaxLength = 512;
+
+    public string? Description { get; protected set; }
+
+    /// <summary>
+    /// Sistem rolü (ör. Admin, User): uygulama koduna bağlıdır; silinemez, adı değiştirilemez
+    /// (<c>IAccessGrantGuard</c> uygular). Seed işaretler.
+    /// </summary>
+    public bool IsSystem { get; protected set; }
+
+    public void MarkAsSystem() => IsSystem = true;
+
+    public void SetDescription(string? description)
+    {
+        description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (description is not null)
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(description.Length, DescriptionMaxLength, nameof(description));
+        Description = description;
+    }
+
     /// <summary>Rolün yetkileri.</summary>
     public ICollection<RoleOperationClaim<TId>> OperationClaims { get; protected set; } = [];
 
@@ -55,6 +77,7 @@ public class Role<TId> : AuditedEntity<TId>
     public void Rename(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(name.Trim().Length, NameMaxLength, nameof(name));
         Name = name.Trim();
         NormalizedName = Name.ToUpperInvariant();
     }
