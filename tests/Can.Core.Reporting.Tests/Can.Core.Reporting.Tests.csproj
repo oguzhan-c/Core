@@ -9,4 +9,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Altın dosyalar çıktıya da kopyalanır (CI'da kaynak yolu derlemeye gömülmez). -->
+    <None Update="Golden\*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

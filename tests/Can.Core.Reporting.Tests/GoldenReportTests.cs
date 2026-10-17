@@ -115,7 +115,10 @@ public sealed class GoldenReportTests
 
     private static void AssertGolden(string name, string actual, [CallerFilePath] string source = "")
     {
-        string path = Path.Combine(Path.GetDirectoryName(source)!, "Golden", name + ".txt");
+        // CI'da (ContinuousIntegrationBuild) derleyici kaynak yollarını "/_/..." yapar: o zaman çıktıya kopyalanan dosyalar okunur.
+        string sourceDirectory = Path.Combine(Path.GetDirectoryName(source)!, "Golden");
+        string directory = Directory.Exists(sourceDirectory) ? sourceDirectory : Path.Combine(AppContext.BaseDirectory, "Golden");
+        string path = Path.Combine(directory, name + ".txt");
         bool update = Environment.GetEnvironmentVariable("CAN_UPDATE_GOLDEN") == "1";
         if (!update && !File.Exists(path) && Environment.GetEnvironmentVariable("CI") == "true")
             Assert.Fail($"Golden dosyası yok: {path}. Yerelde testi çalıştırıp oluşan dosyayı commit'le.");
