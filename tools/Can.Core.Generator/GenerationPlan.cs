@@ -22,7 +22,7 @@ public sealed class GenerationPlan
     /// ekler; gerekirse <paramref name="usings"/>'i dosyanın başına yazar. Satır zaten varsa bir şey yapılmaz.
     /// </summary>
     public void Inject(string file, string marker, string line, params string[] usings) =>
-        _injections.Add(new Injection(file, line.Trim(), text => SourceEditor.Inject(text, marker, line, usings)));
+        _injections.Add(new Injection(file, line.Trim().Split('\n')[0], text => SourceEditor.Inject(text, marker, line, usings)));
 
     /// <summary>Dosyada özel bir değişiklik (ör. JSON'a anahtar ekleme).</summary>
     internal void Edit(string file, string description, Func<string, InjectResult> edit) =>
@@ -135,11 +135,17 @@ internal static class SourceEditor
         if (index < 0)
             return new InjectResult(text, $"'{markerText}' işareti bulunamadı; şu satırı elle ekle: {line.Trim()}");
 
-        string trimmed = line.Trim();
-        if (!lines.Any(l => l.Trim() == trimmed))
+        // Çok satırlı ekleme (ör. controller metodu): satırlar işaretin girintisiyle, kendi göreli girintileri korunarak eklenir.
+        string[] block = line.Replace("\r\n", "\n", StringComparison.Ordinal).Trim('\n').Split('\n');
+        string first = block.First(l => l.Trim().Length > 0).Trim();
+        if (!lines.Any(l => l.Trim() == first))
         {
             string indent = lines[index][..(lines[index].Length - lines[index].TrimStart().Length)];
-            lines.Insert(index, indent + trimmed);
+            int common = block.Where(l => l.Trim().Length > 0).Min(l => l.Length - l.TrimStart().Length);
+            List<string> inserted = block.Select(l => l.Trim().Length == 0 ? string.Empty : indent + l[common..].TrimEnd()).ToList();
+            if (inserted.Count > 1)
+                inserted.Add(string.Empty); // çok satırlı bloktan (metot) sonra boş satır
+            lines.InsertRange(index, inserted);
         }
 
         foreach (string @using in usings)

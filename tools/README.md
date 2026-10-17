@@ -5,22 +5,31 @@ Can.Core şablonuyla oluşturulmuş çözümlerde entity'den CRUD (CQRS) kodu ü
 ## Kurulum (yerel)
 
 ```bash
-dotnet pack tools/Can.Core.Generator.Cli -c Release -o artifacts/tools
-dotnet tool install -g Can.Core.Generator.Cli --add-source artifacts/tools --prerelease
-# güncelleme: dotnet tool update -g Can.Core.Generator.Cli --add-source artifacts/tools --prerelease
+build/pack-local.sh --install      # Core + can-gen + şablon, aynı yeni yerel sürümle paketlenir ve kurulur
 ```
 
 ## Kullanım
 
 ```bash
-can-gen entities                         # Domain'deki entity'ler
-can-gen crud Brand                       # CRUD üret
-can-gen crud src/MyApp.Domain/Catalog/Brand.cs --dry-run
-can-gen crud Category --plural Categories --force
+can-gen new MyShop                                   # şablonla çözüm (veritabanı ve özellikler sorulur)
+can-gen generate crud                                # entity ve mekanizmalar sorulur
+can-gen generate crud Brand -c -l -t -s -d           # soru sormadan
+can-gen generate command SyncBrand Brands -e Put     # özelliğe komut
+can-gen generate query GetBrandByName Brands         # özelliğe sorgu
+can-gen generate dynamic-query Brand                 # CRUD'a sonradan dinamik sorgu
+can-gen entities | features                          # listeler
+can-gen --help | can-gen generate --help
 ```
 
-Seçenekler: `--project <klasör>`, `--plural <Çoğul>`, `--force` (var olan dosyaların üzerine yaz), `--dry-run`,
-`--json` (IDE eklentileri için).
+Mekanizmalar (nArchitecture'daki gibi): `-c` caching, `-l` logging, `-t` transaction, `-s` secured, `-d` dynamic query.
+Hiçbiri verilmezse sorulur; etkileşimsiz çalışmada (betik, `--json`) hepsi açıktır.
+
+Diğer: `--project <klasör>`, `--plural <Çoğul>`, `-e/--endpoint-method`, `--force`, `--dry-run`, `--json` (IDE eklentileri).
+
+## Sürüm
+
+Core, can-gen ve şablon aynı sürümle paketlenir: `build/pack-local.sh --install` (yerel, `0.1.0-local.<zaman>`), CI'da
+`build/ci.sh`. Sürüm öneki kökteki `Directory.Build.props` içindeki `VersionPrefix`.
 
 ## Rider eklentisi
 

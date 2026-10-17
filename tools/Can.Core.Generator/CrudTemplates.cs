@@ -15,7 +15,7 @@ internal static class CrudTemplates
         namespace {{n.ConstantsNamespace}};
 
         /// <summary>{{n.Words}} iş kuralı mesajları. Kodlar (<c>{{n.ErrorPrefix}}.*</c>) WebAPI/Localization/*.json'da çevrilir.</summary>
-        public static class {{n.Plural}}Messages
+        public static class {{n.Plural}}BusinessMessages
         {
             public const string {{n.Entity}}NotExists = "{{n.Words}} kaydı bulunamadı.";
             public const string {{n.Entity}}NotExistsCode = "{{n.ErrorPrefix}}.not_exists";
@@ -45,6 +45,8 @@ internal static class CrudTemplates
             public const string Update = "{{n.Route}}.update";
             public const string Delete = "{{n.Route}}.delete";
 
+            // can-gen:operation-claims
+
             public static IReadOnlyList<(string Name, string Description)> All { get; } =
             [
                 (Admin, "{{n.Words}}: tüm işlemler"),
@@ -53,6 +55,7 @@ internal static class CrudTemplates
                 (Create, "{{n.Words}} oluşturma"),
                 (Update, "{{n.Words}} güncelleme"),
                 (Delete, "{{n.Words}} silme"),
+                // can-gen:operation-claims-all
             ];
         }
 
@@ -84,7 +87,7 @@ internal static class CrudTemplates
             public void {{n.Entity}}ShouldExistWhenSelected({{n.Entity}}? {{n.Variable}})
             {
                 if ({{n.Variable}} is null)
-                    throw new NotFoundException({{n.Plural}}Messages.{{n.Entity}}NotExists) { Code = {{n.Plural}}Messages.{{n.Entity}}NotExistsCode };
+                    throw new NotFoundException({{n.Plural}}BusinessMessages.{{n.Entity}}NotExists) { Code = {{n.Plural}}BusinessMessages.{{n.Entity}}NotExistsCode };
             }
 
             /// <summary>Kaydı getirir (değişiklik izlenir); yoksa 404.</summary>
@@ -99,7 +102,7 @@ internal static class CrudTemplates
             // public async Task {{n.Entity}}NameCanNotBeDuplicatedWhenInserted(string name, CancellationToken cancellationToken = default)
             // {
             //     if (await {{n.Repository}}.AnyAsync(x => x.Name == name, cancellationToken: cancellationToken))
-            //         throw new BusinessException({{n.Plural}}Messages.{{n.Entity}}NameExists);
+            //         throw new BusinessException({{n.Plural}}BusinessMessages.{{n.Entity}}NameExists);
             // }
         }
 
@@ -120,6 +123,9 @@ internal static class CrudTemplates
         maps.Add($"CreateMap<{E}, Deleted{E}Response>();");
         maps.Add($"CreateMap<{E}, GetById{E}Response>();");
         maps.Add($"CreateMap<{E}, GetList{E}ListItemDto>();");
+        if (n.Options.DynamicQuery)
+            maps.Add($"CreateMap<{E}, GetListByDynamic{E}ListItemDto>();");
+        maps.Add("// can-gen:mappings");
         string body = string.Join("\n", maps.Select(m => "        " + m));
 
         return $$"""
@@ -130,6 +136,7 @@ internal static class CrudTemplates
             using {{n.FeatureNamespace}}.Commands.Update;
             using {{n.FeatureNamespace}}.Queries.GetById;
             using {{n.FeatureNamespace}}.Queries.GetList;
+            {{(n.Options.DynamicQuery ? "using " : "// using ") + n.FeatureNamespace + ".Queries.GetListByDynamic;"}}
             using {{n.Model.Namespace}};
 
             namespace {{n.FeatureNamespace}}.Profiles;
@@ -192,19 +199,19 @@ internal static class CrudTemplates
             body.AppendLine($"        {E} {n.Variable} = New{E}(request);");
         }
 
-        string save = n.DatabaseGeneratedId
-            ? "\n        await _unitOfWork.SaveChangesAsync(cancellationToken); // kimlik veritabanında üretilir: yanıttan önce kaydet"
-            : string.Empty;
-        string unitOfWorkField = n.DatabaseGeneratedId ? "\n    private readonly IUnitOfWork _unitOfWork;" : string.Empty;
-        string unitOfWorkParameter = n.DatabaseGeneratedId ? ", IUnitOfWork unitOfWork" : string.Empty;
-        string unitOfWorkAssign = n.DatabaseGeneratedId ? "\n        _unitOfWork = unitOfWork;" : string.Empty;
+        bool needsSave = n.DatabaseGeneratedId || !n.Options.Transaction;
+        string save = !needsSave ? string.Empty
+            : n.Options.Transaction
+                ? "\n        await _unitOfWork.SaveChangesAsync(cancellationToken); // kimlik veritabanında üretilir: yanıttan önce kaydet"
+                : "\n        await _unitOfWork.SaveChangesAsync(cancellationToken); // transaction kapalı: handler kendisi kaydeder";
+        (string unitOfWorkField, string unitOfWorkParameter, string unitOfWorkAssign) = UnitOfWork(needsSave);
 
         string newMethod = factory is null && !n.CreateWithMapper
             ? $$"""
 
 
                     // TODO(can-gen): {{E}}'de fabrika metodu ('public static {{E}} Create(...)') ya da public constructor bulunamadı.
-                    // Birini ekleyip bu dosyayı yeniden üret (can-gen crud {{E}} --force) ya da entity'yi burada oluştur.
+                    // Birini ekleyip bu dosyayı yeniden üret (can-gen generate crud {{E}} --force) ya da entity'yi burada oluştur.
                     private static {{E}} New{{E}}(Create{{E}}Command request) =>
                         throw new NotImplementedException($"TODO(can-gen): {nameof({{E}})} oluşturulmadı ({request}).");
                 """
@@ -223,12 +230,9 @@ internal static class CrudTemplates
 
             namespace {{n.FeatureNamespace}}.Commands.Create;
 
-            public sealed class Create{{E}}Command : IRequest<Created{{E}}Response>, ISecuredRequest, ITransactionalRequest, ILoggableRequest
+            public sealed class Create{{E}}Command : {{Interfaces(n, "Created" + E + "Response", command: true)}}
             {
-            {{CommandProperties(n.CreateFields)}}
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> Permissions => [{{n.Plural}}OperationClaims.Admin, {{n.Plural}}OperationClaims.Write, {{n.Plural}}OperationClaims.Create];
+            {{CommandProperties(n.CreateFields)}}{{Permissions(n, "Admin", "Write", "Create")}}
             }
 
             public sealed class Create{{E}}CommandHandler : IRequestHandler<Create{{E}}Command, Created{{E}}Response>
@@ -271,36 +275,37 @@ internal static class CrudTemplates
                 """.TrimEnd(),
         };
 
+        (string uowField, string uowParameter, string uowAssign) = UnitOfWork(!n.Options.Transaction);
+        string saveLine = n.Options.Transaction ? string.Empty : "\n        await _unitOfWork.SaveChangesAsync(cancellationToken); // transaction kapalı: handler kendisi kaydeder";
+
         return $$"""
             {{Header}}
             using System.Text.Json.Serialization;
             using Can.Core.Application;
             using Can.Core.Mapping;
             using Can.Core.Mediator;
+            using Can.Core.Persistence.Repositories;
             using {{n.Model.Namespace}};
             using {{n.RulesNamespace}};
             using {{n.ConstantsNamespace}};
 
             namespace {{n.FeatureNamespace}}.Commands.Update;
 
-            public sealed class Update{{E}}Command : IRequest<Updated{{E}}Response>, ISecuredRequest, ITransactionalRequest, ILoggableRequest
+            public sealed class Update{{E}}Command : {{Interfaces(n, "Updated" + E + "Response", command: true)}}
             {
                 public {{n.IdType}} Id { get; set; }{{Initializer(new MethodParameter("Id", n.IdType))}}
-            {{(n.UpdateFields.Count == 0 ? string.Empty : "\n" + CommandProperties(n.UpdateFields))}}
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> Permissions => [{{n.Plural}}OperationClaims.Admin, {{n.Plural}}OperationClaims.Write, {{n.Plural}}OperationClaims.Update];
+            {{(n.UpdateFields.Count == 0 ? string.Empty : "\n" + CommandProperties(n.UpdateFields))}}{{Permissions(n, "Admin", "Write", "Update")}}
             }
 
             public sealed class Update{{E}}CommandHandler : IRequestHandler<Update{{E}}Command, Updated{{E}}Response>
             {
                 private readonly {{E}}BusinessRules {{n.Rules}};
-                private readonly IMapper _mapper;
+                private readonly IMapper _mapper;{{uowField}}
 
-                public Update{{E}}CommandHandler({{E}}BusinessRules {{n.Rules[1..]}}, IMapper mapper)
+                public Update{{E}}CommandHandler({{E}}BusinessRules {{n.Rules[1..]}}, IMapper mapper{{uowParameter}})
                 {
                     {{n.Rules}} = {{n.Rules[1..]}};
-                    _mapper = mapper;
+                    _mapper = mapper;{{uowAssign}}
                 }
 
                 public async Task<Updated{{E}}Response> Handle(Update{{E}}Command request, CancellationToken cancellationToken)
@@ -308,7 +313,7 @@ internal static class CrudTemplates
                     {{E}} {{n.Variable}} = await {{n.Rules}}.{{E}}IdShouldExistWhenSelected(request.Id, cancellationToken);
 
                     // TODO(can-gen): Güncellemeden önceki iş kurallarını kontrol et.
-            {{apply}}
+            {{apply}}{{saveLine}}
 
                     return _mapper.Map<Updated{{E}}Response>({{n.Variable}});
                 }
@@ -321,12 +326,15 @@ internal static class CrudTemplates
     {
         string E = n.Entity;
         string kind = n.Model.IsSoftDeletable ? "Kayıt silinmiş olarak işaretlenir (soft delete) ve sorgulardan düşer." : "Kayıt kalıcı olarak silinir.";
+        (string uowField, string uowParameter, string uowAssign) = UnitOfWork(!n.Options.Transaction);
+        string saveLine = n.Options.Transaction ? string.Empty : "\n        await _unitOfWork.SaveChangesAsync(cancellationToken); // transaction kapalı: handler kendisi kaydeder";
         return $$"""
             {{Header}}
             using System.Text.Json.Serialization;
             using Can.Core.Application;
             using Can.Core.Mapping;
             using Can.Core.Mediator;
+            using Can.Core.Persistence.Repositories;
             using {{n.Root}}.Application.Services.Repositories;
             using {{n.Model.Namespace}};
             using {{n.RulesNamespace}};
@@ -335,25 +343,22 @@ internal static class CrudTemplates
             namespace {{n.FeatureNamespace}}.Commands.Delete;
 
             /// <summary>{{n.Words}} kaydını siler. {{kind}}</summary>
-            public sealed class Delete{{E}}Command : IRequest<Deleted{{E}}Response>, ISecuredRequest, ITransactionalRequest, ILoggableRequest
+            public sealed class Delete{{E}}Command : {{Interfaces(n, "Deleted" + E + "Response", command: true)}}
             {
-                public {{n.IdType}} Id { get; set; }{{Initializer(new MethodParameter("Id", n.IdType))}}
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> Permissions => [{{n.Plural}}OperationClaims.Admin, {{n.Plural}}OperationClaims.Write, {{n.Plural}}OperationClaims.Delete];
+                public {{n.IdType}} Id { get; set; }{{Initializer(new MethodParameter("Id", n.IdType))}}{{Permissions(n, "Admin", "Write", "Delete")}}
             }
 
             public sealed class Delete{{E}}CommandHandler : IRequestHandler<Delete{{E}}Command, Deleted{{E}}Response>
             {
                 private readonly I{{E}}Repository {{n.Repository}};
                 private readonly {{E}}BusinessRules {{n.Rules}};
-                private readonly IMapper _mapper;
+                private readonly IMapper _mapper;{{uowField}}
 
-                public Delete{{E}}CommandHandler(I{{E}}Repository {{n.Repository[1..]}}, {{E}}BusinessRules {{n.Rules[1..]}}, IMapper mapper)
+                public Delete{{E}}CommandHandler(I{{E}}Repository {{n.Repository[1..]}}, {{E}}BusinessRules {{n.Rules[1..]}}, IMapper mapper{{uowParameter}})
                 {
                     {{n.Repository}} = {{n.Repository[1..]}};
                     {{n.Rules}} = {{n.Rules[1..]}};
-                    _mapper = mapper;
+                    _mapper = mapper;{{uowAssign}}
                 }
 
                 public async Task<Deleted{{E}}Response> Handle(Delete{{E}}Command request, CancellationToken cancellationToken)
@@ -361,7 +366,7 @@ internal static class CrudTemplates
                     {{E}} {{n.Variable}} = await {{n.Rules}}.{{E}}IdShouldExistWhenSelected(request.Id, cancellationToken);
 
                     // TODO(can-gen): Silmeyi engelleyen kuralları kontrol et (ör. bu kayda bağlı kayıtlar var mı).
-                    {{n.Repository}}.Delete({{n.Variable}});
+                    {{n.Repository}}.Delete({{n.Variable}});{{saveLine}}
                     return _mapper.Map<Deleted{{E}}Response>({{n.Variable}});
                 }
             }
@@ -427,6 +432,7 @@ internal static class CrudTemplates
             using Can.Core.Application;
             using Can.Core.Mapping;
             using Can.Core.Mediator;
+            using Can.Core.Persistence.Repositories;
             using {{n.Root}}.Application.Services.Repositories;
             using {{n.Model.Namespace}};
             using {{n.RulesNamespace}};
@@ -434,12 +440,9 @@ internal static class CrudTemplates
 
             namespace {{n.FeatureNamespace}}.Queries.GetById;
 
-            public sealed class GetById{{E}}Query : IRequest<GetById{{E}}Response>, ISecuredRequest
+            public sealed class GetById{{E}}Query : {{Interfaces(n, "GetById" + E + "Response", command: false, cachable: n.Options.Caching)}}
             {
-                public {{n.IdType}} Id { get; set; }{{Initializer(new MethodParameter("Id", n.IdType))}}
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> Permissions => [{{n.Plural}}OperationClaims.Admin, {{n.Plural}}OperationClaims.Read];
+                public {{n.IdType}} Id { get; set; }{{Initializer(new MethodParameter("Id", n.IdType))}}{{Permissions(n, "Admin", "Read")}}{{CacheMembers(n, "GetById" + E + "({Id})")}}
             }
 
             public sealed class GetById{{E}}QueryHandler : IRequestHandler<GetById{{E}}Query, GetById{{E}}Response>
@@ -488,18 +491,9 @@ internal static class CrudTemplates
             namespace {{n.FeatureNamespace}}.Queries.GetList;
 
             /// <summary>Sayfalı {{n.Words.ToLowerInvariant()}} listesi. Önbelleğe alınır; kayıt değişince önbellek kendiliğinden silinir.</summary>
-            public sealed class GetList{{E}}Query : IRequest<GetListResponse<GetList{{E}}ListItemDto>>, ISecuredRequest, ICachableRequest
+            public sealed class GetList{{E}}Query : {{Interfaces(n, "GetListResponse<GetList" + E + "ListItemDto>", command: false, cachable: n.Options.Caching)}}
             {
-                public PageRequest PageRequest { get; set; } = new();
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> Permissions => [{{n.Plural}}OperationClaims.Admin, {{n.Plural}}OperationClaims.Read];
-
-                [JsonIgnore]
-                public string CacheKey => $"GetList{{n.Plural}}({PageRequest.Page},{PageRequest.PageSize})";
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> CacheTags => [Can.Core.Application.CacheTags.Entity<{{E}}>()];
+                public PageRequest PageRequest { get; set; } = new();{{Permissions(n, "Admin", "Read")}}{{CacheMembers(n, "GetList" + n.Plural + "({PageRequest.Page},{PageRequest.PageSize})")}}
             }
 
             public sealed class GetList{{E}}QueryValidator : AbstractValidator<GetList{{E}}Query>
@@ -555,7 +549,6 @@ internal static class CrudTemplates
             using FluentValidation;
             using {{n.Root}}.Application.Services.Repositories;
             using {{n.Root}}.Application.Services.Validation;
-            using {{n.FeatureNamespace}}.Queries.GetList;
             using {{n.Model.Namespace}};
             using {{n.ConstantsNamespace}};
 
@@ -565,14 +558,11 @@ internal static class CrudTemplates
             /// İstemcinin filtre ve sıralamasıyla (<see cref="DynamicQuery"/>) sayfalı liste. Yalnızca izin verilen alanlar
             /// kullanılabilir; diğerleri 400 döner.
             /// </summary>
-            public sealed class GetListByDynamic{{E}}Query : IRequest<GetListResponse<GetList{{E}}ListItemDto>>, ISecuredRequest
+            public sealed class GetListByDynamic{{E}}Query : {{Interfaces(n, "GetListResponse<GetListByDynamic" + E + "ListItemDto>", command: false)}}
             {
                 public PageRequest PageRequest { get; set; } = new();
 
-                public DynamicQuery? DynamicQuery { get; set; }
-
-                [JsonIgnore]
-                public IReadOnlyCollection<string> Permissions => [{{n.Plural}}OperationClaims.Admin, {{n.Plural}}OperationClaims.Read];
+                public DynamicQuery? DynamicQuery { get; set; }{{Permissions(n, "Admin", "Read")}}
             }
 
             public sealed class GetListByDynamic{{E}}QueryValidator : AbstractValidator<GetListByDynamic{{E}}Query>
@@ -580,7 +570,7 @@ internal static class CrudTemplates
                 public GetListByDynamic{{E}}QueryValidator() => RuleFor(x => x.PageRequest).ValidPage();
             }
 
-            public sealed class GetListByDynamic{{E}}QueryHandler : IRequestHandler<GetListByDynamic{{E}}Query, GetListResponse<GetList{{E}}ListItemDto>>
+            public sealed class GetListByDynamic{{E}}QueryHandler : IRequestHandler<GetListByDynamic{{E}}Query, GetListResponse<GetListByDynamic{{E}}ListItemDto>>
             {
                 /// <summary>İstemcinin filtreleyip sıralayabileceği alanlar. TODO(can-gen): Gerekmeyenleri çıkar.</summary>
                 private static readonly DynamicQueryFields<{{E}}> Fields = new DynamicQueryFields<{{E}}>(){{allow}};
@@ -594,7 +584,7 @@ internal static class CrudTemplates
                     _mapper = mapper;
                 }
 
-                public async Task<GetListResponse<GetList{{E}}ListItemDto>> Handle(GetListByDynamic{{E}}Query request, CancellationToken cancellationToken)
+                public async Task<GetListResponse<GetListByDynamic{{E}}ListItemDto>> Handle(GetListByDynamic{{E}}Query request, CancellationToken cancellationToken)
                 {
                     IPaginate<{{E}}> {{Names.Camel(n.Plural)}};
                     try
@@ -612,7 +602,7 @@ internal static class CrudTemplates
                         throw new Can.Core.Application.Exceptions.ValidationException(nameof(request.DynamicQuery), exception.Message);
                     }
 
-                    return {{Names.Camel(n.Plural)}}.ToGetListResponse(x => _mapper.Map<GetList{{E}}ListItemDto>(x));
+                    return {{Names.Camel(n.Plural)}}.ToGetListResponse(x => _mapper.Map<GetListByDynamic{{E}}ListItemDto>(x));
                 }
             }
 
@@ -727,7 +717,7 @@ internal static class CrudTemplates
             using {{n.FeatureNamespace}}.Commands.Update;
             using {{n.FeatureNamespace}}.Queries.GetById;
             using {{n.FeatureNamespace}}.Queries.GetList;
-            using {{n.FeatureNamespace}}.Queries.GetListByDynamic;
+            {{(n.Options.DynamicQuery ? "using " : "// using ") + n.FeatureNamespace + ".Queries.GetListByDynamic;"}}
 
             namespace {{n.Root}}.WebAPI.Controllers;
 
@@ -772,12 +762,138 @@ internal static class CrudTemplates
                     return Ok(response);
                 }
 
+            {{(n.Options.DynamicQuery ? DynamicQueryEndpoint(n) + "\n\n" : string.Empty)}}    // can-gen:endpoints
+            }
+
+            """;
+    }
+
+    public static string DynamicQueryEndpoint(CrudNames n)
+    {
+        string E = n.Entity;
+        return $$"""
                 [HttpPost("GetList/ByDynamic")]
                 public async Task<IActionResult> GetListByDynamic([FromQuery] PageRequest pageRequest, [FromBody] DynamicQuery? dynamicQuery, CancellationToken cancellationToken)
                 {
                     GetListByDynamic{{E}}Query getListByDynamic{{E}}Query = new() { PageRequest = pageRequest, DynamicQuery = dynamicQuery };
-                    GetListResponse<GetList{{E}}ListItemDto> response = await Mediator.Send(getListByDynamic{{E}}Query, cancellationToken);
+                    GetListResponse<GetListByDynamic{{E}}ListItemDto> response = await Mediator.Send(getListByDynamic{{E}}Query, cancellationToken);
                     return Ok(response);
+                }
+            """;
+    }
+
+    public static string DeleteValidator(CrudNames n) => $$"""
+        {{Header}}
+        using FluentValidation;
+
+        namespace {{n.FeatureNamespace}}.Commands.Delete;
+
+        public sealed class Delete{{n.Entity}}CommandValidator : AbstractValidator<Delete{{n.Entity}}Command>
+        {
+            public Delete{{n.Entity}}CommandValidator()
+            {
+                {{(n.IdType is "string" or "String" or "Guid" ? "RuleFor(x => x.Id).NotEmpty();" : "RuleFor(x => x.Id).GreaterThan(0);")}}
+            }
+        }
+
+        """;
+
+    // ------------------------------------------------------------------ Services
+
+    public static string ServiceInterface(CrudNames n)
+    {
+        string E = n.Entity;
+        return $$"""
+            {{Header}}
+            using System.Linq.Expressions;
+            using Can.Core.Persistence.Paging;
+            using {{n.Model.Namespace}};
+
+            namespace {{n.Root}}.Application.Services.{{n.Plural}};
+
+            /// <summary>
+            /// {{n.Words}} işlemleri: başka özelliklerin handler'ları {{n.Words.ToLowerInvariant()}} kayıtlarına bu servis üzerinden erişir
+            /// (repository'yi doğrudan kullanmak yerine). Kayıt, komutun transaction'ında yapılır.
+            /// </summary>
+            public interface I{{E}}Service
+            {
+                Task<{{E}}?> GetAsync(
+                    Expression<Func<{{E}}, bool>> predicate,
+                    Func<IQueryable<{{E}}>, IQueryable<{{E}}>>? include = null,
+                    bool withDeleted = false,
+                    bool enableTracking = true,
+                    CancellationToken cancellationToken = default);
+
+                Task<IPaginate<{{E}}>> GetListAsync(
+                    Expression<Func<{{E}}, bool>>? predicate = null,
+                    Func<IQueryable<{{E}}>, IOrderedQueryable<{{E}}>>? orderBy = null,
+                    Func<IQueryable<{{E}}>, IQueryable<{{E}}>>? include = null,
+                    int index = 0,
+                    int size = 10,
+                    bool withDeleted = false,
+                    bool enableTracking = true,
+                    CancellationToken cancellationToken = default);
+
+                Task<{{E}}> AddAsync({{E}} {{n.Variable}}, CancellationToken cancellationToken = default);
+
+                {{E}} Update({{E}} {{n.Variable}});
+
+                {{E}} Delete({{E}} {{n.Variable}}, bool permanent = false);
+            }
+
+            """;
+    }
+
+    public static string Manager(CrudNames n)
+    {
+        string E = n.Entity;
+        return $$"""
+            {{Header}}
+            using System.Linq.Expressions;
+            using Can.Core.Persistence.Paging;
+            using {{n.Root}}.Application.Services.Repositories;
+            using {{n.Model.Namespace}};
+
+            namespace {{n.Root}}.Application.Services.{{n.Plural}};
+
+            public sealed class {{E}}Manager : I{{E}}Service
+            {
+                private readonly I{{E}}Repository {{n.Repository}};
+
+                public {{E}}Manager(I{{E}}Repository {{n.Repository[1..]}}) => {{n.Repository}} = {{n.Repository[1..]}};
+
+                public Task<{{E}}?> GetAsync(
+                    Expression<Func<{{E}}, bool>> predicate,
+                    Func<IQueryable<{{E}}>, IQueryable<{{E}}>>? include = null,
+                    bool withDeleted = false,
+                    bool enableTracking = true,
+                    CancellationToken cancellationToken = default) =>
+                    {{n.Repository}}.GetAsync(predicate, include, withDeleted, enableTracking, cancellationToken);
+
+                public Task<IPaginate<{{E}}>> GetListAsync(
+                    Expression<Func<{{E}}, bool>>? predicate = null,
+                    Func<IQueryable<{{E}}>, IOrderedQueryable<{{E}}>>? orderBy = null,
+                    Func<IQueryable<{{E}}>, IQueryable<{{E}}>>? include = null,
+                    int index = 0,
+                    int size = 10,
+                    bool withDeleted = false,
+                    bool enableTracking = true,
+                    CancellationToken cancellationToken = default) =>
+                    {{n.Repository}}.GetListAsync(predicate, orderBy, include, index, size, withDeleted, enableTracking, cancellationToken);
+
+                public Task<{{E}}> AddAsync({{E}} {{n.Variable}}, CancellationToken cancellationToken = default) =>
+                    {{n.Repository}}.AddAsync({{n.Variable}}, cancellationToken);
+
+                public {{E}} Update({{E}} {{n.Variable}})
+                {
+                    {{n.Repository}}.Update({{n.Variable}});
+                    return {{n.Variable}};
+                }
+
+                public {{E}} Delete({{E}} {{n.Variable}}, bool permanent = false)
+                {
+                    {{n.Repository}}.Delete({{n.Variable}}, permanent);
+                    return {{n.Variable}};
                 }
             }
 
@@ -785,6 +901,38 @@ internal static class CrudTemplates
     }
 
     // ------------------------------------------------------------------ yardımcılar
+
+    private static (string Field, string Parameter, string Assign) UnitOfWork(bool needed) =>
+        needed
+            ? ("\n    private readonly IUnitOfWork _unitOfWork;", ", IUnitOfWork unitOfWork", "\n        _unitOfWork = unitOfWork;")
+            : (string.Empty, string.Empty, string.Empty);
+
+    /// <summary>İstek arayüzleri: seçilen mekanizmalara göre (güvenlik, log, transaction, önbellek).</summary>
+    private static string Interfaces(CrudNames n, string response, bool command, bool cachable = false)
+    {
+        var list = new List<string> { $"IRequest<{response}>" };
+        if (n.Options.Secured)
+            list.Add("ISecuredRequest");
+        if (command && n.Options.Logging)
+            list.Add("ILoggableRequest");
+        if (command && n.Options.Transaction)
+            list.Add("ITransactionalRequest");
+        if (cachable)
+            list.Add("ICachableRequest");
+        return string.Join(", ", list);
+    }
+
+    /// <summary>Yetki özelliği (güvenlik kapalıysa boş).</summary>
+    private static string Permissions(CrudNames n, params string[] claims) =>
+        n.Options.Secured
+            ? $"\n\n    [JsonIgnore]\n    public IReadOnlyCollection<string> Permissions => [{string.Join(", ", claims.Select(c => $"{n.Plural}OperationClaims.{c}"))}];"
+            : string.Empty;
+
+    /// <summary>Önbellek anahtarı ve etiketi (önbellek kapalıysa boş). Kayıt değişince etiket kendiliğinden silinir.</summary>
+    private static string CacheMembers(CrudNames n, string key) =>
+        n.Options.Caching
+            ? $"\n\n    [JsonIgnore]\n    public string CacheKey => $\"{key}\";\n\n    [JsonIgnore]\n    public IReadOnlyCollection<string> CacheTags => [Can.Core.Application.CacheTags.Entity<{n.Entity}>()];"
+            : string.Empty;
 
     /// <summary>Komutun özellikleri (model bağlama için get/set).</summary>
     private static string CommandProperties(IReadOnlyList<MethodParameter> fields) =>

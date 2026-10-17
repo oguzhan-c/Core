@@ -5,6 +5,21 @@ public sealed record CrudOptions
 {
     /// <summary>Çoğul ad (klasör, sınıf, tablo, adres). Boşsa İngilizce kurallarla türetilir.</summary>
     public string? Plural { get; init; }
+
+    /// <summary>Sorgular önbelleğe alınır (<c>ICachableRequest</c>); kayıt değişince önbellek kendiliğinden silinir.</summary>
+    public bool Caching { get; init; } = true;
+
+    /// <summary>Komutlar loglanır (<c>ILoggableRequest</c>).</summary>
+    public bool Logging { get; init; } = true;
+
+    /// <summary>Komutlar transaction içinde çalışır ve sonunda kaydedilir (<c>ITransactionalRequest</c>). Kapalıysa handler kendisi kaydeder.</summary>
+    public bool Transaction { get; init; } = true;
+
+    /// <summary>İstekler yetki ister (<c>ISecuredRequest</c> + OperationClaims).</summary>
+    public bool Secured { get; init; } = true;
+
+    /// <summary>Dinamik filtre/sıralama sorgusu (GetListByDynamic) üretilir.</summary>
+    public bool DynamicQuery { get; init; } = true;
 }
 
 /// <summary>
@@ -33,12 +48,13 @@ public static class CrudGenerator
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(entity);
 
-        var n = new CrudNames(layout, entity, options?.Plural);
+        options ??= new CrudOptions();
+        var n = new CrudNames(layout, entity, options.Plural) { Options = options };
         var plan = new GenerationPlan();
         string feature = Path.Combine(layout.Application, "Features", n.Plural);
         string E = n.Entity;
 
-        plan.AddFile(Path.Combine(feature, "Constants", $"{n.Plural}Messages.cs"), CrudTemplates.Messages(n));
+        plan.AddFile(Path.Combine(feature, "Constants", $"{n.Plural}BusinessMessages.cs"), CrudTemplates.Messages(n));
         plan.AddFile(Path.Combine(feature, "Constants", $"{n.Plural}OperationClaims.cs"), CrudTemplates.OperationClaims(n));
         plan.AddFile(Path.Combine(feature, "Rules", $"{E}BusinessRules.cs"), CrudTemplates.BusinessRules(n));
         plan.AddFile(Path.Combine(feature, "Profiles", "MappingProfiles.cs"), CrudTemplates.MappingProfiles(n));
@@ -50,15 +66,19 @@ public static class CrudGenerator
         plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Update{E}CommandValidator.cs"), CrudTemplates.Validator(n, "Update", n.UpdateFields));
         plan.AddFile(Path.Combine(feature, "Commands", "Update", $"Updated{E}Response.cs"), CrudTemplates.Response(n, "Commands.Update", $"Updated{E}Response", n.ResponseFields));
         plan.AddFile(Path.Combine(feature, "Commands", "Delete", $"Delete{E}Command.cs"), CrudTemplates.DeleteCommand(n));
+        plan.AddFile(Path.Combine(feature, "Commands", "Delete", $"Delete{E}CommandValidator.cs"), CrudTemplates.DeleteValidator(n));
         plan.AddFile(Path.Combine(feature, "Commands", "Delete", $"Deleted{E}Response.cs"), CrudTemplates.Response(n, "Commands.Delete", $"Deleted{E}Response", [new("Id", n.IdType)]));
 
         plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"GetById{E}Query.cs"), CrudTemplates.GetByIdQuery(n));
         plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"GetById{E}Response.cs"), CrudTemplates.Response(n, "Queries.GetById", $"GetById{E}Response", n.ResponseFields));
         plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}Query.cs"), CrudTemplates.GetListQuery(n));
         plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}ListItemDto.cs"), CrudTemplates.Response(n, "Queries.GetList", $"GetList{E}ListItemDto", n.ResponseFields, isDto: true));
-        plan.AddFile(Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}Query.cs"), CrudTemplates.GetListByDynamicQuery(n));
+        if (options.DynamicQuery)
+            AddDynamicQueryFiles(plan, n, feature);
 
         plan.AddFile(Path.Combine(layout.Application, "Services", "Repositories", $"I{E}Repository.cs"), CrudTemplates.RepositoryInterface(n));
+        plan.AddFile(Path.Combine(layout.Application, "Services", n.Plural, $"I{E}Service.cs"), CrudTemplates.ServiceInterface(n));
+        plan.AddFile(Path.Combine(layout.Application, "Services", n.Plural, $"{E}Manager.cs"), CrudTemplates.Manager(n));
         plan.AddFile(Path.Combine(layout.Persistence, "Repositories", $"{E}Repository.cs"), CrudTemplates.Repository(n));
         plan.AddFile(Path.Combine(layout.Persistence, "EntityConfigurations", $"{E}Configuration.cs"), CrudTemplates.Configuration(n));
         plan.AddFile(Path.Combine(layout.WebApi, "Controllers", $"{n.Plural}Controller.cs"), CrudTemplates.Controller(n));
@@ -75,6 +95,12 @@ public static class CrudGenerator
             $"services.AddScoped<I{E}Repository, {E}Repository>();",
             $"{n.Root}.Application.Services.Repositories",
             $"{n.Root}.Persistence.Repositories");
+
+        plan.Inject(
+            MarkerFile(layout.Application, "can-gen:services", "ApplicationServiceRegistration.cs"),
+            "can-gen:services",
+            $"services.AddScoped<I{E}Service, {E}Manager>();",
+            $"{n.Root}.Application.Services.{n.Plural}");
 
         string claims = MarkerFile(layout.Application, "can-gen:permissions", Path.Combine("Services", "OperationClaims", "AppOperationClaims.cs"));
         plan.Inject(claims, "can-gen:permissions", $"..{n.Plural}OperationClaims.All,", n.ConstantsNamespace);
@@ -94,8 +120,50 @@ public static class CrudGenerator
         return plan;
     }
 
+    /// <summary>
+    /// Yalnızca dinamik sorguyu üretir (CRUD daha önce <c>DynamicQuery</c> kapalıyken üretildiyse): sorgu, liste DTO'su,
+    /// eşleme ve controller ucu.
+    /// </summary>
+    public static GenerationPlan PlanDynamicQuery(SolutionLayout layout, EntityModel entity, CrudOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(entity);
+
+        options ??= new CrudOptions();
+        var n = new CrudNames(layout, entity, options.Plural) { Options = options };
+        var plan = new GenerationPlan();
+        string feature = Path.Combine(layout.Application, "Features", n.Plural);
+        if (!Directory.Exists(feature))
+            throw new GeneratorException($"'{n.Plural}' özelliği yok ({feature}). Önce CRUD üret: can-gen generate crud {entity.Name}");
+
+        AddDynamicQueryFiles(plan, n, feature);
+        plan.Inject(
+            Path.Combine(feature, "Profiles", "MappingProfiles.cs"),
+            "can-gen:mappings",
+            $"CreateMap<{entity.Name}, GetListByDynamic{entity.Name}ListItemDto>();",
+            $"{n.FeatureNamespace}.Queries.GetListByDynamic");
+        plan.Inject(
+            Path.Combine(layout.WebApi, "Controllers", $"{n.Plural}Controller.cs"),
+            "can-gen:endpoints",
+            CrudTemplates.DynamicQueryEndpoint(n),
+            $"{n.FeatureNamespace}.Queries.GetListByDynamic",
+            "Can.Core.Persistence.Dynamic",
+            "Can.Core.Application.Requests",
+            "Can.Core.Application.Responses");
+        return plan;
+    }
+
+    private static void AddDynamicQueryFiles(GenerationPlan plan, CrudNames n, string feature)
+    {
+        string E = n.Entity;
+        plan.AddFile(Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}Query.cs"), CrudTemplates.GetListByDynamicQuery(n));
+        plan.AddFile(
+            Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}ListItemDto.cs"),
+            CrudTemplates.Response(n, "Queries.GetListByDynamic", $"GetListByDynamic{E}ListItemDto", n.ResponseFields, isDto: true));
+    }
+
     /// <summary>İşareti içeren dosyayı katmanda arar; bulunamazsa beklenen yolu döner (uygulamada "işaret yok" uyarısı verilir).</summary>
-    private static string MarkerFile(string directory, string marker, string expected)
+    internal static string MarkerFile(string directory, string marker, string expected)
     {
         string text = "// " + marker;
         return SolutionLayout.SourceFiles(directory).FirstOrDefault(f => File.ReadLines(f).Any(l => l.Trim() == text))
@@ -146,6 +214,8 @@ internal sealed class CrudNames
     }
 
     public EntityModel Model { get; }
+
+    public CrudOptions Options { get; init; } = new();
 
     public string Root { get; }
 

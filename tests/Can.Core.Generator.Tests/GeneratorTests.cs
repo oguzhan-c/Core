@@ -135,7 +135,8 @@ public sealed class CrudGeneratorTests
             "Queries/GetById/GetByIdBrandQuery.cs", "Queries/GetById/GetByIdBrandResponse.cs",
             "Queries/GetList/GetListBrandQuery.cs", "Queries/GetList/GetListBrandListItemDto.cs",
             "Queries/GetListByDynamic/GetListByDynamicBrandQuery.cs",
-            "Constants/BrandsMessages.cs", "Constants/BrandsOperationClaims.cs",
+            "Constants/BrandsBusinessMessages.cs", "Constants/BrandsOperationClaims.cs",
+            "Commands/Delete/DeleteBrandCommandValidator.cs", "Queries/GetListByDynamic/GetListByDynamicBrandListItemDto.cs",
             "Profiles/MappingProfiles.cs", "Rules/BrandBusinessRules.cs",
         })
         {
@@ -146,6 +147,12 @@ public sealed class CrudGeneratorTests
         Assert.True(solution.Exists("src/Shop.Persistence/Repositories/BrandRepository.cs"));
         Assert.True(solution.Exists("src/Shop.Persistence/EntityConfigurations/BrandConfiguration.cs"));
         Assert.True(solution.Exists("src/Shop.WebAPI/Controllers/BrandsController.cs"));
+        Assert.True(solution.Exists("src/Shop.Application/Services/Brands/IBrandService.cs"));
+        Assert.True(solution.Exists("src/Shop.Application/Services/Brands/BrandManager.cs"));
+        Assert.Contains("services.AddScoped<IBrandService, BrandManager>();", solution.Read("src/Shop.Application/ApplicationServiceRegistration.cs"));
+        Assert.Contains("ISecuredRequest, ILoggableRequest, ITransactionalRequest", solution.Read(Feature + "Commands/Create/CreateBrandCommand.cs"));
+        Assert.Contains("ICachableRequest", solution.Read(Feature + "Queries/GetList/GetListBrandQuery.cs"));
+        Assert.Contains("// can-gen:endpoints", solution.Read("src/Shop.WebAPI/Controllers/BrandsController.cs"));
 
         string create = solution.Read(Feature + "Commands/Create/CreateBrandCommand.cs");
         Assert.Contains("Brand brand = Brand.Create(request.Name).OrThrow();", create);
@@ -154,7 +161,7 @@ public sealed class CrudGeneratorTests
         Assert.DoesNotContain("SaveChangesAsync", create); // Guid kimlik kodda üretilir
         Assert.Contains("brand.Update(request.Name, request.IsActive);", solution.Read(Feature + "Commands/Update/UpdateBrandCommand.cs"));
         Assert.Contains("RuleFor(x => x.Name).NotEmpty().MaximumLength(Brand.NameMaxLength);", solution.Read(Feature + "Commands/Create/CreateBrandCommandValidator.cs"));
-        Assert.Contains("throw new NotFoundException(BrandsMessages.BrandNotExists)", solution.Read(Feature + "Rules/BrandBusinessRules.cs"));
+        Assert.Contains("throw new NotFoundException(BrandsBusinessMessages.BrandNotExists)", solution.Read(Feature + "Rules/BrandBusinessRules.cs"));
         Assert.DoesNotContain("CreateMap<CreateBrandCommand, Brand>", solution.Read(Feature + "Profiles/MappingProfiles.cs"));
         Assert.Contains("public DateTimeOffset CreatedAt { get; set; }", solution.Read(Feature + "Queries/GetById/GetByIdBrandResponse.cs"));
         Assert.Contains("[Route(\"api/v1/[controller]\")]", solution.Read("src/Shop.WebAPI/Controllers/BrandsController.cs"));
@@ -254,5 +261,69 @@ public sealed class CrudGeneratorTests
 
         Assert.Contains(forced, r => r.Kind == ChangeKind.Overwritten && r.Path.EndsWith("TagsController.cs", StringComparison.Ordinal));
         Assert.Contains("class TagsController", solution.Read("src/Shop.WebAPI/Controllers/TagsController.cs"));
+    }
+
+    [Fact]
+    public void Mechanisms_can_be_turned_off()
+    {
+        using var solution = new TestSolution();
+        solution.Write("src/Shop.Domain/Entities/Brand.cs", "namespace Shop.Domain.Entities; public class Brand : Entity<Guid> { public string Name { get; set; } = \"\"; }");
+        SolutionLayout layout = SolutionLayout.Find(solution.Root);
+
+        CrudGenerator.Plan(layout, EntityReader.Read(layout, "Brand"), new CrudOptions { Caching = false, Logging = false, Transaction = false, Secured = false, DynamicQuery = false }).Apply();
+
+        string create = solution.Read(Feature + "Commands/Create/CreateBrandCommand.cs");
+        Assert.Contains("public sealed class CreateBrandCommand : IRequest<CreatedBrandResponse>\n", create.ReplaceLineEndings("\n"));
+        Assert.DoesNotContain("Permissions", create);
+        Assert.Contains("transaction kapalı: handler kendisi kaydeder", create);
+        Assert.Contains("await _unitOfWork.SaveChangesAsync(cancellationToken);", solution.Read(Feature + "Commands/Delete/DeleteBrandCommand.cs"));
+        Assert.DoesNotContain("ICachableRequest", solution.Read(Feature + "Queries/GetList/GetListBrandQuery.cs"));
+        Assert.False(solution.Exists(Feature + "Queries/GetListByDynamic/GetListByDynamicBrandQuery.cs"));
+        Assert.DoesNotContain("GetList/ByDynamic", solution.Read("src/Shop.WebAPI/Controllers/BrandsController.cs"));
+
+        // Dinamik sorgu sonradan eklenebilir.
+        CrudGenerator.PlanDynamicQuery(layout, EntityReader.Read(layout, "Brand")).Apply();
+        Assert.True(solution.Exists(Feature + "Queries/GetListByDynamic/GetListByDynamicBrandQuery.cs"));
+        string controller = solution.Read("src/Shop.WebAPI/Controllers/BrandsController.cs");
+        Assert.Contains("[HttpPost(\"GetList/ByDynamic\")]", controller);
+        Assert.Contains("using Shop.Application.Features.Brands.Queries.GetListByDynamic;", controller);
+        Assert.Contains("CreateMap<Brand, GetListByDynamicBrandListItemDto>();", solution.Read(Feature + "Profiles/MappingProfiles.cs"));
+    }
+
+    [Fact]
+    public void Adds_command_and_query_to_existing_feature()
+    {
+        using var solution = new TestSolution();
+        solution.Write("src/Shop.Domain/Entities/Brand.cs", "namespace Shop.Domain.Entities; public class Brand : Entity<Guid> { public string Name { get; set; } = \"\"; }");
+        SolutionLayout layout = SolutionLayout.Find(solution.Root);
+        CrudGenerator.Plan(layout, EntityReader.Read(layout, "Brand")).Apply();
+
+        Assert.Equal(new[] { "Brands" }, FeatureGenerator.ListFeatures(layout));
+
+        IReadOnlyList<ChangeResult> command = FeatureGenerator.PlanCommand(layout, "Brands", "SyncBrandCommand", new RequestOptions { EndpointMethod = "put" }).Apply();
+        Assert.DoesNotContain(command, r => r.Kind == ChangeKind.Failed);
+        string syncFolder = Feature + "Commands/SyncBrand/";
+        Assert.True(solution.Exists(syncFolder + "SyncBrandCommand.cs"));
+        Assert.True(solution.Exists(syncFolder + "SyncBrandCommandValidator.cs"));
+        Assert.True(solution.Exists(syncFolder + "SyncBrandResponse.cs"));
+        string sync = solution.Read(syncFolder + "SyncBrandCommand.cs");
+        Assert.Contains("[BrandsOperationClaims.Admin, BrandsOperationClaims.Write, BrandsOperationClaims.SyncBrand]", sync);
+        Assert.Contains("ICacheRemoverRequest", sync);
+        Assert.Contains("CacheTags.Entity<Brand>()", sync);
+
+        FeatureGenerator.PlanQuery(layout, "Brands", "GetBrandByName").Apply();
+        Assert.Contains("ICachableRequest", solution.Read(Feature + "Queries/GetBrandByName/GetBrandByNameQuery.cs"));
+
+        string claims = solution.Read(Feature + "Constants/BrandsOperationClaims.cs");
+        Assert.Contains("public const string SyncBrand = \"brands.sync-brand\";", claims);
+        Assert.Contains("(GetBrandByName, \"Get brand by name\"),", claims);
+
+        string controller = solution.Read("src/Shop.WebAPI/Controllers/BrandsController.cs").ReplaceLineEndings("\n");
+        Assert.Contains("    [HttpPut(\"SyncBrand\")]\n    public async Task<IActionResult> SyncBrand([FromBody] SyncBrandCommand syncBrandCommand, CancellationToken cancellationToken)", controller);
+        Assert.Contains("[HttpGet(\"GetBrandByName\")]", controller);
+        Assert.Contains("[FromQuery] GetBrandByNameQuery getBrandByNameQuery", controller);
+        Assert.Contains("using Shop.Application.Features.Brands.Commands.SyncBrand;", controller);
+
+        Assert.Throws<GeneratorException>(() => FeatureGenerator.PlanCommand(layout, "Nope", "X"));
     }
 }

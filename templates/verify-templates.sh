@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Şablonları yerelde doğrular: Can.Core paketlerini ve şablon paketini oluşturur, şablonu kurar, farklı seçeneklerle
-# üç çözüm üretir ve her birini derler. Çıktı: <repo>/templates.log
+# Şablonları yerelde doğrular: Core, can-gen ve şablonu yeni bir yerel sürümle paketleyip kurar, farklı seçeneklerle
+# üç çözüm üretir, kurulu can-gen ile CRUD üretip her birini derler. Çıktı: <repo>/templates.log
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,26 +8,18 @@ PACKAGES="$ROOT/artifacts/packages"
 TEMPLATES="$ROOT/artifacts/templates"
 OUT="$ROOT/artifacts/template-test"
 LOG="$ROOT/templates.log"
-VERSION="0.1.0-local"
 
 : > "$LOG"
 step() { echo "=== $*" | tee -a "$LOG"; }
 
-# Can.Core kodu değişmediyse paketlemeyi atla: SKIP_CORE=1 ./templates/verify-templates.sh
-if [[ "${SKIP_CORE:-0}" != 1 ]]; then
-  step "Can.Core paketleri ($VERSION)"
-  dotnet pack "$ROOT/Core.slnx" -c Release -o "$PACKAGES" -p:Version="$VERSION" >>"$LOG" 2>&1 || { step "HATA: Can.Core paketlenemedi"; exit 1; }
-  step "Can.Core.Application testleri"
-  dotnet run --project "$ROOT/tests/Can.Core.Application.Tests" >>"$LOG" 2>&1 && step "TAMAM: Can.Core.Application testleri" || { step "HATA: Can.Core.Application testleri"; exit 1; }
-  # Aynı sürüm yeniden paketlendi: NuGet önbelleğindeki eski kopyalar silinir.
-  rm -rf "$HOME"/.nuget/packages/can.core.*
-fi
+# Core, can-gen ve şablon aynı yeni yerel sürümle paketlenir ve kurulur (build/pack-local.sh).
+step "Paketleme ve kurulum (build/pack-local.sh --install)"
+"$ROOT/build/pack-local.sh" --install >>"$LOG" 2>&1 || { step "HATA: paketleme/kurulum"; exit 1; }
+VERSION="$(cat "$ROOT/artifacts/local-version.txt")"
+step "Sürüm: $VERSION"
 
-step "Şablon paketi"
-rm -rf "$TEMPLATES" && mkdir -p "$TEMPLATES"
-dotnet pack "$ROOT/templates/Can.Core.Templates/Can.Core.Templates.csproj" -o "$TEMPLATES" >>"$LOG" 2>&1 || { step "HATA: şablon paketlenemedi"; exit 1; }
-dotnet new uninstall Can.Core.Templates >>"$LOG" 2>&1 || true
-dotnet new install "$TEMPLATES/Can.Core.Templates.$VERSION.nupkg" >>"$LOG" 2>&1 || { step "HATA: şablon kurulamadı"; exit 1; }
+step "Can.Core.Application testleri"
+dotnet run --project "$ROOT/tests/Can.Core.Application.Tests" >>"$LOG" 2>&1 && step "TAMAM: Can.Core.Application testleri" || { step "HATA: Can.Core.Application testleri"; exit 1; }
 
 rm -rf "$OUT" && mkdir -p "$OUT"
 failed=0
@@ -58,8 +50,9 @@ variant Tenant --Database sqlserver --MultiTenancy true --Settings true --Hangfi
 step "can-gen testleri"
 if dotnet run --project "$ROOT/tests/Can.Core.Generator.Tests" >>"$LOG" 2>&1; then step "TAMAM: can-gen testleri"; else step "HATA: can-gen testleri"; failed=1; fi
 
-CANGEN=("dotnet" "run" "--project" "$ROOT/tools/Can.Core.Generator.Cli" "--no-launch-profile" "--")
-dotnet build "$ROOT/tools/Can.Core.Generator.Cli" >>"$LOG" 2>&1 || { step "HATA: can-gen derlenemedi"; failed=1; }
+# Kurulu (paketlenmiş) can-gen kullanılır: paketin kendisi de denenmiş olur.
+CANGEN=("$HOME/.dotnet/tools/can-gen")
+step "can-gen sürümü: $("${CANGEN[@]}" version 2>&1)"
 
 generate() {
   local name="$1"
@@ -117,9 +110,12 @@ public sealed class Tag : Entity<int>
     public int UsageCount { get; set; }
 }
 CS
-  for entity in Brand Tag; do
-    "${CANGEN[@]}" crud "$entity" --project "$OUT/$name" >>"$LOG" 2>&1 || { step "HATA: can-gen crud $entity ($name)"; failed=1; }
-  done
+  run_cangen() { "${CANGEN[@]}" "$@" --project "$OUT/$name" >>"$LOG" 2>&1 || { step "HATA: can-gen $* ($name)"; failed=1; }; }
+  run_cangen generate crud Brand                              # tüm mekanizmalar
+  run_cangen generate crud Tag -s                             # yalnızca yetki: transaction yok, önbellek yok, dinamik sorgu yok
+  run_cangen generate dynamic-query Tag                       # dinamik sorgu sonradan
+  run_cangen generate command SyncBrand Brands -e Put
+  run_cangen generate query GetBrandByName Brands
   if dotnet build "$OUT/$name/$name.slnx" -c Debug >>"$LOG" 2>&1; then
     step "TAMAM: $name + can-gen derlendi"
   else

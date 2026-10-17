@@ -20,6 +20,23 @@ public static class Names
         return name + "s";
     }
 
+    /// <summary>İngilizce tekil (basit kurallar): Categories → Category, Boxes → Box, Brands → Brand.</summary>
+    public static string Singular(string name)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        if (name.EndsWith("ies", StringComparison.Ordinal) && name.Length > 3)
+            return name[..^3] + "y";
+
+        foreach (string suffix in new[] { "sses", "xes", "zes", "ches", "shes" })
+        {
+            if (name.EndsWith(suffix, StringComparison.Ordinal))
+                return name[..^2];
+        }
+
+        return name.EndsWith('s') && !name.EndsWith("ss", StringComparison.Ordinal) ? name[..^1] : name;
+    }
+
     public static string Pascal(string name) =>
         string.IsNullOrEmpty(name) ? name : char.ToUpperInvariant(name[0]) + name[1..];
 

@@ -47,6 +47,21 @@ internal sealed class TestSolution : IDisposable
             }
             """);
 
+        Write("src/Shop.Application/ApplicationServiceRegistration.cs", """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Shop.Application;
+
+            public static class ApplicationServiceRegistration
+            {
+                public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+                {
+                    // can-gen:services
+                    return services;
+                }
+            }
+            """);
+
         Write("src/Shop.Persistence/PersistenceServiceRegistration.cs", """
             using Microsoft.Extensions.DependencyInjection;
 
