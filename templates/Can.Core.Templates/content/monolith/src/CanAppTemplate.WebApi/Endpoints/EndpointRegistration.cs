@@ -27,10 +27,8 @@ internal static class EndpointRegistration
 #endif
         api.MapAccountEndpoints();       // /api/auth/account/...
 
-        // Uygulama uçları (generator her entity için bir satır ekler).
-        RouteGroupBuilder v1 = app.MapGroup("/api/v1");
+        // Uygulama uçları: /api/v1/... (can-gen her entity için bir satır ekler).
         // can-gen:endpoints
-        _ = v1;
 
         // Core: aktif oturumlar ("bu cihazdan / diğer cihazlardan çıkış") ve özellik bayrakları.
         app.MapCanSessions("/api/sessions").RequireAuthorization();
