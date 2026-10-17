@@ -227,7 +227,7 @@
         {
           "condition": "(!Settings)",
           "exclude": [
-            "src/CanAppTemplate.Application/Services/Settings/AppSettings.cs"
+            "src/CanAppTemplate.Application/Services/Settings/RuntimeSettings.cs"
           ]
         }
       ]

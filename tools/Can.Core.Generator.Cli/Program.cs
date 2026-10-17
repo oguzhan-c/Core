@@ -48,6 +48,12 @@ int New(Arguments a)
     string name = a.Positional(1) ?? Text($"Proje {G("adı")}");
     if (string.IsNullOrWhiteSpace(name))
         throw new GeneratorException("Proje adı gerekli: can-gen new MyShop");
+    if (char.IsLower(name[0]))
+    {
+        // Namespace'ler C# geleneğine uysun: "test3" → "Test3" (proje ve klasör adı da buna göre).
+        name = char.ToUpperInvariant(name[0]) + name[1..];
+        Console.WriteLine(Dim($"Proje adı {name} olarak kullanılıyor."));
+    }
 
     var templateArgs = new List<string> { "new", "can-monolith", "-n", name, "-o", a.Option("output") ?? name };
 

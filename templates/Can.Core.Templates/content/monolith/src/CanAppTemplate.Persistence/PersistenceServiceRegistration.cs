@@ -107,7 +107,7 @@ public static class PersistenceServiceRegistration
         services.AddCanDataSeeders(typeof(PersistenceServiceRegistration).Assembly);
 #if (Settings)
 
-        // Ayar değerleri veritabanında (tanımlar Application'da: AppSettings).
+        // Ayar değerleri veritabanında (tanımlar Application'da: RuntimeSettings).
         services.AddCanSettings(s => s.UseEntityFrameworkStore<BaseDbContext>());
 #endif
 #if (Reporting)

@@ -32,7 +32,7 @@ public static class ApplicationServiceRegistration
         services.AddCanRealtimeDefaults(); // WebAPI SignalR'ı kurar; diğer ortamlarda (test, iş sunucusu) bildirim gönderilmez
 #endif
 #if (Settings)
-        services.AddCanSettings(s => s.Add(AppSettings.All));
+        services.AddCanSettings(s => s.Add(RuntimeSettings.All));
 #endif
 
         // Kimlik
