@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    can-gen komut satırı aracı (dotnet tool). Kurulum komutları README'de (tools/README.md).
+    Rider / Visual Studio eklentileri de bunu JSON çıktısıyla çağırır.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>can-gen</ToolCommandName>
+    <PackageId>Can.Core.Generator.Cli</PackageId>
+    <AssemblyName>can-gen</AssemblyName>
+    <RootNamespace>Can.Core.Generator.Cli</RootNamespace>
+    <Description>can-gen: Can.Core çözümlerinde entity'den CRUD (CQRS) kodu üreten komut satırı aracı.</Description>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Can.Core.Generator\Can.Core.Generator.csproj" />
+  </ItemGroup>
+
+</Project>

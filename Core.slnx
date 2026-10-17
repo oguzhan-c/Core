@@ -47,6 +47,10 @@
     <Project Path="src/Can.Core.Testing.EntityFrameworkCore/Can.Core.Testing.EntityFrameworkCore.csproj" />
     <Project Path="src/Can.Core.Testing.AspNetCore/Can.Core.Testing.AspNetCore.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Can.Core.Generator/Can.Core.Generator.csproj" />
+    <Project Path="tools/Can.Core.Generator.Cli/Can.Core.Generator.Cli.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Can.Core.Domain.Tests/Can.Core.Domain.Tests.csproj" />
     <Project Path="tests/Can.Core.Mediator.Tests/Can.Core.Mediator.Tests.csproj" />
@@ -77,6 +81,7 @@
     <Project Path="tests/Can.Core.Sms.Tests/Can.Core.Sms.Tests.csproj" />
     <Project Path="tests/Can.Core.Logging.Tests/Can.Core.Logging.Tests.csproj" />
     <Project Path="tests/Can.Core.WebApi.Tests/Can.Core.WebApi.Tests.csproj" />
+    <Project Path="tests/Can.Core.Generator.Tests/Can.Core.Generator.Tests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
