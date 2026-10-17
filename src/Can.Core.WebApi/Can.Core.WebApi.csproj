@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Can.Core.Security\Can.Core.Security.csproj" />
     <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
     <ProjectReference Include="..\Can.Core.Localization\Can.Core.Localization.csproj" />
+    <ProjectReference Include="..\Can.Core.Mediator.Abstractions\Can.Core.Mediator.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
