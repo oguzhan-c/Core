@@ -41,6 +41,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ICurrentUser>(NullCurrentUser.Instance);
         services.TryAddSingleton<ICurrentTenant>(NullCurrentTenant.Instance);
+        services.TryAddScoped<Authorization.IAccessGrantGuard, Authorization.AccessGrantGuard>(); // rol / yetki yönetimi kuralları
         services.TryAddSingleton<IDistributedLock>(sp => new Locking.InMemoryDistributedLock(sp.GetService<TimeProvider>())); // Redis: Can.Core.Redis.ScaleOut
         services.AddHybridCache();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ICacheInvalidationTarget, HybridCacheInvalidationTarget>());
