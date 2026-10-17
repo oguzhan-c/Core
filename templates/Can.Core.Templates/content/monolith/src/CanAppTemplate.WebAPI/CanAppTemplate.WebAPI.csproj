@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>canapptemplate-USER_SECRETS_ID</UserSecretsId>
+  </PropertyGroup>
+
+  <!-- Controller'lar, kimlik akışı (cookie), HTTP ara katmanları. Dış servisler Infrastructure'da, veritabanı Persistence'ta. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Infrastructure\CanAppTemplate.Infrastructure.csproj" />
+    <ProjectReference Include="..\CanAppTemplate.Persistence\CanAppTemplate.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Can.Core.WebApi" />
+    <PackageReference Include="Can.Core.WebApi.OpenApi" />
+    <PackageReference Include="Can.Core.Localization" />
+    <PackageReference Include="Can.Core.Logging.Serilog" />
+<!--#if (OpenTelemetry)-->
+    <PackageReference Include="Can.Core.Observability.OpenTelemetry" />
+<!--#endif-->
+<!--#if (Reporting)-->
+    <PackageReference Include="Can.Core.Reporting.AspNetCore" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="Can.Core.Settings.AspNetCore" />
+<!--#endif-->
+    <!-- dotnet ef migrations add ... için -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Hata ve metin çevirileri (tr/en) -->
+    <Content Update="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

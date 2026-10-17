@@ -17,6 +17,8 @@ step() { echo "=== $*" | tee -a "$LOG"; }
 if [[ "${SKIP_CORE:-0}" != 1 ]]; then
   step "Can.Core paketleri ($VERSION)"
   dotnet pack "$ROOT/Core.slnx" -c Release -o "$PACKAGES" -p:Version="$VERSION" >>"$LOG" 2>&1 || { step "HATA: Can.Core paketlenemedi"; exit 1; }
+  step "Can.Core.Application testleri"
+  dotnet run --project "$ROOT/tests/Can.Core.Application.Tests" >>"$LOG" 2>&1 && step "TAMAM: Can.Core.Application testleri" || { step "HATA: Can.Core.Application testleri"; exit 1; }
   # Aynı sürüm yeniden paketlendi: NuGet önbelleğindeki eski kopyalar silinir.
   rm -rf "$HOME"/.nuget/packages/can.core.*
 fi

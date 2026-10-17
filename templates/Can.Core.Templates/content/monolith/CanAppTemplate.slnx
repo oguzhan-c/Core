@@ -3,7 +3,8 @@
     <Project Path="src/CanAppTemplate.Domain/CanAppTemplate.Domain.csproj" />
     <Project Path="src/CanAppTemplate.Application/CanAppTemplate.Application.csproj" />
     <Project Path="src/CanAppTemplate.Persistence/CanAppTemplate.Persistence.csproj" />
-    <Project Path="src/CanAppTemplate.WebApi/CanAppTemplate.WebApi.csproj" />
+    <Project Path="src/CanAppTemplate.Infrastructure/CanAppTemplate.Infrastructure.csproj" />
+    <Project Path="src/CanAppTemplate.WebAPI/CanAppTemplate.WebAPI.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />

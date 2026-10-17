@@ -3,20 +3,22 @@ using Can.Core.Security.Entities;
 using Can.Core.Security.Hashing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using CanAppTemplate.Application.Common;
-using CanAppTemplate.Domain.Identity;
+using CanAppTemplate.Application.Services.OperationClaims;
+using CanAppTemplate.Domain.Constants;
+using CanAppTemplate.Domain.Entities;
+using CanAppTemplate.Persistence.Contexts;
 
 namespace CanAppTemplate.Persistence.Seeding;
 
 /// <summary>Roller, yetkiler ve yönetici hesabı. İdempotent: her açılışta eksikleri ekler, var olana dokunmaz.</summary>
 internal sealed partial class IdentitySeeder : IDataSeeder
 {
-    private readonly AppDbContext _db;
+    private readonly BaseDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
     private readonly SeedOptions _options;
     private readonly ILogger<IdentitySeeder> _logger;
 
-    public IdentitySeeder(AppDbContext db, IPasswordHasher passwordHasher, SeedOptions options, ILogger<IdentitySeeder> logger)
+    public IdentitySeeder(BaseDbContext db, IPasswordHasher passwordHasher, SeedOptions options, ILogger<IdentitySeeder> logger)
     {
         _db = db;
         _passwordHasher = passwordHasher;
@@ -47,7 +49,7 @@ internal sealed partial class IdentitySeeder : IDataSeeder
     private async Task<Dictionary<string, OperationClaim<Guid>>> SeedPermissionsAsync(CancellationToken cancellationToken)
     {
         Dictionary<string, OperationClaim<Guid>> existing = await _db.OperationClaims.ToDictionaryAsync(c => c.Name, cancellationToken);
-        foreach ((string name, string description) in AppPermissions.All)
+        foreach ((string name, string description) in AppOperationClaims.All)
         {
             if (existing.ContainsKey(name))
                 continue;
@@ -72,7 +74,7 @@ internal sealed partial class IdentitySeeder : IDataSeeder
                 existing[name] = role;
             }
 
-            if (AppPermissions.RoleGrants.TryGetValue(name, out string[]? grants))
+            if (AppOperationClaims.RoleGrants.TryGetValue(name, out string[]? grants))
             {
                 foreach (string grant in grants)
                     role.GrantOperationClaim(claims[grant]);

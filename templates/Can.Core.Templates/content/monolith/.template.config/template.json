@@ -10,7 +10,7 @@
   "identity": "Can.Core.Templates.Monolith",
   "groupIdentity": "Can.Core.Templates.Monolith",
   "name": "Can.Core Monolith",
-  "description": "Can.Core paketleriyle monolith Web API: Domain / Application (CQRS) / Persistence / WebApi. Kimlik (JWT HttpOnly cookie), 2FA, passkey, çoklu kiracılık ve dış servisler seçmeli.",
+  "description": "Can.Core paketleriyle nArchitecture düzeninde monolith Web API: Domain / Application (CQRS) / Persistence / Infrastructure / WebAPI (Controllers). Kimlik (JWT HttpOnly cookie), 2FA, passkey, çoklu kiracılık ve dış servisler seçmeli.",
   "shortName": "can-monolith",
   "sourceName": "CanAppTemplate",
   "preferNameDirectory": true,
@@ -214,20 +214,20 @@
         {
           "condition": "(!MultiTenancy)",
           "exclude": [
-            "src/CanAppTemplate.Persistence/Services/**",
-            "src/CanAppTemplate.Application/Common/Abstractions.cs"
+            "src/CanAppTemplate.Persistence/Repositories/CrossTenantReader.cs",
+            "src/CanAppTemplate.Application/Services/Repositories/ICrossTenantReader.cs"
           ]
         },
         {
           "condition": "(!ExternalLogin)",
           "exclude": [
-            "src/CanAppTemplate.WebApi/Endpoints/ExternalLoginEndpoints.cs"
+            "src/CanAppTemplate.WebAPI/Security/ExternalLoginCallback.cs"
           ]
         },
         {
           "condition": "(!Settings)",
           "exclude": [
-            "src/CanAppTemplate.Application/Common/AppSettings.cs"
+            "src/CanAppTemplate.Application/Services/Settings/AppSettings.cs"
           ]
         }
       ]
