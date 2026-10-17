@@ -49,6 +49,25 @@ CRUD** (ya da terminalde `can-gen generate crud Brand`; komut/sorgu eklemek içi
 Generator `// can-gen:...` işaretlerinin olduğu yerlere ekleme yapar; bu satırları silme. Senin doldurman gereken yerler
 `TODO(can-gen)` ile işaretlidir (Rider: View → Tool Windows → TODO).
 
+## Roller ve yetkiler
+
+- **Yetkiler kodla tanımlanır:** her özellik `Features/{Çoğul}/Constants/{Çoğul}OperationClaims.cs`, toplu liste
+  `Application/Services/OperationClaims/AppOperationClaims.cs`. Açılışta veritabanı bu listeye eşitlenir; koddan çıkan
+  yetki silinmez, "kullanımdan kalktı" olur ve kimseye etki etmez.
+- **Dağıtım çalışırken yapılır** (`/api/identity/...`, yetkiler `IdentityPermissions`):
+  - `GET/POST/PUT/DELETE /api/identity/roles` — rol listesi, oluştur, düzenle, sil
+  - `POST /api/identity/roles/{id}/permissions/grant|revoke` — role yetki ver / al (`{ "operationClaimIds": [...] }`)
+  - `GET /api/identity/operation-claims` — yetki kataloğu
+  - `GET /api/identity/users/{userId}/authorization` — kullanıcının rolleri ve yetkileri
+  - `POST|DELETE /api/identity/users/{userId}/roles/{roleId}` — rol ata / kaldır
+  - `POST /api/identity/users/{userId}/permissions/grant|revoke` — doğrudan yetki ver / al
+- **Yetki yükseltme yok** (Core: `IAccessGrantGuard`): kimse sahip olmadığı yetkiyi veremez, kapsamadığı rolü atayamaz,
+  kendi rollerini/yetkilerini değiştiremez; Admin ve User sistem rolüdür (silinmez, adı değişmez); son yönetici kaldırılamaz.
+  "Yetki verme yetkisi" de bir yetkidir: Admin, örneğin `identity.users.assign-role`'ü bir "Moderatör" rolüne verebilir;
+  Moderatör yalnızca kendi kapsadığı rolleri dağıtabilir.
+- **Değişiklik hemen geçerli:** roller ve yetkiler token'a yazılmaz; her istekte (1 dk önbellekli) veritabanından okunur
+  (`UseCanPermissionResolution`). Birden fazla sunucuda değişiklik en geç önbellek süresi sonunda yansır.
+
 ## Migration
 
 ```bash

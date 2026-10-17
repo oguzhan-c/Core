@@ -149,7 +149,7 @@ builder.Services.AddCanApiVersioning(o =>
     o.Add(new ApiVersionInfo(1));
     o.DefaultVersion = 1;
     // Sürümsüz uçlar (kimlik ve altyapı). Uygulama uçları /api/v1/... altındadır.
-    foreach (string path in new[] { "/api/auth", "/api/sessions", "/api/features", "/api/settings", "/api/reporting" })
+    foreach (string path in new[] { "/api/auth", "/api/identity", "/api/sessions", "/api/features", "/api/settings", "/api/reporting" })
         o.UnversionedPaths.Add(path);
 });
 builder.Services.AddCanOpenApi(o =>
@@ -249,6 +249,7 @@ app.UseCanAccessTokenRevocation();      // çıkış yapılmış / kapatılmış
 app.UseCanTenantResolution();           // token'daki (cookie) tenant_id → aktif tenant
 #endif
 app.UseCanSecurityStampValidation();    // şifre/2FA değişti: eski token'lar 401
+app.UseCanPermissionResolution();       // roller / yetkiler token'dan değil veritabanından (önbellekli): değişiklik hemen geçerli
 app.UseCanLogEnrichment();              // loglara UserId / TenantId
 app.UseCanRateLimiting();
 app.UseAuthorization();

@@ -1,4 +1,5 @@
 using Can.Core.Persistence.Seeding;
+using Can.Core.Security.EntityFrameworkCore;
 using Can.Core.Security.Entities;
 using Can.Core.Security.Hashing;
 using Microsoft.EntityFrameworkCore;
@@ -46,38 +47,39 @@ internal sealed partial class IdentitySeeder : IDataSeeder
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<Dictionary<string, OperationClaim<Guid>>> SeedPermissionsAsync(CancellationToken cancellationToken)
-    {
-        Dictionary<string, OperationClaim<Guid>> existing = await _db.OperationClaims.ToDictionaryAsync(c => c.Name, cancellationToken);
-        foreach ((string name, string description) in AppOperationClaims.All)
-        {
-            if (existing.ContainsKey(name))
-                continue;
+    /// <summary>Yetki tablosunu koddaki kataloğa eşitler (eksik → eklenir, koddan çıkan → kullanımdan kalkar).</summary>
+    private Task<Dictionary<string, OperationClaim<Guid>>> SeedPermissionsAsync(CancellationToken cancellationToken) =>
+        _db.SyncOperationClaimsAsync<Guid>(AppOperationClaims.All, () => Guid.CreateVersion7(), cancellationToken);
 
-            var claim = new OperationClaim<Guid>(Guid.CreateVersion7(), name, description);
-            _db.OperationClaims.Add(claim);
-            existing[name] = claim;
-        }
-
-        return existing;
-    }
-
+    /// <summary>
+    /// Sistem rollerini oluşturur ve başlangıç yetkilerini verir. Başlangıç yetkisi yalnızca rol YENİ oluşturulduysa ya da
+    /// yetki kataloğa YENİ eklendiyse verilir: yönetim uçlarından geri alınan yetki yeniden başlatınca geri gelmez.
+    /// </summary>
     private async Task<Dictionary<string, Role<Guid>>> SeedRolesAsync(Dictionary<string, OperationClaim<Guid>> claims, CancellationToken cancellationToken)
     {
         Dictionary<string, Role<Guid>> existing = await _db.Roles.Include(r => r.OperationClaims).ToDictionaryAsync(r => r.Name, cancellationToken);
         foreach (string name in Roles.All)
         {
+            bool created = false;
             if (!existing.TryGetValue(name, out Role<Guid>? role))
             {
                 role = new Role<Guid>(Guid.CreateVersion7(), name);
                 _db.Roles.Add(role);
                 existing[name] = role;
+                created = true;
             }
+
+            if (!role.IsSystem)
+                role.MarkAsSystem();
 
             if (AppOperationClaims.RoleGrants.TryGetValue(name, out string[]? grants))
             {
                 foreach (string grant in grants)
-                    role.GrantOperationClaim(claims[grant]);
+                {
+                    OperationClaim<Guid> claim = claims[grant];
+                    if (created || _db.Entry(claim).State == EntityState.Added)
+                        role.GrantOperationClaim(claim);
+                }
             }
         }
 

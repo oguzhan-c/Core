@@ -98,6 +98,7 @@ public static class PersistenceServiceRegistration
         services.AddCanUserSessions<BaseDbContext, Guid>();
         services.AddCanTrustedDevices<BaseDbContext, Guid>();
         services.AddCanSecurityStampValidator<BaseDbContext, AppUser, Guid>();
+        services.AddCanUserAuthorizationStore<BaseDbContext, AppUser, Guid>(); // rol / yetkiler her istekte (önbellekli) veritabanından
         services.AddCanSecurityEventStore<BaseDbContext>();
 
         var seed = new SeedOptions();

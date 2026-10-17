@@ -8,5 +8,16 @@
   "session_expired": "Oturumun süresi doldu; tekrar giriş yap.",
   "invalid_verification_code": "Kod geçersiz ya da süresi dolmuş; yeni kod iste.",
   "invalid_two_factor_code": "Kod geçersiz ya da süresi dolmuş.",
-  "two_factor_expired": "Doğrulama süresi doldu; tekrar giriş yap."
+  "two_factor_expired": "Doğrulama süresi doldu; tekrar giriş yap.",
+  "identity.grant_exceeds_own": "Sahip olmadığın yetkileri veremez ya da geri alamazsın.",
+  "identity.self_modification": "Kendi rollerini ve yetkilerini değiştiremezsin.",
+  "identity.system_role": "Sistem rolü silinemez, adı değiştirilemez; yönetici rolünün yetkileri düzenlenemez.",
+  "identity.last_admin": "Son yönetici kaldırılamaz; önce başka bir kullanıcıyı yönetici yap.",
+  "identity.role_in_use": "Bu rol kullanıcılara atanmış; önce kullanıcılardan kaldır.",
+  "identity.unknown_permission": "Yetkilerden biri ya da birkaçı bulunamadı.",
+  "identity.deprecated_permission": "Kullanımdan kaldırılmış yetki verilemez.",
+  "identity.host_only": "Roller ve rol yetkileri yalnızca ana (host) yönetimden düzenlenebilir.",
+  "role.not_exists": "Rol bulunamadı.",
+  "role.name_exists": "Bu adda bir rol zaten var.",
+  "user.not_exists": "Kullanıcı bulunamadı."
 }

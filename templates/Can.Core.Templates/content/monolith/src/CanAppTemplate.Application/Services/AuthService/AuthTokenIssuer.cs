@@ -67,7 +67,6 @@ public sealed class AuthTokenIssuer
                 Email: user.Email,
                 Roles: profile.Roles,
                 TenantId: tenantId,
-                Permissions: profile.Permissions,
                 SecurityStamp: user.SecurityStamp,
                 SessionId: sessionId
             )

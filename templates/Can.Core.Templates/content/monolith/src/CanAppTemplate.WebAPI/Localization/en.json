@@ -6,5 +6,16 @@
   "session_expired": "Your session has expired; please sign in again.",
   "invalid_verification_code": "The code is invalid or expired; request a new one.",
   "invalid_two_factor_code": "The code is invalid or expired.",
-  "two_factor_expired": "Verification timed out; please sign in again."
+  "two_factor_expired": "Verification timed out; please sign in again.",
+  "identity.grant_exceeds_own": "You cannot grant or revoke permissions you do not have.",
+  "identity.self_modification": "You cannot change your own roles or permissions.",
+  "identity.system_role": "System roles cannot be deleted or renamed; the administrator role's permissions cannot be edited.",
+  "identity.last_admin": "The last administrator cannot be removed; make another user an administrator first.",
+  "identity.role_in_use": "This role is assigned to users; remove it from them first.",
+  "identity.unknown_permission": "One or more permissions were not found.",
+  "identity.deprecated_permission": "Deprecated permissions cannot be granted.",
+  "identity.host_only": "Roles and role permissions can only be managed by the host.",
+  "role.not_exists": "Role not found.",
+  "role.name_exists": "A role with this name already exists.",
+  "user.not_exists": "User not found."
 }
