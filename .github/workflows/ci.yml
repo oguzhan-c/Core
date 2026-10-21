@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write   # NuGet Trusted Publishing: etiketli derlemede nuget.org'dan geçici (1 saatlik) yayın anahtarı alınır
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -51,8 +52,6 @@ jobs:
       CAN_AZURITE_URL: http://localhost:10000/devstoreaccount1
       # Azure Service Bus testleri için depo sırrı tanımlanırsa çalışır, yoksa atlanır
       CAN_AZURE_SERVICEBUS_CONNECTION: ${{ secrets.CAN_AZURE_SERVICEBUS_CONNECTION }}
-      # Yayın (yalnızca etiketli derlemede kullanılır): Settings → Secrets → Actions → NUGET_API_KEY
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
     steps:
@@ -72,7 +71,19 @@ jobs:
       - run: ./build/ci.sh build
       - run: ./build/ci.sh test
       - run: ./build/ci.sh pack
+      # Yayın yalnızca v* etiketinde. Anahtar: nuget.org Trusted Publishing politikası (oguzhan-c / Core / ci.yml);
+      # depoda uzun ömürlü anahtar tutulmaz. Politika yoksa yedek olarak NUGET_API_KEY secret'ı kullanılır.
+      - name: NuGet login (Trusted Publishing)
+        id: nuget-login
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true   # politika yoksa: publish yedek secret'ı dener, o da yoksa açık hata verir
+        uses: NuGet/login@v1
+        with:
+          user: oguzhan-c   # nuget.org kullanıcı adı (e-posta değil)
+
       - run: ./build/ci.sh publish   # etiket yoksa atlanır
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.NUGET_API_KEY }}
 
       - name: Test sonuçları
         if: always()

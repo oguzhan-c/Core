@@ -14,6 +14,8 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-21
+
 İlk sürüm. .NET 10 için katmanlı (DDD / Clean Architecture) uygulama altyapısı. Paketler `CanFx.*` adıyla
 yayınlanır (geliştirme sırasındaki adı `Can.Core.*` idi); proje şablonu `CanFx.Templates` (`dotnet new canfx-monolith`),
 kod üretici `CanFx.Generator.Cli` (`can-gen`).
