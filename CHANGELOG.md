@@ -16,7 +16,7 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ### Değişti
 
-- Proje şablonu (`CanFx.Templates`), can-gen (`CanFx.Generator.Cli`) ve Rider eklentisi ayrı repoya taşındı
+- Proje şablonu (`CanFx.Templates`), kod üretici (`CanFx.Generator.Cli`, yeni adı `CanFxGen`) ve Rider eklentisi ayrı repoya taşındı
   (github.com/oguzhan-c/Generator); bu repo yalnızca `CanFx.*` paketlerini yayınlar.
 
 ## [0.1.0] - 2026-10-21
