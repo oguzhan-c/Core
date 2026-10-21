@@ -72,6 +72,7 @@ public static class CrudGenerator
         plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"GetById{E}Query.cs"), CrudTemplates.GetByIdQuery(n));
         plan.AddFile(Path.Combine(feature, "Queries", "GetById", $"GetById{E}Response.cs"), CrudTemplates.Response(n, "Queries.GetById", $"GetById{E}Response", n.ResponseFields));
         plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}Query.cs"), CrudTemplates.GetListQuery(n));
+        plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}QueryValidator.cs"), CrudTemplates.PageQueryValidator(n, "GetList"));
         plan.AddFile(Path.Combine(feature, "Queries", "GetList", $"GetList{E}ListItemDto.cs"), CrudTemplates.Response(n, "Queries.GetList", $"GetList{E}ListItemDto", n.ResponseFields, isDto: true));
         if (options.DynamicQuery)
             AddDynamicQueryFiles(plan, n, feature);
@@ -157,6 +158,7 @@ public static class CrudGenerator
     {
         string E = n.Entity;
         plan.AddFile(Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}Query.cs"), CrudTemplates.GetListByDynamicQuery(n));
+        plan.AddFile(Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}QueryValidator.cs"), CrudTemplates.PageQueryValidator(n, "GetListByDynamic"));
         plan.AddFile(
             Path.Combine(feature, "Queries", "GetListByDynamic", $"GetListByDynamic{E}ListItemDto.cs"),
             CrudTemplates.Response(n, "Queries.GetListByDynamic", $"GetListByDynamic{E}ListItemDto", n.ResponseFields, isDto: true));

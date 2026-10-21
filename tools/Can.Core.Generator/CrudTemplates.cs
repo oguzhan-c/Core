@@ -482,9 +482,7 @@ internal static class CrudTemplates
             using Can.Core.Mapping;
             using Can.Core.Mediator;
             using Can.Core.Persistence.Paging;
-            using FluentValidation;
             using {{n.Root}}.Application.Services.Repositories;
-            using {{n.Root}}.Application.Services.Validation;
             using {{n.Model.Namespace}};
             using {{n.ConstantsNamespace}};
 
@@ -494,11 +492,6 @@ internal static class CrudTemplates
             public sealed class GetList{{E}}Query : {{Interfaces(n, "GetListResponse<GetList" + E + "ListItemDto>", command: false, cachable: n.Options.Caching)}}
             {
                 public PageRequest PageRequest { get; set; } = new();{{Permissions(n, "Admin", "Read")}}{{CacheMembers(n, "GetList" + n.Plural + "({PageRequest.Page},{PageRequest.PageSize})")}}
-            }
-
-            public sealed class GetList{{E}}QueryValidator : AbstractValidator<GetList{{E}}Query>
-            {
-                public GetList{{E}}QueryValidator() => RuleFor(x => x.PageRequest).ValidPage();
             }
 
             public sealed class GetList{{E}}QueryHandler : IRequestHandler<GetList{{E}}Query, GetListResponse<GetList{{E}}ListItemDto>>
@@ -546,9 +539,7 @@ internal static class CrudTemplates
             using Can.Core.Mediator;
             using Can.Core.Persistence.Dynamic;
             using Can.Core.Persistence.Paging;
-            using FluentValidation;
             using {{n.Root}}.Application.Services.Repositories;
-            using {{n.Root}}.Application.Services.Validation;
             using {{n.Model.Namespace}};
             using {{n.ConstantsNamespace}};
 
@@ -563,11 +554,6 @@ internal static class CrudTemplates
                 public PageRequest PageRequest { get; set; } = new();
 
                 public DynamicQuery? DynamicQuery { get; set; }{{Permissions(n, "Admin", "Read")}}
-            }
-
-            public sealed class GetListByDynamic{{E}}QueryValidator : AbstractValidator<GetListByDynamic{{E}}Query>
-            {
-                public GetListByDynamic{{E}}QueryValidator() => RuleFor(x => x.PageRequest).ValidPage();
             }
 
             public sealed class GetListByDynamic{{E}}QueryHandler : IRequestHandler<GetListByDynamic{{E}}Query, GetListResponse<GetListByDynamic{{E}}ListItemDto>>
@@ -791,6 +777,20 @@ internal static class CrudTemplates
                     GetListByDynamic(pageRequest, dynamicQuery, cancellationToken);
             """;
     }
+
+    public static string PageQueryValidator(CrudNames n, string operation) => $$"""
+        {{Header}}
+        using FluentValidation;
+        using {{n.Root}}.Application.Services.Validation;
+
+        namespace {{n.FeatureNamespace}}.Queries.{{operation}};
+
+        public sealed class {{operation}}{{n.Entity}}QueryValidator : AbstractValidator<{{operation}}{{n.Entity}}Query>
+        {
+            public {{operation}}{{n.Entity}}QueryValidator() => RuleFor(x => x.PageRequest).ValidPage();
+        }
+
+        """;
 
     public static string DeleteValidator(CrudNames n) => $$"""
         {{Header}}
