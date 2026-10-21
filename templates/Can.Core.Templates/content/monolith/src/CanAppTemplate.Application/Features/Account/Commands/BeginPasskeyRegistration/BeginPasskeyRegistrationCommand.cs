@@ -11,6 +11,8 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
@@ -18,38 +20,33 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Account.Commands.BeginPasskeyRegistration;
 
 /// <summary>Passkey kaydının ilk adımı: tarayıcıya verilecek seçenekler (WebApi bunları kısa süre saklar).</summary>
-public sealed record BeginPasskeyRegistrationCommand : IRequest<Result<CredentialCreateOptions>>, ISecuredRequest;
+public sealed record BeginPasskeyRegistrationCommand : IRequest<CredentialCreateOptions>, ISecuredRequest;
 
-public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<BeginPasskeyRegistrationCommand, Result<CredentialCreateOptions>>
+public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<BeginPasskeyRegistrationCommand, CredentialCreateOptions>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly IPasskeyService _passkeyService;
+    private readonly AuthBusinessRules _authBusinessRules;
+    private readonly AccountBusinessRules _accountBusinessRules;
 
     public BeginPasskeyRegistrationCommandHandler(
-        ICurrentUser currentUser,
-        IRepository<AppUser, IdentityKey> users,
         IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys,
-        IPasskeyService passkeyService)
+        IPasskeyService passkeyService,
+        AuthBusinessRules authBusinessRules,
+        AccountBusinessRules accountBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _passkeys = passkeys;
         _passkeyService = passkeyService;
+        _authBusinessRules = authBusinessRules;
+        _accountBusinessRules = accountBusinessRules;
     }
 
-    public async Task<Result<CredentialCreateOptions>> Handle(BeginPasskeyRegistrationCommand request, CancellationToken cancellationToken)
+    public async Task<CredentialCreateOptions> Handle(BeginPasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(cancellationToken: cancellationToken);
 
-        AppUser user = current.Value;
         List<byte[]> existing = await _passkeys.Query(enableTracking: false).Where(p => p.UserId == user.Id).Select(p => p.CredentialId).ToListAsync(cancellationToken);
-
-        if (existing.Count >= PasskeyLimits.MaxPerUser)
-            return Error.Failure("passkey.limit", $"En fazla {PasskeyLimits.MaxPerUser} passkey eklenebilir; önce birini sil.");
+        _accountBusinessRules.PasskeyLimitShouldNotBeExceeded(existing.Count);
 
         return _passkeyService.BeginRegistration(new PasskeyUser(user.PasskeyUserHandle, user.Email, user.FullName), existing);
     }

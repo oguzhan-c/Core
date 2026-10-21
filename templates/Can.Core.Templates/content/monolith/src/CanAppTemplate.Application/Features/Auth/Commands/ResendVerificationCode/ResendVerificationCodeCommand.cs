@@ -16,9 +16,9 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Auth.Commands.ResendVerificationCode;
 
 /// <summary>Yeni doğrulama kodu gönderir. Hesabın var olup olmadığını belli etmemek için her zaman başarılı döner.</summary>
-public sealed record ResendVerificationCodeCommand(string Email) : IRequest<Result<Success>>, ITransactionalRequest;
+public sealed record ResendVerificationCodeCommand(string Email) : IRequest, ITransactionalRequest;
 
-public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<ResendVerificationCodeCommand, Result<Success>>
+public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<ResendVerificationCodeCommand>
 {
     private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
@@ -29,14 +29,12 @@ public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<Resen
         _emailVerification = emailVerification;
     }
 
-    public async Task<Result<Success>> Handle(ResendVerificationCodeCommand request, CancellationToken cancellationToken)
+    public async Task Handle(ResendVerificationCodeCommand request, CancellationToken cancellationToken)
     {
         string normalizedEmail = request.Email.Trim().ToUpperInvariant();
         AppUser? user = await _users.GetAsync(u => u.NormalizedEmail == normalizedEmail, cancellationToken: cancellationToken);
 
         if (user is { EmailConfirmed: false })
             await _emailVerification.SendCodeAsync(user, VerificationPurpose.ConfirmEmail, cancellationToken);
-
-        return Result.Success;
     }
 }

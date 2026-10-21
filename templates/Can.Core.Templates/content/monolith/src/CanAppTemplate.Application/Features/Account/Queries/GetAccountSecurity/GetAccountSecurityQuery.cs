@@ -11,46 +11,41 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
 
 namespace CanAppTemplate.Application.Features.Account.Queries.GetAccountSecurity;
 
-public sealed record GetAccountSecurityQuery : IRequest<Result<AccountSecurityDto>>, ISecuredRequest;
+public sealed record GetAccountSecurityQuery : IRequest<AccountSecurityDto>, ISecuredRequest;
 
-public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountSecurityQuery, Result<AccountSecurityDto>>
+public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountSecurityQuery, AccountSecurityDto>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly IRepository<UserLogin<IdentityKey>, IdentityKey> _logins;
     private readonly IRepository<RecoveryCode<IdentityKey>, IdentityKey> _recoveryCodes;
     private readonly IServiceProvider _services;
+    private readonly AuthBusinessRules _authBusinessRules;
 
     public GetAccountSecurityQueryHandler(
-        ICurrentUser currentUser,
-        IRepository<AppUser, IdentityKey> users,
         IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys,
         IRepository<UserLogin<IdentityKey>, IdentityKey> logins,
         IRepository<RecoveryCode<IdentityKey>, IdentityKey> recoveryCodes,
-        IServiceProvider services)
+        IServiceProvider services,
+        AuthBusinessRules authBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _passkeys = passkeys;
         _logins = logins;
         _recoveryCodes = recoveryCodes;
         _services = services;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<AccountSecurityDto>> Handle(GetAccountSecurityQuery request, CancellationToken cancellationToken)
+    public async Task<AccountSecurityDto> Handle(GetAccountSecurityQuery request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
-
-        AppUser user = current.Value;
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(enableTracking: false, cancellationToken: cancellationToken);
 
         List<UserPasskey<IdentityKey>> passkeys = await _passkeys.Query(enableTracking: false).Where(p => p.UserId == user.Id).OrderBy(p => p.CreatedAt).ToListAsync(cancellationToken);
         List<UserLogin<IdentityKey>> logins = await _logins.Query(enableTracking: false).Where(l => l.UserId == user.Id).OrderBy(l => l.LoginProvider).ToListAsync(cancellationToken);

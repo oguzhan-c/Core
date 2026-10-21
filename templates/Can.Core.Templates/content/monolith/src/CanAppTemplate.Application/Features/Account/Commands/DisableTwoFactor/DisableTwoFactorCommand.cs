@@ -11,6 +11,8 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -19,42 +21,36 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Account.Commands.DisableTwoFactor;
 
 /// <summary>İki adımlı doğrulamayı kapatır; güvenlik için şifre tekrar istenir. Kurtarma kodları silinir.</summary>
-public sealed record DisableTwoFactorCommand(string Password) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record DisableTwoFactorCommand(string Password) : IRequest, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoFactorCommand, Result<Success>>
+public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoFactorCommand>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> _otpAuthenticators;
     private readonly Can.Core.Security.Hashing.IPasswordHasher _passwordHasher;
     private readonly RecoveryCodeIssuer _recoveryCodes;
     private readonly ISecurityEvents _events;
+    private readonly AuthBusinessRules _authBusinessRules;
 
     public DisableTwoFactorCommandHandler(
-        ICurrentUser currentUser,
-        IRepository<AppUser, IdentityKey> users,
         IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> otpAuthenticators,
         Can.Core.Security.Hashing.IPasswordHasher passwordHasher,
         RecoveryCodeIssuer recoveryCodes,
-        ISecurityEvents events)
+        ISecurityEvents events,
+        AuthBusinessRules authBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _otpAuthenticators = otpAuthenticators;
         _passwordHasher = passwordHasher;
         _recoveryCodes = recoveryCodes;
         _events = events;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<Success>> Handle(DisableTwoFactorCommand request, CancellationToken cancellationToken)
+    public async Task Handle(DisableTwoFactorCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
-
-        AppUser user = current.Value;
-        if (user.PasswordHash is null || _passwordHasher.Verify(request.Password, user.PasswordHash) == Can.Core.Security.Hashing.PasswordVerificationResult.Failed)
-            return AuthErrors.InvalidPassword;
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(cancellationToken: cancellationToken);
+        _authBusinessRules.PasswordShouldMatch(
+            user.PasswordHash is not null
+            && _passwordHasher.Verify(request.Password, user.PasswordHash) != Can.Core.Security.Hashing.PasswordVerificationResult.Failed);
 
         if (await _otpAuthenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken) is { } otp)
             _otpAuthenticators.Delete(otp, permanent: true);
@@ -62,6 +58,5 @@ public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoF
         await _recoveryCodes.DeleteAllAsync(user.Id, cancellationToken);
         user.SetAuthenticator(AuthenticatorType.None);
         await _events.PublishAsync(new SecurityEvent(SecurityEventTypes.TwoFactorDisabled, user.Id.ToString()), cancellationToken);
-        return Result.Success;
     }
 }

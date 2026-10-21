@@ -5,6 +5,7 @@ using Can.Core.Security.Entities;
 using Can.Core.Security.Events;
 using Can.Core.Security.Sessions;
 using Can.Core.Security.Tokens;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -16,9 +17,9 @@ namespace CanAppTemplate.Application.Features.Auth.Commands.RefreshToken;
 /// Refresh token ile yeni token çifti (rotasyon; oturum aynı kalır). Kapatılmış bir token tekrar kullanılırsa token
 /// çalınmış sayılır: kullanıcının tüm oturumları kapatılır ve kritik güvenlik olayı yayınlanır.
 /// </summary>
-public sealed record RefreshTokenCommand(string RefreshToken, ClientInfo Client) : IRequest<Result<AuthResult>>;
+public sealed record RefreshTokenCommand(string RefreshToken, ClientInfo Client) : IRequest<AuthResult>;
 
-public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, Result<AuthResult>>
+public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, AuthResult>
 {
     /// <summary>Aynı token'la eşzamanlı yenileme (sekmeler) için tolerans.</summary>
     public static readonly TimeSpan ConcurrentRefreshGrace = TimeSpan.FromSeconds(30);
@@ -31,6 +32,7 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
     private readonly ISecurityEvents _events;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
+    private readonly AuthBusinessRules _authBusinessRules;
 
     public RefreshTokenCommandHandler(
         ITokenService tokens,
@@ -40,7 +42,8 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
         IUserSessionService sessions,
         ISecurityEvents events,
         IUnitOfWork unitOfWork,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        AuthBusinessRules authBusinessRules)
     {
         _tokens = tokens;
         _refreshTokens = refreshTokens;
@@ -50,14 +53,14 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
         _events = events;
         _unitOfWork = unitOfWork;
         _timeProvider = timeProvider;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<AuthResult>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
+    public async Task<AuthResult> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
         RefreshToken<IdentityKey>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
-        if (token is null)
-            return AuthErrors.SessionExpired;
+        _authBusinessRules.SessionShouldBeActive(token is not null);
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -74,15 +77,14 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
                 );
             }
 
-            return AuthErrors.SessionExpired;
+            _authBusinessRules.SessionShouldBeActive(false);
         }
 
         AppUser? user = await _users.GetByIdAsync(token.UserId, include: q => q.WithRolesAndPermissions(), cancellationToken: cancellationToken);
-        if (user is null || !token.IsValidFor(now, user.SecurityStamp) || user.IsLockedOut(now))
-            return AuthErrors.SessionExpired;
+        _authBusinessRules.SessionShouldBeActive(user is not null && token.IsValidFor(now, user.SecurityStamp) && !user.IsLockedOut(now));
 
-        AuthResult result = await _tokenIssuer.RotateAsync(user, token, request.Client, cancellationToken);
+        AuthResult session = await _tokenIssuer.RotateAsync(user, token, request.Client, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return result;
+        return session;
     }
 }

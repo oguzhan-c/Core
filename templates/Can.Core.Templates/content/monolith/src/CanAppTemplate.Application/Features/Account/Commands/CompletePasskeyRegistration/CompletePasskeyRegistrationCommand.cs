@@ -11,6 +11,8 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -20,46 +22,39 @@ namespace CanAppTemplate.Application.Features.Account.Commands.CompletePasskeyRe
 
 /// <summary>Passkey kaydını tamamlar: tarayıcının yanıtı ilk adımdaki seçeneklerle doğrulanır ve passkey saklanır.</summary>
 public sealed record CompletePasskeyRegistrationCommand(AuthenticatorAttestationRawResponse Response, CredentialCreateOptions Options, string? Name)
-    : IRequest<Result<PasskeyDto>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+    : IRequest<PasskeyDto>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<CompletePasskeyRegistrationCommand, Result<PasskeyDto>>
+public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<CompletePasskeyRegistrationCommand, PasskeyDto>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly IPasskeyService _passkeyService;
     private readonly ISecurityEvents _events;
     private readonly TimeProvider _timeProvider;
+    private readonly AuthBusinessRules _authBusinessRules;
+    private readonly AccountBusinessRules _accountBusinessRules;
 
     public CompletePasskeyRegistrationCommandHandler(
-        ICurrentUser currentUser,
-        IRepository<AppUser, IdentityKey> users,
         IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys,
         IPasskeyService passkeyService,
         ISecurityEvents events,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        AuthBusinessRules authBusinessRules,
+        AccountBusinessRules accountBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _passkeys = passkeys;
         _passkeyService = passkeyService;
         _events = events;
         _timeProvider = timeProvider;
+        _authBusinessRules = authBusinessRules;
+        _accountBusinessRules = accountBusinessRules;
     }
 
-    public async Task<Result<PasskeyDto>> Handle(CompletePasskeyRegistrationCommand request, CancellationToken cancellationToken)
+    public async Task<PasskeyDto> Handle(CompletePasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(cancellationToken: cancellationToken);
+        _accountBusinessRules.PasskeyOptionsShouldBelongToUser(request.Options.User.Id.SequenceEqual(user.PasskeyUserHandle));
 
-        AppUser user = current.Value;
-
-        // Seçenekler bu kullanıcı için üretilmiş olmalı (başka oturumun seçenekleriyle kayıt yapılamaz).
-        if (!request.Options.User.Id.SequenceEqual(user.PasskeyUserHandle))
-            return Error.Forbidden("passkey.wrong_user", "Passkey isteği bu hesaba ait değil.");
-
-        PasskeyCredential credential;
+        PasskeyCredential? credential = null;
         try
         {
             credential = await _passkeyService.CompleteRegistrationAsync(
@@ -71,8 +66,10 @@ public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return Error.Failure(AuthErrorCodes.PasskeyFailed, "Passkey kaydedilemedi; tekrar dene.");
+            // Fido2VerificationException (imza, challenge, origin ...) ya da bozuk yanıt: aşağıdaki kural reddeder.
         }
+
+        _accountBusinessRules.PasskeyShouldBeRegistered(credential is not null);
 
         var passkey = new UserPasskey<IdentityKey>(user.Id, credential, request.Name ?? string.Empty, _timeProvider.GetUtcNow());
         await _passkeys.AddAsync(passkey, cancellationToken);

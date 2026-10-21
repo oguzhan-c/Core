@@ -8,6 +8,7 @@ using Can.Core.Security.Otp;
 using Can.Core.Security.RecoveryCodes;
 using Can.Core.Security.Sessions;
 using FluentValidation;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -21,11 +22,10 @@ namespace CanAppTemplate.Application.Features.Auth.Commands.CompleteTwoFactorLog
 /// istemci değiştiremez.
 /// </summary>
 public sealed record CompleteTwoFactorLoginCommand(TwoFactorChallenge Challenge, string Code, bool IsRecoveryCode, ClientInfo Client)
-    : IRequest<Result<AuthResult>>, ILoggableRequest;
+    : IRequest<AuthResult>, ILoggableRequest;
 
-public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<CompleteTwoFactorLoginCommand, Result<AuthResult>>
+public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<CompleteTwoFactorLoginCommand, AuthResult>
 {
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IRepository<RecoveryCode<IdentityKey>, IdentityKey> _recoveryCodes;
     private readonly IRecoveryCodeService _recoveryCodeService;
     private readonly TwoFactorCodeVerifier _verifier;
@@ -34,9 +34,9 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
     private readonly ISecurityEvents _events;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
+    private readonly AuthBusinessRules _authBusinessRules;
 
     public CompleteTwoFactorLoginCommandHandler(
-        IRepository<AppUser, IdentityKey> users,
         IRepository<RecoveryCode<IdentityKey>, IdentityKey> recoveryCodes,
         IRecoveryCodeService recoveryCodeService,
         TwoFactorCodeVerifier verifier,
@@ -44,9 +44,9 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
         IUserSessionService sessions,
         ISecurityEvents events,
         IUnitOfWork unitOfWork,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        AuthBusinessRules authBusinessRules)
     {
-        _users = users;
         _recoveryCodes = recoveryCodes;
         _recoveryCodeService = recoveryCodeService;
         _verifier = verifier;
@@ -55,18 +55,14 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
         _events = events;
         _unitOfWork = unitOfWork;
         _timeProvider = timeProvider;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<AuthResult>> Handle(CompleteTwoFactorLoginCommand request, CancellationToken cancellationToken)
+    public async Task<AuthResult> Handle(CompleteTwoFactorLoginCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> resolved = await TwoFactorChallenges.ResolveUserAsync(_users, request.Challenge, cancellationToken);
-        if (resolved.IsFailure)
-            return resolved.Errors;
-
-        AppUser user = resolved.Value;
+        AppUser user = await _authBusinessRules.TwoFactorChallengeShouldBeValid(request.Challenge, cancellationToken);
         DateTimeOffset now = _timeProvider.GetUtcNow();
-        if (user.IsLockedOut(now))
-            return AuthErrors.LockedOut;
+        _authBusinessRules.UserShouldNotBeLockedOut(user, now);
 
         bool valid = request.IsRecoveryCode
             ? await UseRecoveryCodeAsync(user, request.Code, now, cancellationToken)
@@ -74,12 +70,13 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
 
         if (!valid)
         {
-            // Kaba kuvvete karşı: hatalı kodlar şifre hataları gibi sayılır ve hesabı kilitler.
+            // Kaba kuvvete karşı: hatalı kodlar şifre hataları gibi sayılır ve hesabı kilitler (exception'dan ÖNCE kaydedilir).
             user.RegisterFailedAccess(now);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await AuthEvents.FailedAsync(_events, user, now, request.IsRecoveryCode ? "invalid_recovery_code" : "invalid_code", cancellationToken, SecurityEventTypes.TwoFactorFailed);
-            return user.IsLockedOut(now) ? AuthErrors.LockedOut : AuthErrors.InvalidTwoFactorCode;
         }
+
+        _authBusinessRules.TwoFactorCodeShouldBeValid(valid, user, now);
 
         user.ResetAccessFailed();
         await _events.PublishAsync(
@@ -87,9 +84,9 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
             cancellationToken
         );
 
-        AuthResult result = await AuthEvents.SignInAsync(user, request.Client, "two_factor", _tokenIssuer, _sessions, _events, cancellationToken);
+        AuthResult session = await AuthEvents.SignInAsync(user, request.Client, "two_factor", _tokenIssuer, _sessions, _events, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return result;
+        return session;
     }
 
     private async Task<bool> UseRecoveryCodeAsync(AppUser user, string code, DateTimeOffset now, CancellationToken cancellationToken)

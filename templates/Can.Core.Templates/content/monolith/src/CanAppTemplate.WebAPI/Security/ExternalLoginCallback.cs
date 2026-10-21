@@ -1,9 +1,10 @@
-using Can.Core.Domain.Results;
+using Can.Core.Domain.Exceptions;
 using Can.Core.Mediator;
 using Can.Core.WebApi.DependencyInjection;
 using Can.Core.WebApi.ExternalLogin;
 using Microsoft.AspNetCore.WebUtilities;
 using CanAppTemplate.Application.Features.Auth.Commands.ExternalLogin;
+using CanAppTemplate.Application.Features.Auth.Commands.Login;
 using CanAppTemplate.Application.Features.Auth.Commands.LinkExternalLogin;
 using CanAppTemplate.Application.Services.AuthService;
 
@@ -30,31 +31,42 @@ internal static class ExternalLoginCallback
             if (!IdentityKey.TryParse(info.LinkUserId, out IdentityKey userId))
                 return info.RedirectWithError(options, "failed");
 
-            Result<Success> linked = await sender.Send(new LinkExternalLoginCommand(userId, info.Provider, info.ProviderDisplayName, info.ProviderKey), ct);
-            return linked.IsSuccess
-                ? Results.Redirect(QueryHelpers.AddQueryString(info.ReturnUrl, "externalLinked", info.Provider))
-                : info.RedirectWithError(options, linked.FirstError.Code);
+            try
+            {
+                await sender.Send(new LinkExternalLoginCommand(userId, info.Provider, info.ProviderDisplayName, info.ProviderKey), ct);
+            }
+            catch (Exception ex) when (ex is IHasErrorCode)
+            {
+                return info.RedirectWithError(options, ErrorCodeOf(ex));
+            }
+
+            return Results.Redirect(QueryHelpers.AddQueryString(info.ReturnUrl, "externalLinked", info.Provider));
         }
 
-        Result<LoginResult> result = await sender.Send(
-            new ExternalLoginCommand(
-                info.Provider,
-                info.ProviderDisplayName,
-                info.ProviderKey,
-                info.Email,
-                info.EmailVerified,
-                info.GivenName,
-                info.FamilyName,
-                info.Name,
-                services.GetRequiredService<ClientInfoFactory>().Create(http)
-            ),
-            ct
-        );
+        LoggedResponse login;
+        try
+        {
+            login = await sender.Send(
+                new ExternalLoginCommand(
+                    info.Provider,
+                    info.ProviderDisplayName,
+                    info.ProviderKey,
+                    info.Email,
+                    info.EmailVerified,
+                    info.GivenName,
+                    info.FamilyName,
+                    info.Name,
+                    services.GetRequiredService<ClientInfoFactory>().Create(http)
+                ),
+                ct
+            );
+        }
+        catch (Exception ex) when (ex is IHasErrorCode)
+        {
+            // Tarayıcı sağlayıcıdan dönüyor: hata ProblemDetails değil, hata sayfasına yönlendirme (?error=kod).
+            return info.RedirectWithError(options, ErrorCodeOf(ex));
+        }
 
-        if (result.IsFailure)
-            return info.RedirectWithError(options, result.FirstError.Code);
-
-        LoginResult login = result.Value;
         if (login.Challenge is { } challenge)
         {
             // İkinci adım: bekleyen giriş şifreli cookie'de; giriş sayfası kod adımını açar.
@@ -72,4 +84,6 @@ internal static class ExternalLoginCallback
         services.GetRequiredService<IAuthCookieService>().SetTokens(http.Response, login.Session!.AccessToken, login.Session.RefreshToken);
         return Results.Redirect(info.ReturnUrl);
     }
+
+    private static string ErrorCodeOf(Exception exception) => (exception as IHasErrorCode)?.Code ?? "failed";
 }

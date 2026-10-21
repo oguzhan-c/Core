@@ -7,6 +7,7 @@ using Can.Core.Security.Events;
 using Can.Core.Security.Sessions;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
@@ -18,43 +19,40 @@ namespace CanAppTemplate.Application.Features.Auth.Commands.LinkExternalLogin;
 /// oturum cookie'si gönderilmez); istemciden alınmaz.
 /// </summary>
 public sealed record LinkExternalLoginCommand(IdentityKey UserId, string Provider, string ProviderDisplayName, string ProviderKey)
-    : IRequest<Result<Success>>, ITransactionalRequest, ILoggableRequest;
+    : IRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class LinkExternalLoginCommandHandler : IRequestHandler<LinkExternalLoginCommand, Result<Success>>
+public sealed class LinkExternalLoginCommandHandler : IRequestHandler<LinkExternalLoginCommand>
 {
     private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly ISecurityEvents _events;
     private readonly TimeProvider _timeProvider;
+    private readonly AuthBusinessRules _authBusinessRules;
 
-    public LinkExternalLoginCommandHandler(IRepository<AppUser, IdentityKey> users, ISecurityEvents events, TimeProvider timeProvider)
+    public LinkExternalLoginCommandHandler(IRepository<AppUser, IdentityKey> users, ISecurityEvents events, TimeProvider timeProvider, AuthBusinessRules authBusinessRules)
     {
         _users = users;
         _events = events;
         _timeProvider = timeProvider;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<Success>> Handle(LinkExternalLoginCommand request, CancellationToken cancellationToken)
+    public async Task Handle(LinkExternalLoginCommand request, CancellationToken cancellationToken)
     {
         AppUser? user = await _users.GetAsync(u => u.Id == request.UserId, include: q => q.Include(u => u.Logins), cancellationToken: cancellationToken);
-        if (user is null)
-            return Error.Unauthorized();
+        _authBusinessRules.UserShouldExist(user is not null);
 
         string provider = request.Provider.Trim().ToLowerInvariant();
         string key = request.ProviderKey.Trim();
 
         if (user.Logins.Any(l => l.LoginProvider == provider && l.ProviderKey == key))
-            return Result.Success; // zaten bağlı
+            return; // zaten bağlı
 
-        if (await _users.AnyAsync(u => u.Id != user.Id && u.Logins.Any(l => l.LoginProvider == provider && l.ProviderKey == key), cancellationToken: cancellationToken))
-            return AuthErrors.ExternalAlreadyLinked;
-
-        if (!user.AddLogin(provider, key, request.ProviderDisplayName, _timeProvider.GetUtcNow()))
-            return AuthErrors.ExternalProviderLinked;
+        await _authBusinessRules.ExternalLoginShouldNotBelongToAnotherUser(user.Id, provider, key, cancellationToken);
+        _authBusinessRules.ExternalLoginShouldBeAdded(user.AddLogin(provider, key, request.ProviderDisplayName, _timeProvider.GetUtcNow()));
 
         await _events.PublishAsync(
             new SecurityEvent(SecurityEventTypes.ExternalLoginLinked, user.Id.ToString()) { Properties = new Dictionary<string, string?> { ["provider"] = provider } },
             cancellationToken
         );
-        return Result.Success;
     }
 }

@@ -9,6 +9,7 @@ using Can.Core.Security.Hashing;
 using Can.Core.Security.Sessions;
 using Can.Core.Security.VerificationCodes;
 using FluentValidation;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -17,9 +18,9 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Auth.Commands.VerifyEmail;
 
 /// <summary>E-postadaki kodu doğrular; başarılıysa kullanıcı doğrudan giriş yapmış olur.</summary>
-public sealed record VerifyEmailCommand(string Email, string Code, ClientInfo Client) : IRequest<Result<AuthResult>>, ILoggableRequest;
+public sealed record VerifyEmailCommand(string Email, string Code, ClientInfo Client) : IRequest<AuthResult>, ILoggableRequest;
 
-public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailCommand, Result<AuthResult>>
+public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailCommand, AuthResult>
 {
     private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
@@ -27,6 +28,7 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
     private readonly IUserSessionService _sessions;
     private readonly ISecurityEvents _events;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly AuthBusinessRules _authBusinessRules;
 
     public VerifyEmailCommandHandler(
         IRepository<AppUser, IdentityKey> users,
@@ -34,7 +36,8 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
         AuthTokenIssuer tokenIssuer,
         IUserSessionService sessions,
         ISecurityEvents events,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        AuthBusinessRules authBusinessRules)
     {
         _users = users;
         _emailVerification = emailVerification;
@@ -42,30 +45,28 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
         _sessions = sessions;
         _events = events;
         _unitOfWork = unitOfWork;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<AuthResult>> Handle(VerifyEmailCommand request, CancellationToken cancellationToken)
+    public async Task<AuthResult> Handle(VerifyEmailCommand request, CancellationToken cancellationToken)
     {
         string normalizedEmail = request.Email.Trim().ToUpperInvariant();
         AppUser? user = await _users.GetAsync(u => u.NormalizedEmail == normalizedEmail, include: q => q.WithRolesAndPermissions(), cancellationToken: cancellationToken);
-        if (user is null)
-            return AuthErrors.InvalidVerificationCode;
+        _authBusinessRules.VerificationCodeShouldBeValid(user is not null);
 
         // Doğrulanmış hesapta bu uç nokta şifresiz giriş kapısı olamaz (2FA atlanırdı): giriş sayfasına yönlendirilir.
-        if (user.EmailConfirmed)
-            return Error.Conflict("email_already_confirmed", "E-posta adresin zaten doğrulanmış; giriş yapabilirsin.");
+        _authBusinessRules.EmailShouldNotBeConfirmedYet(user);
 
-        if (!await _emailVerification.VerifyAsync(user, request.Code, cancellationToken))
-        {
-            // Başarısız deneme sayacı kalıcı olsun (kaba kuvvet denemelerine karşı).
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            return AuthErrors.InvalidVerificationCode;
-        }
+        bool valid = await _emailVerification.VerifyAsync(user, request.Code, cancellationToken);
+        if (!valid)
+            await _unitOfWork.SaveChangesAsync(cancellationToken); // başarısız deneme sayacı kalıcı olsun (kaba kuvvete karşı)
+
+        _authBusinessRules.VerificationCodeShouldBeValid(valid);
 
         user.ConfirmEmail();
 
-        AuthResult result = await AuthEvents.SignInAsync(user, request.Client, "email_verification", _tokenIssuer, _sessions, _events, cancellationToken);
+        AuthResult session = await AuthEvents.SignInAsync(user, request.Client, "email_verification", _tokenIssuer, _sessions, _events, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return result;
+        return session;
     }
 }

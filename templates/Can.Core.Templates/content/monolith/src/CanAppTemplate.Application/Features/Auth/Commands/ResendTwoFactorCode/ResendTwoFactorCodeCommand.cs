@@ -8,6 +8,7 @@ using Can.Core.Security.Otp;
 using Can.Core.Security.RecoveryCodes;
 using Can.Core.Security.Sessions;
 using FluentValidation;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
@@ -15,29 +16,23 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Auth.Commands.ResendTwoFactorCode;
 
 /// <summary>E-posta ile ikinci adımda yeni kod gönderir.</summary>
-public sealed record ResendTwoFactorCodeCommand(TwoFactorChallenge Challenge) : IRequest<Result<Success>>, ITransactionalRequest;
+public sealed record ResendTwoFactorCodeCommand(TwoFactorChallenge Challenge) : IRequest, ITransactionalRequest;
 
-public sealed class ResendTwoFactorCodeCommandHandler : IRequestHandler<ResendTwoFactorCodeCommand, Result<Success>>
+public sealed class ResendTwoFactorCodeCommandHandler : IRequestHandler<ResendTwoFactorCodeCommand>
 {
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
+    private readonly AuthBusinessRules _authBusinessRules;
 
-    public ResendTwoFactorCodeCommandHandler(IRepository<AppUser, IdentityKey> users, EmailVerification emailVerification)
+    public ResendTwoFactorCodeCommandHandler(EmailVerification emailVerification, AuthBusinessRules authBusinessRules)
     {
-        _users = users;
         _emailVerification = emailVerification;
+        _authBusinessRules = authBusinessRules;
     }
 
-    public async Task<Result<Success>> Handle(ResendTwoFactorCodeCommand request, CancellationToken cancellationToken)
+    public async Task Handle(ResendTwoFactorCodeCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> user = await TwoFactorChallenges.ResolveUserAsync(_users, request.Challenge, cancellationToken);
-        if (user.IsFailure)
-            return user.Errors;
-
-        if (user.Value.AuthenticatorType != AuthenticatorType.Email)
-            return Error.Failure("two_factor_not_email", "Bu hesap kodları authenticator uygulamasından alıyor.");
-
-        await _emailVerification.SendCodeAsync(user.Value, VerificationPurpose.SignIn, cancellationToken);
-        return Result.Success;
+        AppUser user = await _authBusinessRules.TwoFactorChallengeShouldBeValid(request.Challenge, cancellationToken);
+        _authBusinessRules.TwoFactorShouldUseEmail(user);
+        await _emailVerification.SendCodeAsync(user, VerificationPurpose.SignIn, cancellationToken);
     }
 }

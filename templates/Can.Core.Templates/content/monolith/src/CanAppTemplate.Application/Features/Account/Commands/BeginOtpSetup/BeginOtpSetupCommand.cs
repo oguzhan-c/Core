@@ -11,6 +11,8 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Account.Commands.EnableOtp;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -22,39 +24,34 @@ namespace CanAppTemplate.Application.Features.Account.Commands.BeginOtpSetup;
 /// Authenticator uygulaması kurulumunun ilk adımı: yeni gizli anahtar üretilir (henüz aktif değil). Kullanıcı QR kodu
 /// okutup uygulamadaki ilk kodu <see cref="EnableOtpCommand"/> ile girince iki adımlı giriş açılır.
 /// </summary>
-public sealed record BeginOtpSetupCommand : IRequest<Result<OtpSetupDto>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record BeginOtpSetupCommand : IRequest<OtpSetupDto>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupCommand, Result<OtpSetupDto>>
+public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupCommand, OtpSetupDto>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> _otpAuthenticators;
     private readonly ITotpService _totp;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly AuthBusinessRules _authBusinessRules;
+    private readonly AccountBusinessRules _accountBusinessRules;
 
     public BeginOtpSetupCommandHandler(
-        ICurrentUser currentUser,
-        IRepository<AppUser, IdentityKey> users,
         IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> otpAuthenticators,
         ITotpService totp,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        AuthBusinessRules authBusinessRules,
+        AccountBusinessRules accountBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _otpAuthenticators = otpAuthenticators;
         _totp = totp;
         _unitOfWork = unitOfWork;
+        _authBusinessRules = authBusinessRules;
+        _accountBusinessRules = accountBusinessRules;
     }
 
-    public async Task<Result<OtpSetupDto>> Handle(BeginOtpSetupCommand request, CancellationToken cancellationToken)
+    public async Task<OtpSetupDto> Handle(BeginOtpSetupCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
-
-        AppUser user = current.Value;
-        if (user.AuthenticatorType == AuthenticatorType.Otp)
-            return Error.Conflict("otp.already_enabled", "Authenticator uygulaması zaten açık. Yenisini kurmak için önce iki adımlı doğrulamayı kapat.");
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(cancellationToken: cancellationToken);
+        _accountBusinessRules.OtpShouldNotBeEnabled(user);
 
         // Yarım kalmış eski kurulum varsa silinir (kullanıcı başına tek kayıt; benzersiz index).
         if (await _otpAuthenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken) is { } existing)

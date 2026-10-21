@@ -126,4 +126,25 @@ CS
 generate Minimal
 generate Full
 
+# ---------------------------------------------------------------- standart
+# Şablonla gelen (Auth, Account, Roles ...) ve can-gen'in ürettiği (Brands ...) özellikler aynı kurala uymalı:
+# handler'lar hata için exception fırlatır (Rules), Result<T> dönmez.
+standards() {
+  local name="$1"
+  local features="$OUT/$name/src/$name.Application/Features"
+  [[ -d "$features" ]] || return
+  local bad
+  bad="$(grep -rlE 'IRequest<Result<|Task<Result<|IRequestHandler<[^>]*Result<' --include=*.cs "$features" || true)"
+  if [[ -n "$bad" ]]; then
+    step "HATA: $name: Features altında Result dönen istek var (exception + Rules kullanılmalı):"
+    echo "$bad" | tee -a "$LOG"
+    failed=1
+  else
+    step "TAMAM: $name standarda uygun (Features'ta Result yok)"
+  fi
+}
+standards Minimal
+standards Full
+standards Tenant
+
 [[ $failed == 0 ]] && step "HEPSİ TAMAM" || step "HATALAR VAR (ayrıntı yukarıda)"

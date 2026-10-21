@@ -11,32 +11,35 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
 
 namespace CanAppTemplate.Application.Features.Account.Commands.RenamePasskey;
 
-public sealed record RenamePasskeyCommand(IdentityKey Id, string Name) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest;
+public sealed record RenamePasskeyCommand(IdentityKey Id, string Name) : IRequest, ISecuredRequest, ITransactionalRequest;
 
-public sealed class RenamePasskeyCommandHandler : IRequestHandler<RenamePasskeyCommand, Result<Success>>
+public sealed class RenamePasskeyCommandHandler : IRequestHandler<RenamePasskeyCommand>
 {
-    private readonly ICurrentUser _currentUser;
     private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
+    private readonly AuthBusinessRules _authBusinessRules;
+    private readonly AccountBusinessRules _accountBusinessRules;
 
-    public RenamePasskeyCommandHandler(ICurrentUser currentUser, IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys)
+    public RenamePasskeyCommandHandler(IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys, AuthBusinessRules authBusinessRules, AccountBusinessRules accountBusinessRules)
     {
-        _currentUser = currentUser;
         _passkeys = passkeys;
+        _authBusinessRules = authBusinessRules;
+        _accountBusinessRules = accountBusinessRules;
     }
 
-    public Task<Result<Success>> Handle(RenamePasskeyCommand request, CancellationToken cancellationToken) =>
-        _currentUser
-            .UserId()
-            .ThenAsync(userId => _passkeys.GetAsync(p => p.Id == request.Id && p.UserId == userId, cancellationToken: cancellationToken).ToResult(AccountUsers.PasskeyNotFound))
-            .Map(passkey =>
-            {
-                passkey.Rename(request.Name);
-                return Result.Success;
-            });
+    public async Task Handle(RenamePasskeyCommand request, CancellationToken cancellationToken)
+    {
+        IdentityKey userId = _authBusinessRules.CurrentUserIdShouldBeKnown();
+        UserPasskey<IdentityKey>? passkey = await _passkeys.GetAsync(p => p.Id == request.Id && p.UserId == userId, cancellationToken: cancellationToken);
+        _accountBusinessRules.PasskeyShouldExist(passkey is not null);
+
+        passkey.Rename(request.Name);
+    }
 }

@@ -11,6 +11,8 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -19,42 +21,35 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Account.Commands.RegenerateRecoveryCodes;
 
 /// <summary>Kurtarma kodlarını yeniler (eskileri geçersiz olur). Yalnızca iki adımlı doğrulama açıkken.</summary>
-public sealed record RegenerateRecoveryCodesCommand(string? Password) : IRequest<Result<RecoveryCodesDto>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record RegenerateRecoveryCodesCommand(string? Password) : IRequest<RecoveryCodesDto>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class RegenerateRecoveryCodesCommandHandler : IRequestHandler<RegenerateRecoveryCodesCommand, Result<RecoveryCodesDto>>
+public sealed class RegenerateRecoveryCodesCommandHandler : IRequestHandler<RegenerateRecoveryCodesCommand, RecoveryCodesDto>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly Can.Core.Security.Hashing.IPasswordHasher _passwordHasher;
     private readonly RecoveryCodeIssuer _recoveryCodes;
+    private readonly AuthBusinessRules _authBusinessRules;
+    private readonly AccountBusinessRules _accountBusinessRules;
 
     public RegenerateRecoveryCodesCommandHandler(
-        ICurrentUser currentUser,
-        IRepository<AppUser, IdentityKey> users,
         Can.Core.Security.Hashing.IPasswordHasher passwordHasher,
-        RecoveryCodeIssuer recoveryCodes)
+        RecoveryCodeIssuer recoveryCodes,
+        AuthBusinessRules authBusinessRules,
+        AccountBusinessRules accountBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _passwordHasher = passwordHasher;
         _recoveryCodes = recoveryCodes;
+        _authBusinessRules = authBusinessRules;
+        _accountBusinessRules = accountBusinessRules;
     }
 
-    public async Task<Result<RecoveryCodesDto>> Handle(RegenerateRecoveryCodesCommand request, CancellationToken cancellationToken)
+    public async Task<RecoveryCodesDto> Handle(RegenerateRecoveryCodesCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
-
-        AppUser user = current.Value;
-        if (user.AuthenticatorType == AuthenticatorType.None)
-            return Error.Failure("two_factor_disabled", "Kurtarma kodları yalnızca iki adımlı doğrulama açıkken kullanılır.");
-
-        if (user.PasswordHash is not null
-            && (request.Password is null || _passwordHasher.Verify(request.Password, user.PasswordHash) == Can.Core.Security.Hashing.PasswordVerificationResult.Failed))
-        {
-            return AuthErrors.InvalidPassword;
-        }
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(cancellationToken: cancellationToken);
+        _accountBusinessRules.TwoFactorShouldBeEnabled(user);
+        _authBusinessRules.PasswordShouldMatch(
+            user.PasswordHash is null
+            || (request.Password is not null
+                && _passwordHasher.Verify(request.Password, user.PasswordHash) != Can.Core.Security.Hashing.PasswordVerificationResult.Failed));
 
         return await _recoveryCodes.RegenerateAsync(user.Id, cancellationToken);
     }

@@ -12,9 +12,9 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Auth.Commands.Logout;
 
 /// <summary>Çıkış: bu oturumun refresh token'ı kapatılır (access token'ı ve cookie'leri WebApi geri alır).</summary>
-public sealed record LogoutCommand(string? RefreshToken, ClientInfo Client) : IRequest<Result<Success>>;
+public sealed record LogoutCommand(string? RefreshToken, ClientInfo Client) : IRequest;
 
-public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result<Success>>
+public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand>
 {
     private readonly ITokenService _tokens;
     private readonly IRepository<RefreshToken<IdentityKey>, IdentityKey> _refreshTokens;
@@ -29,18 +29,17 @@ public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result
         _timeProvider = timeProvider;
     }
 
-    public async Task<Result<Success>> Handle(LogoutCommand request, CancellationToken cancellationToken)
+    public async Task Handle(LogoutCommand request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(request.RefreshToken))
-            return Result.Success;
+            return;
 
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
         RefreshToken<IdentityKey>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
         if (token is null || token.IsRevoked)
-            return Result.Success;
+            return;
 
         token.Revoke(_timeProvider.GetUtcNow(), request.Client.IpAddress, "logout");
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return Result.Success;
     }
 }

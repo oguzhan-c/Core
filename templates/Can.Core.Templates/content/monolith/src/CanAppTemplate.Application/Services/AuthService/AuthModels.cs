@@ -60,11 +60,3 @@ public sealed record TwoFactorChallenge(IdentityKey UserId, string SecurityStamp
 
 /// <summary>İkinci adım için istemciye gösterilecek bilgi.</summary>
 public sealed record TwoFactorPrompt(AuthenticatorType Method, string? Destination);
-
-/// <summary>Şifre ile giriş sonucu: ya oturum açıldı ya da ikinci adım isteniyor.</summary>
-public sealed record LoginResult(AuthResult? Session, TwoFactorChallenge? Challenge, TwoFactorPrompt? Prompt)
-{
-    public static LoginResult SignedIn(AuthResult session) => new(session, null, null);
-
-    public static LoginResult RequiresTwoFactor(TwoFactorChallenge challenge, TwoFactorPrompt prompt) => new(null, challenge, prompt);
-}

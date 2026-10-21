@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Can.Core.Application.Exceptions;
 using Can.Core.Domain.Results;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi;
@@ -42,10 +43,6 @@ namespace CanAppTemplate.WebAPI.Controllers;
 [ApiController]
 public class AuthController : BaseController
 {
-#if (Passkey)
-    private static readonly Error PasskeyExpired = Error.Unauthorized(AuthErrorCodes.PasskeyFailed, "Passkey isteğinin süresi doldu; tekrar dene.");
-
-#endif
     private readonly ClientInfoFactory _clients;
     private readonly IAuthCookieService _cookies;
     private readonly TwoFactorCookie _twoFactor;
@@ -86,21 +83,18 @@ public class AuthController : BaseController
     [EnableRateLimiting(CanRateLimitPolicies.Auth)]
     public async Task<IResult> Login([FromBody] LoginRequest body, CancellationToken ct)
     {
-        Result<LoginResult> result = await Mediator.Send(new LoginCommand(body.Email, body.Password, _clients.Create(HttpContext, body.DeviceId, body.DeviceName)), ct);
+        LoggedResponse login = await Mediator.Send(new LoginCommand(body.Email, body.Password, _clients.Create(HttpContext, body.DeviceId, body.DeviceName)), ct);
 
-        return result.ToHttpResult(login =>
+        if (login.Challenge is { } challenge)
         {
-            if (login.Challenge is { } challenge)
-            {
-                // Oturum henüz açılmadı: bekleyen giriş şifreli HttpOnly cookie'de, istemciye yalnızca yöntem bilgisi.
-                _twoFactor.Write(Response, challenge);
-                return TypedResults.Ok(new LoginResponse(null, login.Prompt));
-            }
+            // Oturum henüz açılmadı: bekleyen giriş şifreli HttpOnly cookie'de, istemciye yalnızca yöntem bilgisi.
+            _twoFactor.Write(Response, challenge);
+            return TypedResults.Ok(new LoginResponse(null, login.Prompt));
+        }
 
-            _twoFactor.Clear(Response);
-            _cookies.SetTokens(Response, login.Session!.AccessToken, login.Session.RefreshToken);
-            return TypedResults.Ok(new LoginResponse(login.Session.User, null));
-        });
+        _twoFactor.Clear(Response);
+        _cookies.SetTokens(Response, login.Session!.AccessToken, login.Session.RefreshToken);
+        return TypedResults.Ok(new LoginResponse(login.Session.User, null));
     }
 #if (TwoFactor)
 
@@ -111,30 +105,41 @@ public class AuthController : BaseController
     public async Task<IResult> CompleteTwoFactorLogin([FromBody] TwoFactorRequest body, CancellationToken ct)
     {
         if (_twoFactor.Read(Request) is not { } challenge)
-            return AuthErrors.TwoFactorExpired.ToProblem();
+            throw TwoFactorExpired();
 
-        Result<AuthResult> result = await Mediator.Send(new CompleteTwoFactorLoginCommand(challenge, body.Code, body.IsRecoveryCode, _clients.Create(HttpContext)), ct);
-
-        // Kilitlenme ya da geçersiz bekleyen giriş: baştan giriş yapılmalı.
-        if (result.IsFailure && result.FirstError.Type == ErrorType.Unauthorized)
-            _twoFactor.Clear(Response);
-
-        return result.ToHttpResult(session =>
+        AuthResult session;
+        try
         {
+            session = await Mediator.Send(new CompleteTwoFactorLoginCommand(challenge, body.Code, body.IsRecoveryCode, _clients.Create(HttpContext)), ct);
+        }
+        catch (UnauthorizedException ex)
+        {
+            // Kilitlenme ya da geçersiz bekleyen giriş: baştan giriş yapılmalı, bekleyen giriş cookie'si silinir. Exception
+            // handler yanıt başlıklarını (Set-Cookie dahil) temizlediği için hata yanıtı burada yazılır.
             _twoFactor.Clear(Response);
-            _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
-            return TypedResults.Ok(session.User);
-        });
+            return Error.Unauthorized(ex.Code ?? AuthBusinessMessages.UnauthorizedCode, ex.Message).ToProblem();
+        }
+
+        _twoFactor.Clear(Response);
+        _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
+        return TypedResults.Ok(session.User);
     }
 
     /// <summary>İkinci adım e-posta ile yapılıyorsa yeni kod gönderir.</summary>
     [HttpPost("login/two-factor/resend")]
     [AllowAnonymous]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
-    public async Task<IResult> ResendTwoFactorCode(CancellationToken ct) =>
-        _twoFactor.Read(Request) is { } challenge
-            ? (await Mediator.Send(new ResendTwoFactorCodeCommand(challenge), ct)).ToHttpResult()
-            : AuthErrors.TwoFactorExpired.ToProblem();
+    public async Task<IResult> ResendTwoFactorCode(CancellationToken ct)
+    {
+        if (_twoFactor.Read(Request) is not { } challenge)
+            throw TwoFactorExpired();
+
+        await Mediator.Send(new ResendTwoFactorCodeCommand(challenge), ct);
+        return TypedResults.NoContent();
+    }
+
+    private static UnauthorizedException TwoFactorExpired() =>
+        new(AuthBusinessMessages.TwoFactorExpired) { Code = AuthBusinessMessages.TwoFactorExpiredCode };
 #endif
 
     /// <summary>Sunucuda açık olan giriş yöntemleri.</summary>
@@ -165,18 +170,12 @@ public class AuthController : BaseController
     public async Task<IResult> PasskeyLogin([FromBody] PasskeyLoginRequest body, [FromServices] PasskeyCeremonyStore ceremonies, CancellationToken ct)
     {
         if (await ceremonies.TakeAsync(Request, Response, PasskeyCeremonyStore.Login, ct) is not { } optionsJson)
-            return PasskeyExpired.ToProblem();
+            throw new UnauthorizedException(AuthBusinessMessages.PasskeyExpired) { Code = AuthBusinessMessages.PasskeyFailedCode };
 
-        Result<AuthenticatorAssertionRawResponse> credential = ReadCredential<AuthenticatorAssertionRawResponse>(body.Credential);
-        if (credential.IsFailure)
-            return credential.Errors.ToProblem();
-
-        Result<AuthResult> result = await Mediator.Send(new PasskeyLoginCommand(credential.Value, AssertionOptions.FromJson(optionsJson), _clients.Create(HttpContext)), ct);
-        return result.ToHttpResult(session =>
-        {
-            _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
-            return TypedResults.Ok(session.User);
-        });
+        AuthenticatorAssertionRawResponse credential = ReadCredential<AuthenticatorAssertionRawResponse>(body.Credential);
+        AuthResult session = await Mediator.Send(new PasskeyLoginCommand(credential, AssertionOptions.FromJson(optionsJson), _clients.Create(HttpContext)), ct);
+        _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
+        return TypedResults.Ok(session.User);
     }
 #endif
 
@@ -185,39 +184,48 @@ public class AuthController : BaseController
     [AllowAnonymous]
     [EnableRateLimiting(CanRateLimitPolicies.Auth)]
     public async Task<IResult> Register([FromBody] RegisterRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new RegisterCommand(body.Email, body.Password, body.FirstName, body.LastName, body.PhoneNumber, body.MarketingConsent), ct)).ToHttpResult();
+        TypedResults.Ok(await Mediator.Send(new RegisterCommand(body.Email, body.Password, body.FirstName, body.LastName, body.PhoneNumber, body.MarketingConsent), ct));
 
     /// <summary>E-posta doğrulama; başarılıysa kullanıcı giriş yapmış olur.</summary>
     [HttpPost("verify-email")]
     [AllowAnonymous]
     [EnableRateLimiting(CanRateLimitPolicies.Auth)]
-    public async Task<IResult> VerifyEmail([FromBody] VerifyEmailRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new VerifyEmailCommand(body.Email, body.Code, _clients.Create(HttpContext)), ct)).ToHttpResult(session =>
-        {
-            _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
-            return TypedResults.Ok(session.User);
-        });
+    public async Task<IResult> VerifyEmail([FromBody] VerifyEmailRequest body, CancellationToken ct)
+    {
+        AuthResult session = await Mediator.Send(new VerifyEmailCommand(body.Email, body.Code, _clients.Create(HttpContext)), ct);
+        _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
+        return TypedResults.Ok(session.User);
+    }
 
     /// <summary>Yeni doğrulama kodu gönderir.</summary>
     [HttpPost("resend-code")]
     [AllowAnonymous]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
-    public async Task<IResult> ResendCode([FromBody] EmailRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new ResendVerificationCodeCommand(body.Email), ct)).ToHttpResult();
+    public async Task<IResult> ResendCode([FromBody] EmailRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new ResendVerificationCodeCommand(body.Email), ct);
+        return TypedResults.NoContent();
+    }
 
     /// <summary>Şifre sıfırlama kodu gönderir (hesap yoksa da başarılı döner).</summary>
     [HttpPost("forgot-password")]
     [AllowAnonymous]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
-    public async Task<IResult> ForgotPassword([FromBody] EmailRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new ForgotPasswordCommand(body.Email), ct)).ToHttpResult();
+    public async Task<IResult> ForgotPassword([FromBody] EmailRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new ForgotPasswordCommand(body.Email), ct);
+        return TypedResults.NoContent();
+    }
 
     /// <summary>Kodla yeni şifre; tüm oturumlar kapanır.</summary>
     [HttpPost("reset-password")]
     [AllowAnonymous]
     [EnableRateLimiting(CanRateLimitPolicies.Auth)]
-    public async Task<IResult> ResetPassword([FromBody] ResetPasswordRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new ResetPasswordCommand(body.Email, body.Code, body.NewPassword), ct)).ToHttpResult();
+    public async Task<IResult> ResetPassword([FromBody] ResetPasswordRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new ResetPasswordCommand(body.Email, body.Code, body.NewPassword), ct);
+        return TypedResults.NoContent();
+    }
 
     /// <summary>Refresh token cookie'si ile yeni token çifti (rotasyon; oturum aynı kalır).</summary>
     [HttpPost("refresh")]
@@ -225,19 +233,22 @@ public class AuthController : BaseController
     public async Task<IResult> Refresh(CancellationToken ct)
     {
         if (_cookies.GetRefreshToken(Request) is not { } refreshToken)
-            return AuthErrors.SessionExpired.ToProblem();
+            throw new UnauthorizedException(AuthBusinessMessages.SessionExpired) { Code = AuthBusinessMessages.SessionExpiredCode };
 
-        Result<AuthResult> result = await Mediator.Send(new RefreshTokenCommand(refreshToken, _clients.Create(HttpContext)), ct);
-
-        // Geçersiz/çalınmış token: tarayıcıdaki cookie'leri de temizle.
-        if (result.IsFailure)
-            _cookies.Clear(Response);
-
-        return result.ToHttpResult(session =>
+        AuthResult session;
+        try
         {
-            _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
-            return TypedResults.Ok(session.User);
-        });
+            session = await Mediator.Send(new RefreshTokenCommand(refreshToken, _clients.Create(HttpContext)), ct);
+        }
+        catch (UnauthorizedException ex)
+        {
+            // Geçersiz/çalınmış token: tarayıcıdaki cookie'leri de temizle (yanıt burada yazılır, bkz. CompleteTwoFactorLogin).
+            _cookies.Clear(Response);
+            return Error.Unauthorized(ex.Code ?? AuthBusinessMessages.UnauthorizedCode, ex.Message).ToProblem();
+        }
+
+        _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
+        return TypedResults.Ok(session.User);
     }
 
     /// <summary>Bu oturumu kapatır ve cookie'leri siler.</summary>
@@ -255,24 +266,27 @@ public class AuthController : BaseController
     [HttpGet("me")]
     [Authorize]
     [NoStoreResponse]
-    public async Task<IResult> Me(CancellationToken ct) => (await Mediator.Send(new GetProfileQuery(), ct)).ToHttpResult();
+    public async Task<IResult> Me(CancellationToken ct) => TypedResults.Ok(await Mediator.Send(new GetProfileQuery(), ct));
 
     /// <summary>
     /// Tarayıcının WebAuthn yanıtını Fido2 tipine çevirir. Uygulamanın JSON ayarları yerine Fido2'nin kendi
     /// öznitelikleri geçerli olsun diye varsayılan ayarlarla okunur.
     /// </summary>
-    internal static Result<T> ReadCredential<T>(JsonElement credential)
+    internal static T ReadCredential<T>(JsonElement credential)
         where T : class
     {
-        Error invalid = Error.Validation(AuthErrorCodes.PasskeyFailed, "Geçersiz passkey yanıtı.", "credential");
-
         try
         {
-            return JsonSerializer.Deserialize<T>(credential.GetRawText()).ToResult(invalid);
+            if (JsonSerializer.Deserialize<T>(credential.GetRawText()) is { } value)
+                return value;
         }
         catch (JsonException)
         {
-            return invalid;
         }
+
+        throw new Can.Core.Application.Exceptions.ValidationException("credential", AuthBusinessMessages.PasskeyInvalidResponse)
+        {
+            Code = AuthBusinessMessages.PasskeyFailedCode,
+        };
     }
 }

@@ -8,25 +8,10 @@ using Can.Core.Security.Otp;
 using Can.Core.Security.RecoveryCodes;
 using Can.Core.Security.Sessions;
 using FluentValidation;
-using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
 
 namespace CanAppTemplate.Application.Services.AuthService;
-
-internal static class TwoFactorChallenges
-{
-    /// <summary>Bekleyen girişin kullanıcısını yükler; şifre/2FA ayarı o arada değiştiyse geçersiz sayar.</summary>
-    public static async Task<Result<AppUser>> ResolveUserAsync(IRepository<AppUser, IdentityKey> users, TwoFactorChallenge challenge, CancellationToken cancellationToken)
-    {
-        AppUser? user = await users.GetByIdAsync(challenge.UserId, include: q => q.WithRolesAndPermissions(), cancellationToken: cancellationToken);
-
-        if (user is null || user.SecurityStamp != challenge.SecurityStamp || user.AuthenticatorType != challenge.Method)
-            return AuthErrors.TwoFactorExpired;
-
-        return user;
-    }
-}
 
 /// <summary>Kullanıcının seçtiği yönteme göre (authenticator uygulaması / e-posta) ikinci adım kodunu doğrular.</summary>
 public sealed class TwoFactorCodeVerifier

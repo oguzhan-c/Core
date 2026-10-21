@@ -3,6 +3,7 @@ using Can.Core.Domain.Results;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using FluentValidation;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
@@ -10,29 +11,17 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Features.Auth.Queries.GetProfile;
 
 /// <summary>Giriş yapmış kullanıcının profili (<c>GET /api/auth/me</c>).</summary>
-public sealed record GetProfileQuery : IRequest<Result<UserProfileDto>>, ISecuredRequest;
+public sealed record GetProfileQuery : IRequest<UserProfileDto>, ISecuredRequest;
 
-public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, Result<UserProfileDto>>
+public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, UserProfileDto>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly AuthBusinessRules _authBusinessRules;
 
-    public GetProfileQueryHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users)
+    public GetProfileQueryHandler(AuthBusinessRules authBusinessRules) => _authBusinessRules = authBusinessRules;
+
+    public async Task<UserProfileDto> Handle(GetProfileQuery request, CancellationToken cancellationToken)
     {
-        _currentUser = currentUser;
-        _users = users;
-    }
-
-    public async Task<Result<UserProfileDto>> Handle(GetProfileQuery request, CancellationToken cancellationToken)
-    {
-        Result<IdentityKey> userId = _currentUser.UserId();
-        if (userId.IsFailure)
-            return userId.Errors;
-
-        AppUser? user = await _users.GetByIdAsync(userId.Value, include: q => q.WithRolesAndPermissions(), enableTracking: false, cancellationToken: cancellationToken);
-        if (user is null)
-            return Error.Unauthorized();
-
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(q => q.WithRolesAndPermissions(), enableTracking: false, cancellationToken);
         return UserProfileDto.From(user);
     }
 }

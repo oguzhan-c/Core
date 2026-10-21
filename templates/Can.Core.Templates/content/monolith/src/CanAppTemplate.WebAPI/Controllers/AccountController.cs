@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Can.Core.Domain.Results;
+using Can.Core.Application.Exceptions;
 using Can.Core.Security.Passkeys;
 using Can.Core.WebApi;
 using Can.Core.WebApi.Caching;
@@ -35,7 +35,7 @@ using CanAppTemplate.Application.Features.Account.Commands.CompletePasskeyRegist
 using CanAppTemplate.Application.Features.Account.Commands.DeletePasskey;
 using CanAppTemplate.Application.Features.Account.Commands.RenamePasskey;
 #endif
-using CanAppTemplate.Application.Features.Auth.Constants;
+using CanAppTemplate.Application.Features.Account.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.WebAPI.Security;
 
@@ -79,116 +79,118 @@ public class AccountController : BaseController
 
     /// <summary>Ad, soyad, telefon ve kampanya izni.</summary>
     [HttpPut("profile")]
-    public async Task<IResult> UpdateProfile([FromBody] ProfileRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new UpdateProfileCommand(body.FirstName, body.LastName, body.PhoneNumber, body.MarketingConsent), ct)).ToHttpResult();
+    public async Task<IResult> UpdateProfile([FromBody] ProfileRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new UpdateProfileCommand(body.FirstName, body.LastName, body.PhoneNumber, body.MarketingConsent), ct);
+        return TypedResults.NoContent();
+    }
 
-    /// <summary>Şifre, iki adımlı doğrulama, kurtarma kodları, passkey'ler ve bağlı dış hesaplar.</summary>
     [HttpGet("security")]
-    public async Task<IResult> Security(CancellationToken ct) => (await Mediator.Send(new GetAccountSecurityQuery(), ct)).ToHttpResult();
+    public async Task<IResult> Security(CancellationToken ct) => TypedResults.Ok(await Mediator.Send(new GetAccountSecurityQuery(), ct));
 
-    /// <summary>Şifre değiştirir (şifresiz hesapta şifre belirler). Diğer cihazlardaki oturumlar kapanır.</summary>
     [HttpPost("password")]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
-    public async Task<IResult> ChangePassword([FromBody] ChangePasswordRequest body, CancellationToken ct) =>
-        await ThenReissueAsync(await Mediator.Send(new ChangePasswordCommand(body.CurrentPassword, body.NewPassword), ct), ct);
+    public async Task<IResult> ChangePassword([FromBody] ChangePasswordRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new ChangePasswordCommand(body.CurrentPassword, body.NewPassword), ct);
+        return await ReissueAsync(TypedResults.NoContent(), ct);
+    }
 #if (Otp)
 
-    /// <summary>Authenticator uygulaması kurulumu: QR kodu adresi ve elle girilecek anahtar.</summary>
     [HttpPost("two-factor/otp/setup")]
-    public async Task<IResult> BeginOtpSetup(CancellationToken ct) => (await Mediator.Send(new BeginOtpSetupCommand(), ct)).ToHttpResult();
+    public async Task<IResult> BeginOtpSetup(CancellationToken ct) => TypedResults.Ok(await Mediator.Send(new BeginOtpSetupCommand(), ct));
 
-    /// <summary>Uygulamadaki ilk kod ile kurulumu tamamlar; kurtarma kodları bir kez döner.</summary>
     [HttpPost("two-factor/otp/enable")]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
     public async Task<IResult> EnableOtp([FromBody] CodeRequest body, CancellationToken ct) =>
-        await ThenReissueAsync(await Mediator.Send(new EnableOtpCommand(body.Code), ct), ct);
+        await ReissueAsync(TypedResults.Ok(await Mediator.Send(new EnableOtpCommand(body.Code), ct)), ct);
 #endif
 #if (EmailTwoFactor)
 
-    /// <summary>Girişte e-postaya gönderilen kod istenir; kurtarma kodları bir kez döner.</summary>
     [HttpPost("two-factor/email/enable")]
     public async Task<IResult> EnableEmailTwoFactor(CancellationToken ct) =>
-        await ThenReissueAsync(await Mediator.Send(new EnableEmailTwoFactorCommand(), ct), ct);
+        await ReissueAsync(TypedResults.Ok(await Mediator.Send(new EnableEmailTwoFactorCommand(), ct)), ct);
 #endif
 #if (TwoFactor)
 
-    /// <summary>İki adımlı doğrulamayı kapatır (şifre gerekir).</summary>
     [HttpPost("two-factor/disable")]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
-    public async Task<IResult> DisableTwoFactor([FromBody] PasswordRequest body, CancellationToken ct) =>
-        await ThenReissueAsync(await Mediator.Send(new DisableTwoFactorCommand(body.Password), ct), ct);
+    public async Task<IResult> DisableTwoFactor([FromBody] PasswordRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new DisableTwoFactorCommand(body.Password), ct);
+        return await ReissueAsync(TypedResults.NoContent(), ct);
+    }
 
-    /// <summary>Kurtarma kodlarını yeniler; eskiler geçersiz olur.</summary>
     [HttpPost("two-factor/recovery-codes")]
     [EnableRateLimiting(CanRateLimitPolicies.Sensitive)]
     public async Task<IResult> RegenerateRecoveryCodes([FromBody] OptionalPasswordRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new RegenerateRecoveryCodesCommand(body.Password), ct)).ToHttpResult();
+        TypedResults.Ok(await Mediator.Send(new RegenerateRecoveryCodesCommand(body.Password), ct));
 #endif
 #if (ExternalLogin)
 
-    /// <summary>Bağlı dış hesabı kaldırır; hesaba girmenin tek yolu buysa kaldırılmaz. Bağlamak için: GET /api/auth/external/{provider}/link</summary>
     [HttpDelete("external-logins/{provider}")]
-    public async Task<IResult> UnlinkExternalLogin(string provider, CancellationToken ct) =>
-        await ThenReissueAsync(await Mediator.Send(new UnlinkExternalLoginCommand(provider), ct), ct);
+    public async Task<IResult> UnlinkExternalLogin(string provider, CancellationToken ct)
+    {
+        await Mediator.Send(new UnlinkExternalLoginCommand(provider), ct);
+        return await ReissueAsync(TypedResults.NoContent(), ct);
+    }
 #endif
 #if (Passkey)
 
-    /// <summary>Passkey eklemenin ilk adımı: tarayıcıya verilecek seçenekler.</summary>
     [HttpPost("passkeys/options")]
     public async Task<IResult> BeginPasskeyRegistration([FromServices] PasskeyCeremonyStore ceremonies, CancellationToken ct)
     {
         if (HttpContext.RequestServices.GetService<IPasskeyService>() is null)
             return TypedResults.NotFound();
 
-        Result<CredentialCreateOptions> options = await Mediator.Send(new BeginPasskeyRegistrationCommand(), ct);
-        if (options.IsFailure)
-            return options.Errors.ToProblem();
-
-        string json = options.Value.ToJson();
+        CredentialCreateOptions options = await Mediator.Send(new BeginPasskeyRegistrationCommand(), ct);
+        string json = options.ToJson();
         await ceremonies.SaveAsync(Response, PasskeyCeremonyStore.Register, json, ct);
         return Results.Content(json, "application/json");
     }
 
-    /// <summary>Passkey eklemenin ikinci adımı: cihazın yanıtı doğrulanır ve passkey kaydedilir.</summary>
     [HttpPost("passkeys")]
     public async Task<IResult> CompletePasskeyRegistration([FromBody] AddPasskeyRequest body, [FromServices] PasskeyCeremonyStore ceremonies, CancellationToken ct)
     {
         if (await ceremonies.TakeAsync(Request, Response, PasskeyCeremonyStore.Register, ct) is not { } optionsJson)
-            return Error.Failure(AuthErrorCodes.PasskeyFailed, "Passkey isteğinin süresi doldu; tekrar dene.").ToProblem();
+            throw new Can.Core.Domain.Exceptions.BusinessException(AccountBusinessMessages.PasskeyRegistrationExpired) { Code = AccountBusinessMessages.PasskeyFailedCode };
 
-        Result<AuthenticatorAttestationRawResponse> credential = AuthController.ReadCredential<AuthenticatorAttestationRawResponse>(body.Credential);
-        if (credential.IsFailure)
-            return credential.Errors.ToProblem();
-
-        return (await Mediator.Send(new CompletePasskeyRegistrationCommand(credential.Value, CredentialCreateOptions.FromJson(optionsJson), body.Name), ct)).ToHttpResult();
+        AuthenticatorAttestationRawResponse credential = AuthController.ReadCredential<AuthenticatorAttestationRawResponse>(body.Credential);
+        return TypedResults.Ok(await Mediator.Send(new CompletePasskeyRegistrationCommand(credential, CredentialCreateOptions.FromJson(optionsJson), body.Name), ct));
     }
 
-    /// <summary>Passkey'in adını değiştirir.</summary>
     [HttpPut("passkeys/{id}")]
-    public async Task<IResult> RenamePasskey(IdentityKey id, [FromBody] NameRequest body, CancellationToken ct) =>
-        (await Mediator.Send(new RenamePasskeyCommand(id, body.Name), ct)).ToHttpResult();
+    public async Task<IResult> RenamePasskey(IdentityKey id, [FromBody] NameRequest body, CancellationToken ct)
+    {
+        await Mediator.Send(new RenamePasskeyCommand(id, body.Name), ct);
+        return TypedResults.NoContent();
+    }
 
-    /// <summary>Passkey'i siler; hesaba girmenin tek yolu buysa silinmez.</summary>
     [HttpDelete("passkeys/{id}")]
-    public async Task<IResult> DeletePasskey(IdentityKey id, CancellationToken ct) =>
-        (await Mediator.Send(new DeletePasskeyCommand(id), ct)).ToHttpResult();
+    public async Task<IResult> DeletePasskey(IdentityKey id, CancellationToken ct)
+    {
+        await Mediator.Send(new DeletePasskeyCommand(id), ct);
+        return TypedResults.NoContent();
+    }
 #endif
 
     /// <summary>
-    /// Damgayı değiştiren işlem başarılıysa bu oturuma yeni token'lar yazılır (diğer cihazlar kapanır). Yanıt gövdesi
-    /// işlemin sonucudur (ör. kurtarma kodları).
+    /// Güvenlik damgasını değiştiren işlemden (şifre, 2FA, dış hesap) SONRA bu oturuma yeni token verir; diğer oturumlar
+    /// kapanır. Yenileme olmazsa (oturum da kapanmış) cookie'ler silinir ve istemci giriş sayfasına gider; işlemin kendisi
+    /// başarılı olduğu için yanıtı yine de döner.
     /// </summary>
-    private async Task<IResult> ThenReissueAsync<T>(Result<T> result, CancellationToken ct)
+    private async Task<IResult> ReissueAsync(IResult success, CancellationToken ct)
     {
-        if (result.IsFailure)
-            return result.ToHttpResult();
+        try
+        {
+            AuthResult session = await Mediator.Send(new ReissueCurrentSessionCommand(_cookies.GetRefreshToken(Request), _clients.Create(HttpContext)), ct);
+            _cookies.SetTokens(Response, session.AccessToken, session.RefreshToken);
+        }
+        catch (UnauthorizedException)
+        {
+            _cookies.Clear(Response);
+        }
 
-        Result<AuthResult> session = await Mediator.Send(new ReissueCurrentSessionCommand(_cookies.GetRefreshToken(Request), _clients.Create(HttpContext)), ct);
-        if (session.IsSuccess)
-            _cookies.SetTokens(Response, session.Value.AccessToken, session.Value.RefreshToken);
-        else
-            _cookies.Clear(Response); // bu oturum da kapandı: istemci giriş sayfasına gider
-
-        return result.ToHttpResult();
+        return success;
     }
 }

@@ -11,6 +11,8 @@ using Fido2NetLib;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Features.Account.Rules;
+using CanAppTemplate.Application.Features.Auth.Rules;
 using CanAppTemplate.Application.Features.Account.Commands.ReissueCurrentSession;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
@@ -22,38 +24,38 @@ namespace CanAppTemplate.Application.Features.Account.Commands.ChangePassword;
 /// Şifre değiştirir ya da (dış sağlayıcıyla açılmış, şifresiz hesapta) şifre belirler. Güvenlik damgası yenilenir:
 /// diğer cihazlardaki oturumlar kapanır. Bu oturum WebApi'de yeni token'larla sürer (<see cref="ReissueCurrentSessionCommand"/>).
 /// </summary>
-public sealed record ChangePasswordCommand(string? CurrentPassword, string NewPassword) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record ChangePasswordCommand(string? CurrentPassword, string NewPassword) : IRequest, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
-public sealed class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordCommand, Result<Success>>
+public sealed class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordCommand>
 {
-    private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly Can.Core.Security.Hashing.IPasswordHasher _passwordHasher;
     private readonly ISecurityEvents _events;
+    private readonly AuthBusinessRules _authBusinessRules;
+    private readonly AccountBusinessRules _accountBusinessRules;
 
-    public ChangePasswordCommandHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users, Can.Core.Security.Hashing.IPasswordHasher passwordHasher, ISecurityEvents events)
+    public ChangePasswordCommandHandler(
+        Can.Core.Security.Hashing.IPasswordHasher passwordHasher,
+        ISecurityEvents events,
+        AuthBusinessRules authBusinessRules,
+        AccountBusinessRules accountBusinessRules)
     {
-        _currentUser = currentUser;
-        _users = users;
         _passwordHasher = passwordHasher;
         _events = events;
+        _authBusinessRules = authBusinessRules;
+        _accountBusinessRules = accountBusinessRules;
     }
 
-    public async Task<Result<Success>> Handle(ChangePasswordCommand request, CancellationToken cancellationToken)
+    public async Task Handle(ChangePasswordCommand request, CancellationToken cancellationToken)
     {
-        Result<AppUser> current = await AccountUsers.CurrentAsync(_currentUser, _users, cancellationToken);
-        if (current.IsFailure)
-            return current.Errors;
+        AppUser user = await _authBusinessRules.CurrentUserShouldExist(cancellationToken: cancellationToken);
 
-        AppUser user = current.Value;
-        if (user.PasswordHash is not null
-            && (request.CurrentPassword is null || _passwordHasher.Verify(request.CurrentPassword, user.PasswordHash) == Can.Core.Security.Hashing.PasswordVerificationResult.Failed))
-        {
-            return Error.Validation("invalid_password", "Mevcut şifre hatalı.", "CurrentPassword");
-        }
+        // Şifresi olmayan hesap (dış sağlayıcıyla açılmış) ilk şifresini mevcut şifre sormadan belirler.
+        _accountBusinessRules.CurrentPasswordShouldMatch(
+            user.PasswordHash is null
+            || (request.CurrentPassword is not null
+                && _passwordHasher.Verify(request.CurrentPassword, user.PasswordHash) != Can.Core.Security.Hashing.PasswordVerificationResult.Failed));
 
         user.SetPasswordHash(_passwordHasher.Hash(request.NewPassword));
         await _events.PublishAsync(new SecurityEvent(SecurityEventTypes.PasswordChanged, user.Id.ToString()), cancellationToken);
-        return Result.Success;
     }
 }
