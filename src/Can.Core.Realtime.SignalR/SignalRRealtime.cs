@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Can.Core.Realtime.SignalR;
 
@@ -23,6 +24,14 @@ public sealed class CanSignalROptions
 
     /// <summary>İstemciye giden metodun adı: <c>connection.on("notify", mesaj =&gt; ...)</c>.</summary>
     public string ClientMethod { get; set; } = "notify";
+
+    /// <summary>
+    /// Açık bağlantıların yeniden doğrulanma aralığı (<see cref="IRealtimeConnectionValidator"/>): çıkış yapan, oturumu
+    /// kapatılan, şifresi değişen ya da silinen kullanıcının bağlantısı kapanır; rolü değişenin rol grupları güncellenir.
+    /// Rol / damga önbelleği (varsayılan 1 dk) ile birlikte gecikme en fazla ikisinin toplamıdır.
+    /// <see cref="TimeSpan.Zero"/>: kapalı (bağlantı yine de token süresi dolunca kapanır).
+    /// </summary>
+    public TimeSpan RevalidationInterval { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>
@@ -42,25 +51,41 @@ internal sealed class DenyAllSubscriptions : IRealtimeSubscriptionAuthorizer
 /// <summary>
 /// Bildirim hub'ı. Yalnızca giriş yapmış kullanıcılar bağlanır (kimlik normal kimlik doğrulamadan, ör. cookie'deki JWT);
 /// bağlantı tenant'ın, kullanıcının ve rollerinin gruplarına otomatik eklenir. İstemci mesaj göndermez, yalnızca dinler.
+/// Bağlantı açık kaldıkça düzenli olarak yeniden doğrulanır (<see cref="CanSignalROptions.RevalidationInterval"/>).
 /// </summary>
 [Authorize]
-public sealed class CanNotificationHub(CanSignalROptions options, IRealtimeSubscriptionAuthorizer subscriptions) : Hub
+public sealed class CanNotificationHub(
+    CanSignalROptions options,
+    IRealtimeSubscriptionAuthorizer subscriptions,
+    RealtimeConnectionRegistryAccessor connections,
+    ILogger<CanNotificationHub> logger) : Hub
 {
     public override async Task OnConnectedAsync()
     {
         ClaimsPrincipal user = Context.User ?? new ClaimsPrincipal();
         string? tenant = user.FindFirstValue(options.TenantClaimType);
         string? userId = user.FindFirstValue(options.UserIdClaimType);
+        string[] roles = [.. user.FindAll(options.RoleClaimType).Select(c => c.Value).Distinct(StringComparer.OrdinalIgnoreCase)];
 
         await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeGroups.Tenant(tenant), Context.ConnectionAborted).ConfigureAwait(false);
 
         if (userId is not null)
             await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeGroups.User(tenant, userId), Context.ConnectionAborted).ConfigureAwait(false);
 
-        foreach (string role in user.FindAll(options.RoleClaimType).Select(c => c.Value).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (string role in roles)
             await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeGroups.Role(tenant, role), Context.ConnectionAborted).ConfigureAwait(false);
 
+        connections.Registry.Add(new TrackedConnection(Context, tenant, roles));
+        RealtimeLog.Connected(logger, Context.ConnectionId, userId, tenant);
+
         await base.OnConnectedAsync().ConfigureAwait(false);
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        connections.Registry.Remove(Context.ConnectionId);
+        RealtimeLog.Disconnected(logger, exception, Context.ConnectionId, Context.UserIdentifier);
+        await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
     }
 
     /// <summary>Uygulamanın tanımladığı bir gruba katılır (yetki <see cref="IRealtimeSubscriptionAuthorizer"/>'da).</summary>
@@ -155,16 +180,42 @@ public static class SignalRRealtimeExtensions
         services.RemoveAll<CanSignalROptions>();
         services.AddSingleton(options);
         services.TryAddSingleton<IRealtimeSubscriptionAuthorizer, DenyAllSubscriptions>();
+        services.TryAddScoped<IRealtimeConnectionValidator, CanRealtimeConnectionValidator>();
+        services.TryAddSingleton<RealtimeConnectionRegistry>();
+        services.TryAddSingleton(sp => new RealtimeConnectionRegistryAccessor(sp.GetRequiredService<RealtimeConnectionRegistry>()));
+        if (!services.Any(d => d.ServiceType == typeof(RealtimeConnectionMonitor)))
+        {
+            services.AddSingleton<RealtimeConnectionMonitor>();
+            services.AddHostedService(sp => sp.GetRequiredService<RealtimeConnectionMonitor>());
+        }
         services.RemoveAll<IRealtimeNotifier>();
         services.AddScoped<IRealtimeNotifier, SignalRRealtimeNotifier>();
 
         return services.AddSignalR();
     }
 
-    /// <summary>Hub'ı adresler (yalnızca giriş yapmış kullanıcılar). WebSocket yoksa SSE / long polling'e düşer.</summary>
+    /// <summary>
+    /// Hub'ı adresler (yalnızca giriş yapmış kullanıcılar). WebSocket yoksa SSE / long polling'e düşer. Token'ın süresi
+    /// dolunca bağlantı kapanır; istemci (<c>withAutomaticReconnect</c>) yenilenmiş cookie ile yeniden bağlanır.
+    /// </summary>
     public static HubEndpointConventionBuilder MapCanRealtimeHub(this IEndpointRouteBuilder endpoints, string pattern = "/hubs/notifications")
     {
         ArgumentNullException.ThrowIfNull(endpoints);
-        return endpoints.MapHub<CanNotificationHub>(pattern, o => o.Transports = HttpTransportType.WebSockets | HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling);
+        return endpoints.MapHub<CanNotificationHub>(pattern, o =>
+        {
+            o.Transports = HttpTransportType.WebSockets | HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling;
+            o.CloseOnAuthenticationExpiration = true;
+        });
     }
+}
+
+/// <summary>Kayıt defterini hub'a verir (kayıt defteri internal; hub public olduğu için arada public bir sarmalayıcı).</summary>
+public sealed class RealtimeConnectionRegistryAccessor
+{
+    internal RealtimeConnectionRegistryAccessor(RealtimeConnectionRegistry registry) => Registry = registry;
+
+    internal RealtimeConnectionRegistry Registry { get; }
+
+    /// <summary>Bu sunucudaki açık bağlantı sayısı.</summary>
+    public int Count => Registry.Count;
 }

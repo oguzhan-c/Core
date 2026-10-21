@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Can.Core.Realtime.SignalR</RootNamespace>
-    <Description>IRealtimeNotifier'ın SignalR implementasyonu: kimliği doğrulanmış bağlantıları tenant / kullanıcı / rol gruplarına otomatik ekleyen hub. SignalR sunucusu ASP.NET Core'un içindedir; ek paket yok.</Description>
+    <Description>IRealtimeNotifier'ın SignalR implementasyonu: kimliği doğrulanmış bağlantıları tenant / kullanıcı / rol gruplarına otomatik ekleyen hub. Açık bağlantılar düzenli olarak yeniden doğrulanır (çıkış, oturum kapatma, rol değişikliği). SignalR sunucusu ASP.NET Core'un içindedir; ek paket yok.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Can.Core.Realtime\Can.Core.Realtime.csproj" />
     <ProjectReference Include="..\Can.Core.MultiTenancy\Can.Core.MultiTenancy.csproj" />
+    <ProjectReference Include="..\Can.Core.Security\Can.Core.Security.csproj" />
   </ItemGroup>
 
   <ItemGroup>

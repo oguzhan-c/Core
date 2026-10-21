@@ -132,7 +132,10 @@ public static class OpenTelemetryServiceCollectionExtensions
     private static IEnumerable<string> BuiltInSources(CanOpenTelemetryOptions options)
     {
         if (options.IncludeAspNetCore)
+        {
             yield return "Microsoft.AspNetCore";
+            yield return "Microsoft.AspNetCore.SignalR.Server"; // hub metodu çağrıları ve bağlantı span'leri
+        }
         if (options.IncludeHttpClient)
             yield return "System.Net.Http";
     }
@@ -146,6 +149,7 @@ public static class OpenTelemetryServiceCollectionExtensions
             yield return "Microsoft.AspNetCore.Routing";
             yield return "Microsoft.AspNetCore.Diagnostics";
             yield return "Microsoft.AspNetCore.RateLimiting";
+            yield return "Microsoft.AspNetCore.Http.Connections"; // SignalR: açık bağlantı sayısı, bağlantı süresi
         }
 
         if (options.IncludeHttpClient)

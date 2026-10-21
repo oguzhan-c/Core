@@ -18,6 +18,11 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ### Eklendi
 
+- **Anlık bildirim**: açık SignalR bağlantıları düzenli olarak yeniden doğrulanır (`RevalidationInterval`,
+  `IRealtimeConnectionValidator`): çıkış / oturum kapatma / güvenlik damgası değişikliği / silinen kullanıcı / pasif
+  tenant bağlantıyı kapatır, rol değişikliği rol gruplarını bağlantı kopmadan günceller; token süresi dolunca bağlantı
+  kapanır (`CloseOnAuthenticationExpiration`); bağlantı açılış/kapanış logları; OpenTelemetry'ye SignalR metrikleri ve
+  span'leri.
 - **Şablon**: kimlik tablolarının anahtar tipi seçilebilir (`--IdKeyType guid|int|long`); tek yerde (`Directory.Build.props` → `IdentityKey` alias) tanımlı, kod her yerde `IdentityKey` / `IdentityKeys.New()` kullanır.
 - **Rol / yetki yönetimi**: `PermissionSet` (joker dahil alt küme kontrolü, ad doğrulama), yetki yükseltmeyi engelleyen
   `IAccessGrantGuard` (alt küme, kendini değiştirememe, sistem rolleri, son yönetici), `IdentityPermissions`

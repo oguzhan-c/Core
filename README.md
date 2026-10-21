@@ -1480,10 +1480,45 @@ public sealed class NotifyWarehouse(IRealtimeNotifier realtime) : INotificationH
 ```
 
 ```ts
-// istemci (npm i @microsoft/signalr): kimlik HttpOnly cookie'deki JWT ile gider
-const connection = new HubConnectionBuilder().withUrl("/hubs/notifications").withAutomaticReconnect().build();
-connection.on("notify", (m) => { /* m.type, m.data, m.createdAt */ });
-await connection.start();
+// istemci (npm i @microsoft/signalr): kimlik HttpOnly cookie'deki JWT ile gider (token header'a / URL'e yazılmaz)
+import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
+
+const connection = new HubConnectionBuilder()
+  .withUrl("/hubs/notifications")
+  .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+  .build();
+
+const watched = new Set<string>(); // ekranın izlediği özel gruplar (ör. "order:42")
+
+connection.on("notify", (m) => {
+  // m.type ("order.shipped"), m.data ({ orderId }), m.createdAt
+  // Mesaj yalnızca "değişti" haberidir: güncel durumu API'den oku (kopukken kaçan mesajlar da böyle telafi edilir).
+});
+
+// Yeniden bağlanınca özel gruplar geri gelmez: tekrar iste. Kaçan olaylar için ekranı API'den tazele.
+connection.onreconnected(async () => {
+  for (const group of watched) await connection.invoke("Subscribe", group);
+  await reloadScreen();
+});
+
+// Bağlantı bittiyse (token süresi doldu, oturum kapatıldı): token'ı yenile, olmuyorsa giriş ekranına.
+connection.onclose(async () => {
+  if (await refreshSession()) await start(); // refreshSession: POST /api/auth/refresh (cookie yenilenir)
+  else redirectToLogin();
+});
+
+async function start() {
+  await connection.start();
+  for (const group of watched) await connection.invoke("Subscribe", group);
+}
+
+export async function watch(group: string) {
+  watched.add(group);
+  if (connection.state === HubConnectionState.Connected && !(await connection.invoke<boolean>("Subscribe", group)))
+    watched.delete(group); // izin yok (IRealtimeSubscriptionAuthorizer)
+}
+
+await start();
 ```
 
 - Bağlantı açılınca kullanıcı otomatik olarak gruplara girer: tenant'ı, kendisi ve her rolü. Tüm grup adları tenant
@@ -1493,7 +1528,19 @@ await connection.start();
 - Özel gruplar (`order:42`): istemci `invoke("Subscribe", "order:42")` ile katılmak ister; izin
   `IRealtimeSubscriptionAuthorizer`'dadır (varsayılan: hiçbiri).
 - SignalR kurulu değilse `IRealtimeNotifier` hiçbir şey yapmaz (`AddCanRealtimeDefaults`); Application kodu her ortamda çalışır.
-- Mesaj taşıyıcıdır, depolama değil: istemci bağlı değilse kaybolur. Birden fazla sunucuda backplane gerekir
+- **Açık bağlantılar yeniden doğrulanır** (`RevalidationInterval`, varsayılan 30 sn): HTTP tarafındaki denetimlerin
+  aynısı (`IRealtimeConnectionValidator`, varsayılanı kayıtlı olanları kullanır). Çıkış yapan ya da oturumu kapatılan
+  (`IAccessTokenDenylist`), şifresi / 2FA'sı değişen (güvenlik damgası), silinen kullanıcının ya da pasif tenant'ın
+  bağlantısı kapanır. Rolü değişen kullanıcının bağlantısı kopmaz, rol grupları güncellenir: geri alınan rolün
+  mesajları artık gelmez. Gecikme: tur aralığı + rol/damga önbelleği (varsayılan 1 dk). Her sunucu yalnızca kendi
+  bağlantılarını denetler.
+- Token'ın süresi dolunca bağlantı kapanır (`CloseOnAuthenticationExpiration`); istemci cookie'yi yenileyip yeniden
+  bağlanır (yukarıdaki `onclose`).
+- Loglara yalnızca bağlantı açılış / kapanış / kapatılma (bağlantı id, kullanıcı, tenant) yazılır; mesaj içerikleri
+  yazılmaz. OpenTelemetry açıksa SignalR'ın kendi metrikleri (açık bağlantı sayısı, bağlantı süresi:
+  `Microsoft.AspNetCore.Http.Connections`) ve hub span'leri (`Microsoft.AspNetCore.SignalR.Server`) de dışa aktarılır.
+- Mesaj taşıyıcıdır, depolama değil: istemci bağlı değilse kaybolur, gerçek durum veritabanındadır. Mesaja id ve
+  durum koy, büyük nesne ya da kişisel veri koyma. Birden fazla sunucuda backplane gerekir
   (`Can.Core.Redis.ScaleOut`: `AddCanSignalR().AddCanRedisBackplane()`).
 
 ## Dayanıklılık (resilience)

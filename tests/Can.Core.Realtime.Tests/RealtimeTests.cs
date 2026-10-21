@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using Can.Core.MultiTenancy;
 using Can.Core.Realtime.SignalR;
+using Can.Core.Security.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -43,6 +44,23 @@ public sealed class AllowOrderGroups : IRealtimeSubscriptionAuthorizer
         ValueTask.FromResult(group.StartsWith("order:", StringComparison.Ordinal));
 }
 
+/// <summary>Sunucu taraflı roller: testte kullanıcının rolleri değiştirilir ya da kullanıcı silinir.</summary>
+public sealed class FakeAuthorizationStore : IUserAuthorizationStore
+{
+    public ConcurrentDictionary<string, string[]> Users { get; } = new();
+
+    public ValueTask<UserAuthorizationData?> GetAsync(string userId, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Users.TryGetValue(userId, out string[]? roles) ? new UserAuthorizationData(roles, []) : null);
+
+    public void Invalidate(string userId)
+    {
+    }
+
+    public void InvalidateAll()
+    {
+    }
+}
+
 public sealed class RealtimeTests : IAsyncDisposable
 {
     private WebApplication? _app;
@@ -53,14 +71,16 @@ public sealed class RealtimeTests : IAsyncDisposable
             await _app.DisposeAsync();
     }
 
-    private async Task<TestServer> StartAsync(bool allowOrderGroups = false)
+    private async Task<TestServer> StartAsync(bool allowOrderGroups = false, FakeAuthorizationStore? store = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
         builder.WebHost.UseTestServer();
         builder.Services.AddAuthentication(TestAuthHandler.Scheme).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, null);
         builder.Services.AddAuthorization();
         builder.Services.AddCanMultiTenancy();
-        builder.Services.AddCanSignalR();
+        builder.Services.AddCanSignalR(o => o.RevalidationInterval = TimeSpan.Zero); // testler turu kendisi çalıştırır
+        if (store is not null)
+            builder.Services.AddSingleton<IUserAuthorizationStore>(store);
         if (allowOrderGroups)
             builder.Services.AddSingleton<IRealtimeSubscriptionAuthorizer, AllowOrderGroups>();
 
@@ -172,5 +192,54 @@ public sealed class RealtimeTests : IAsyncDisposable
         Assert.Equal(new[] { "test:group" }, received);
 
         await a.DisposeAsync();
+    }
+
+    private async Task RevalidateAsync(int expectedConnections)
+    {
+        RealtimeConnectionRegistryAccessor connections = _app!.Services.GetRequiredService<RealtimeConnectionRegistryAccessor>();
+        await EventuallyAsync(() => connections.Count == expectedConnections); // OnConnectedAsync el sıkışmadan sonra biter
+        await _app.Services.GetRequiredService<RealtimeConnectionMonitor>().RevalidateAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Role_changes_move_open_connections_between_role_groups()
+    {
+        var store = new FakeAuthorizationStore();
+        store.Users["u1"] = ["Sales"];
+        TestServer server = await StartAsync(store: store);
+        var (a, received) = await ConnectAsync(server, "u1;t-a;Sales");
+
+        store.Users["u1"] = ["Warehouse"]; // Admin rolü değiştirdi; bağlantı açık
+        await RevalidateAsync(expectedConnections: 1);
+
+        await SendAsync(server, "/send/t-a/role/sales");
+        await SendAsync(server, "/send/t-a/role/warehouse");
+
+        await EventuallyAsync(() => !received.IsEmpty);
+        await Task.Delay(300);
+        Assert.Equal(new[] { "test:role" }, received); // yalnızca yeni rolün mesajı
+        Assert.Equal(HubConnectionState.Connected, a.State);
+
+        await a.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Connections_of_revoked_users_are_closed()
+    {
+        var store = new FakeAuthorizationStore();
+        store.Users["u1"] = ["Sales"];
+        store.Users["u2"] = ["Sales"];
+        TestServer server = await StartAsync(store: store);
+        var (a, _) = await ConnectAsync(server, "u1;t-a;Sales");
+        var (b, _) = await ConnectAsync(server, "u2;t-a;Sales");
+
+        store.Users.TryRemove("u1", out _); // kullanıcı silindi / oturumu geçersiz
+        await RevalidateAsync(expectedConnections: 2);
+
+        await EventuallyAsync(() => a.State == HubConnectionState.Disconnected);
+        Assert.Equal(HubConnectionState.Connected, b.State);
+        Assert.Equal(1, _app!.Services.GetRequiredService<RealtimeConnectionRegistryAccessor>().Count);
+
+        await Task.WhenAll(a.DisposeAsync().AsTask(), b.DisposeAsync().AsTask());
     }
 }
