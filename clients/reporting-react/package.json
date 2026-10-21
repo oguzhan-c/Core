@@ -1,7 +1,7 @@
 {
-  "name": "@can-core/reporting-react",
+  "name": "@canfx/reporting-react",
   "version": "0.1.0",
-  "description": "Can.Core.Reporting için React arayüzü: pivot tasarımcısı (sürükle-bırak), ara/genel toplamlı tablo, SVG grafikler, Excel/PDF/CSV dışa aktarma, kayıtlı raporlar. Bağımlılık yok (yalnızca React).",
+  "description": "CanFx.Reporting için React arayüzü: pivot tasarımcısı (sürükle-bırak), ara/genel toplamlı tablo, SVG grafikler, Excel/PDF/CSV dışa aktarma, kayıtlı raporlar. Bağımlılık yok (yalnızca React).",
   "license": "MIT",
   "type": "module",
   "sideEffects": ["*.css"],

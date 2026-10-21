@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Veritabanıyla ilgili her şey: DbContext, tablo eşlemeleri (Configurations), seed. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Application\CanAppTemplate.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CanFx.Security.EntityFrameworkCore" />
+<!--#if (Reporting)-->
+    <PackageReference Include="CanFx.Reporting.EntityFrameworkCore" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="CanFx.Settings.EntityFrameworkCore" />
+<!--#endif-->
+    <!-- TODO(can-gen): Veritabanı sağlayıcı paketini ekle, ör. <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" /> -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+</Project>

@@ -18,16 +18,27 @@ step "Paketleme ve kurulum (build/pack-local.sh --install)"
 VERSION="$(cat "$ROOT/artifacts/local-version.txt")"
 step "Sürüm: $VERSION"
 
-step "Can.Core.Application testleri"
-dotnet run --project "$ROOT/tests/Can.Core.Application.Tests" >>"$LOG" 2>&1 && step "TAMAM: Can.Core.Application testleri" || { step "HATA: Can.Core.Application testleri"; exit 1; }
+step "CanFx.Application testleri"
+dotnet run --project "$ROOT/tests/CanFx.Application.Tests" >>"$LOG" 2>&1 && step "TAMAM: CanFx.Application testleri" || { step "HATA: CanFx.Application testleri"; exit 1; }
 
 rm -rf "$OUT" && mkdir -p "$OUT"
 failed=0
 
+# Şablonda git'in yok saydığı kaynak dosya: yerelde paketlenir ama CI'daki (depodan) pakette olmaz.
+ignored="$(cd "$ROOT" && GIT_OPTIONAL_LOCKS=0 git ls-files --others --ignored --exclude-standard templates/CanFx.Templates/content \
+  | grep -vE '/(bin|obj)/|\.DS_Store$' || true)"
+if [[ -n "$ignored" ]]; then
+  step "HATA: şablonda git'in yok saydığı dosyalar var (.gitignore desenini düzelt):"
+  printf '  %s\n' $ignored | tee -a "$LOG"
+  failed=1
+else
+  step "TAMAM: şablonun tüm dosyaları git'te"
+fi
+
 variant() {
   local name="$1"; shift
   step "Çözüm: $name ($*)"
-  if ! dotnet new can-monolith -n "$name" -o "$OUT/$name" --CanCoreFeed "$PACKAGES" "$@" >>"$LOG" 2>&1; then
+  if ! dotnet new canfx-monolith -n "$name" -o "$OUT/$name" --CanFxFeed "$PACKAGES" "$@" >>"$LOG" 2>&1; then
     step "HATA: $name üretilemedi"; failed=1; return
   fi
   if dotnet build "$OUT/$name/$name.slnx" -c Debug >>"$LOG" 2>&1; then
@@ -48,7 +59,7 @@ variant Tenant --IdKeyType long --ExternalLogin true --MultiTenancy true --Setti
 # Üretilen çözümlere iki entity eklenir (biri fabrika/Update metotlu, biri metotsuz: TODO yolları) ve CRUD üretilip
 # yeniden derlenir.
 step "can-gen testleri"
-if dotnet run --project "$ROOT/tests/Can.Core.Generator.Tests" >>"$LOG" 2>&1; then step "TAMAM: can-gen testleri"; else step "HATA: can-gen testleri"; failed=1; fi
+if dotnet run --project "$ROOT/tests/CanFx.Generator.Tests" >>"$LOG" 2>&1; then step "TAMAM: can-gen testleri"; else step "HATA: can-gen testleri"; failed=1; fi
 
 # Kurulu (paketlenmiş) can-gen kullanılır: paketin kendisi de denenmiş olur.
 CANGEN=("$HOME/.dotnet/tools/can-gen")
@@ -61,8 +72,8 @@ generate() {
   step "can-gen: $name (Brand, Tag)"
   mkdir -p "$domain/Catalog" "$domain/Tags"
   cat > "$domain/Catalog/Brand.cs" <<CS
-using Can.Core.Domain.Auditing;
-using Can.Core.Domain.Results;
+using CanFx.Domain.Auditing;
+using CanFx.Domain.Results;
 
 namespace $name.Domain.Catalog;
 
@@ -99,7 +110,7 @@ public sealed class Brand : FullAuditedAggregateRoot<Guid>
 }
 CS
   cat > "$domain/Tags/Tag.cs" <<CS
-using Can.Core.Domain.Entities;
+using CanFx.Domain.Entities;
 
 namespace $name.Domain.Tags;
 

@@ -1,7 +1,7 @@
 # Değişiklik geçmişi
 
 Bu dosya [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) biçimindedir; sürümler
-[Semantic Versioning](https://semver.org/lang/tr/)'e uyar. Tüm `Can.Core.*` paketleri aynı sürümle yayınlanır.
+[Semantic Versioning](https://semver.org/lang/tr/)'e uyar. Tüm `CanFx.*` paketleri aynı sürümle yayınlanır.
 
 - **major** (2.0.0): kırıcı değişiklik (public API'den bir şey kaldırıldı/değişti, davranış uyumsuz değişti)
 - **minor** (1.3.0): geriye uyumlu yeni özellik (`feat` commit'leri)
@@ -14,7 +14,9 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
-İlk sürüm. .NET 10 için katmanlı (DDD / Clean Architecture) uygulama altyapısı.
+İlk sürüm. .NET 10 için katmanlı (DDD / Clean Architecture) uygulama altyapısı. Paketler `CanFx.*` adıyla
+yayınlanır (geliştirme sırasındaki adı `Can.Core.*` idi); proje şablonu `CanFx.Templates` (`dotnet new canfx-monolith`),
+kod üretici `CanFx.Generator.Cli` (`can-gen`).
 
 ### Eklendi
 
@@ -55,7 +57,7 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
   önbelleğiyle ortak etiketler, entity değişince otomatik silme (`AddCanEntityCacheInvalidation`, commit'ten sonra),
   ETag ve 304, Brotli/gzip sıkıştırma, güvenli `Cache-Control` varsayılanları, `WithNoStore`; Redis'te ortak önbellek
   (`UseForOutputCache`).
-- **OpenAPI** (`Can.Core.WebApi.OpenApi`): API sürümü başına belge, kullanımdan kalkan sürümler, cookie/Bearer güvenlik
+- **OpenAPI** (`CanFx.WebApi.OpenApi`): API sürümü başına belge, kullanımdan kalkan sürümler, cookie/Bearer güvenlik
   şeması, ProblemDetails hata yanıtları, `Idempotency-Key` başlığı, CDN'den yüklenen Scalar arayüzü; Production'da
   varsayılan kapalı.
 - **İstek aktivite logu** (varsayılan kapalı): kim/ne zaman/hangi tenant/uç nokta/sonuç/süre/IP; isteği bekletmeyen

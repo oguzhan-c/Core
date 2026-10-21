@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CanFx.Settings.EntityFrameworkCore\CanFx.Settings.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\CanFx.Settings.AspNetCore\CanFx.Settings.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\CanFx.Testing.EntityFrameworkCore\CanFx.Testing.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\CanFx.Testing.AspNetCore\CanFx.Testing.AspNetCore.csproj" />
+  </ItemGroup>
+
+</Project>

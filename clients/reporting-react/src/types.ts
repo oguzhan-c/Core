@@ -1,4 +1,4 @@
-// Can.Core.Reporting sözleşmesinin TypeScript karşılığı (JSON: camelCase, enum'lar metin).
+// CanFx.Reporting sözleşmesinin TypeScript karşılığı (JSON: camelCase, enum'lar metin).
 
 export type ReportDataType = "String" | "Number" | "Date" | "Boolean";
 

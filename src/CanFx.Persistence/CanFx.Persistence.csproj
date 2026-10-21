@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Persistence</RootNamespace>
+    <Description>EF Core implementasyonu: CanDbContext (soft delete + tenant filtreleri), EfRepository, UnitOfWork, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi (audit trail) ve seed.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Persistence.Abstractions\CanFx.Persistence.Abstractions.csproj" />
+    <ProjectReference Include="..\CanFx.Application.Abstractions\CanFx.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\CanFx.Mediator.Abstractions\CanFx.Mediator.Abstractions.csproj" />
+    <ProjectReference Include="..\CanFx.MultiTenancy\CanFx.MultiTenancy.csproj" />
+    <ProjectReference Include="..\CanFx.BackgroundJobs\CanFx.BackgroundJobs.csproj" />
+    <ProjectReference Include="..\CanFx.EventBus\CanFx.EventBus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.Persistence.Tests" />
+  </ItemGroup>
+
+</Project>

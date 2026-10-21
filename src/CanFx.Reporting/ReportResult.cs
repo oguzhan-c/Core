@@ -1,0 +1,116 @@
+using System.Text.Json.Serialization;
+
+namespace CanFx.Reporting;
+
+[JsonConverter(typeof(JsonStringEnumConverter<ReportHeaderKind>))]
+public enum ReportHeaderKind
+{
+    /// <summary>En alt düzey.</summary>
+    Item,
+
+    /// <summary>Alt düzeyleri olan grup; değerleri ara toplamdır.</summary>
+    Group,
+
+    /// <summary>Top N dışında kalanların toplamı.</summary>
+    Others,
+
+    /// <summary>Genel toplam.</summary>
+    GrandTotal,
+}
+
+/// <summary>Satır ya da sütun başlığı.</summary>
+/// <param name="Level">Derinlik: 0 genel toplam, 1 en dış düzey ...</param>
+/// <param name="Kind">Tür.</param>
+/// <param name="Keys">Üstten bu düzeye anahtarlar (gruplama değerleri).</param>
+/// <param name="Labels">Anahtarların görünen metinleri.</param>
+public sealed record ReportHeader(int Level, ReportHeaderKind Kind, IReadOnlyList<object?> Keys, IReadOnlyList<string> Labels)
+{
+    /// <summary>Bu düzeyin görünen metni.</summary>
+    public string Label => Labels.Count == 0 ? string.Empty : Labels[^1];
+}
+
+/// <param name="Field">Alan.</param>
+/// <param name="Caption">Başlık.</param>
+/// <param name="DateGrouping">Tarih aralığı.</param>
+public sealed record ReportResultDimension(string Field, string Caption, DateGrouping DateGrouping);
+
+/// <param name="Name">Değerin adı.</param>
+/// <param name="Caption">Başlık.</param>
+/// <param name="Aggregate">Özet fonksiyonu.</param>
+/// <param name="Display">Gösterim.</param>
+/// <param name="Format">Biçim (yüzde gösterimlerinde varsayılan <c>P1</c>).</param>
+public sealed record ReportResultMeasure(string Name, string Caption, ReportAggregate Aggregate, MeasureDisplay Display, string? Format);
+
+/// <summary>
+/// Rapor sonucu: satır başlıkları × sütun başlıkları × değerler. <see cref="Values"/>[satır][sütun × değer sayısı + değer].
+/// Satırlarda grup başlığı alt satırlarından ÖNCE, sütunlarda ara toplam sütunu alt sütunlarından SONRA gelir;
+/// genel toplamlar en sonda.
+/// </summary>
+public sealed record ReportResult(
+    string? Title,
+    IReadOnlyList<ReportResultDimension> RowDimensions,
+    IReadOnlyList<ReportResultDimension> ColumnDimensions,
+    IReadOnlyList<ReportResultMeasure> Measures,
+    IReadOnlyList<ReportHeader> Rows,
+    IReadOnlyList<ReportHeader> Columns,
+    IReadOnlyList<IReadOnlyList<object?>> Values,
+    long SourceRowCount,
+    long MatchedRowCount)
+{
+    /// <summary>Nerede hesaplandı: <c>memory</c> (satırlar okunup bellekte) ya da <c>database</c> (GROUP BY ile).</summary>
+    public string Mode { get; init; } = "memory";
+
+    /// <summary>
+    /// Veritabanında hesaplanabilecekken neden bellekte hesaplandı (<see cref="Mode"/> <c>memory</c> ise); veritabanı
+    /// modunda ya da motor doğrudan çağrıldığında boş. Yavaş raporların nedenini bulmak için.
+    /// </summary>
+    public ReportModeReason? ModeReason { get; init; }
+
+    public object? Value(int row, int column, int measure) => Values[row][(column * Measures.Count) + measure];
+
+    /// <summary>Adı verilen değerin hücresi.</summary>
+    public object? Value(int row, int column, string measure)
+    {
+        int index = Measures.ToList().FindIndex(m => m.Name == measure);
+        return index < 0 ? throw new ArgumentException($"'{measure}' değeri yok.", nameof(measure)) : Value(row, column, index);
+    }
+
+    /// <summary>Genel toplam satırı/sütunu (yoksa -1).</summary>
+    [JsonIgnore]
+    public int GrandTotalRow => Rows.ToList().FindIndex(r => r.Kind == ReportHeaderKind.GrandTotal);
+
+    [JsonIgnore]
+    public int GrandTotalColumn => Columns.ToList().FindIndex(c => c.Kind == ReportHeaderKind.GrandTotal);
+}
+
+/// <summary>Raporun veritabanı yerine bellekte hesaplanma nedeni.</summary>
+/// <param name="Code">Makinece okunur kod (metrik etiketi): <see cref="Disabled"/>, <see cref="Aggregate"/> ...</param>
+/// <param name="Message">Açıklama.</param>
+public sealed record ReportModeReason(string Code, string Message)
+{
+    /// <summary>Kaynakta <see cref="ReportSourceOptions.DatabaseMode"/> kapalı.</summary>
+    public const string Disabled = "disabled";
+
+    /// <summary>Özet fonksiyonu birleştirilemez (ortanca, yüzdelik, farklı sayısı, ilk/son).</summary>
+    public const string Aggregate = "aggregate";
+
+    /// <summary>Hesaplanmış alan ifadesi ayrıştırılamadı.</summary>
+    public const string Expression = "expression";
+
+    /// <summary>Filtre ya da filtre ifadesi çevrilemedi.</summary>
+    public const string Filter = "filter";
+
+    /// <summary>Gruplama alanı ya da gruplama türü (ör. ISO hafta) çevrilemedi.</summary>
+    public const string Dimension = "dimension";
+
+    /// <summary>Değer alanı çevrilemedi ya da tipi uygun değil.</summary>
+    public const string Measure = "measure";
+
+    /// <summary>Gruplama + özet sayısı <c>ReportSlots</c> sınırını (16) aşıyor.</summary>
+    public const string Slots = "slots";
+
+    /// <summary>Sağlayıcı (EF Core) sorguyu çalıştırırken çeviremedi.</summary>
+    public const string Translation = "translation";
+
+    internal static readonly ReportModeReason DatabaseModeOff = new(Disabled, "Veri kaynağında veritabanı modu kapalı.");
+}

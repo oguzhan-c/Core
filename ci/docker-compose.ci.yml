@@ -1,6 +1,6 @@
 # Entegrasyon testlerinin servisleri: Jenkins, AWS CodeBuild ve yerel çalıştırma (./build/ci.sh services).
 # Portlar localhost'a açılır; GitHub, GitLab, Azure DevOps ve Bitbucket kendi servis tanımlarını kullanır.
-name: can-core-ci
+name: canfx-ci
 
 services:
   rabbitmq:

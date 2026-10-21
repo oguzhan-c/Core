@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CanFx proje şablonları (dotnet new / Visual Studio / Rider "New Solution"):
+      build/pack-local.sh: Core, can-gen ve şablonu aynı yerel sürümle paketler (install argümanıyla kurar da).
+  -->
+  <PropertyGroup>
+    <PackageType>Template</PackageType>
+    <PackageId>CanFx.Templates</PackageId>
+    <!-- Sürüm tek yerden: kökteki Directory.Build.props'taki VersionPrefix. Yerel paketleme build/pack-local.sh ile
+         ("-p:Version=0.1.0-local.<zaman>"), CI'da build/ci.sh ile verilir. -->
+    <VersionPrefix>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../Directory.Build.props')), '&lt;VersionPrefix&gt;(.*?)&lt;/VersionPrefix&gt;').Groups[1].Value)</VersionPrefix>
+    <Title>CanFx Templates</Title>
+    <Authors>Oğuzhan Can</Authors>
+    <!-- Paketleme kopyadan yapılır (build/pack-templates.sh): kökün paket bilgileri burada da yazılı -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/oguzhan-c/Core</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/oguzhan-c/Core</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>CanFx paketlerini kullanan katmanlı monolith çözüm şablonu (dotnet new canfx-monolith): kimlik (JWT cookie, 2FA, passkey), rol / yetki yönetimi, isteğe bağlı multi-tenancy, Redis, event bus, Hangfire, SignalR ve daha fazlası.</Description>
+    <PackageTags>dotnet-new;templates;canfx;clean-architecture;cqrs</PackageTags>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <NoWarn>$(NoWarn);NU5128;NU5110;NU5111</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**;content\**\.idea\**;content\**\.vs\**;content\**\*.user" />
+  </ItemGroup>
+
+</Project>

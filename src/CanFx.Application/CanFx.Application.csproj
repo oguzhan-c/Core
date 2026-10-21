@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Application</RootNamespace>
+    <Description>Uygulama katmanı altyapısı: CanFx.Mediator üzerinde logging, performans, yetkilendirme, doğrulama (FluentValidation), önbellek (HybridCache) ve transaction pipeline'ları; business rule'lar; AddCanApplication(...).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Application.Abstractions\CanFx.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\CanFx.Mediator\CanFx.Mediator.csproj" />
+    <ProjectReference Include="..\CanFx.Persistence.Abstractions\CanFx.Persistence.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+</Project>

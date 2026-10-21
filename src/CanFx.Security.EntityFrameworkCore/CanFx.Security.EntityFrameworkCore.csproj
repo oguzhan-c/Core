@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Security.EntityFrameworkCore</RootNamespace>
+    <Description>CanFx.Security entity'leri (User, Role, UserRole, RefreshToken, OTP/e-posta doğrulayıcı, passkey) için EF Core tablo, index ve ilişki yapılandırmaları.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Security\CanFx.Security.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Search.Elasticsearch</RootNamespace>
+    <Description>Elasticsearch / OpenSearch arama motoru (ISearchEngine). Resmî istemci yerine HttpClient + System.Text.Json ile REST API: eşleme, toplu yazma, tam metin arama, filtre, vurgulama, toplama.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Search\CanFx.Search.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.Search.Tests" />
+  </ItemGroup>
+
+</Project>

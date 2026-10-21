@@ -1,5 +1,5 @@
 /*
- * @can-core/reporting-react stilleri. Varsayılan tema değişkenleri :where() ile sıfır özgüllükte; uygulama ezer:
+ * @canfx/reporting-react stilleri. Varsayılan tema değişkenleri :where() ile sıfır özgüllükte; uygulama ezer:
  *   .cr-designer, .cr-table-wrap, .cr-chart { --cr-bg: var(--background); --cr-accent: var(--primary); ... }
  * Tüm sınıflar "cr-" önekli; uygulamanın stillerine karışmaz.
  */

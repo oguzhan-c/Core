@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Realtime.SignalR</RootNamespace>
+    <Description>IRealtimeNotifier'ın SignalR implementasyonu: kimliği doğrulanmış bağlantıları tenant / kullanıcı / rol gruplarına otomatik ekleyen hub. Açık bağlantılar düzenli olarak yeniden doğrulanır (çıkış, oturum kapatma, rol değişikliği). SignalR sunucusu ASP.NET Core'un içindedir; ek paket yok.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Realtime\CanFx.Realtime.csproj" />
+    <ProjectReference Include="..\CanFx.MultiTenancy\CanFx.MultiTenancy.csproj" />
+    <ProjectReference Include="..\CanFx.Security\CanFx.Security.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.Realtime.Tests" />
+  </ItemGroup>
+
+</Project>

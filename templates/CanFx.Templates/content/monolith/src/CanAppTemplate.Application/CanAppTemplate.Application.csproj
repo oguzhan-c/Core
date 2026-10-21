@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Kullanım senaryoları (CQRS: komut/sorgu + handler), doğrulama, yetki, eşleme. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Domain\CanAppTemplate.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CanFx.Application" />
+    <PackageReference Include="CanFx.Mapping" />
+    <PackageReference Include="CanFx.Persistence.Abstractions" />
+    <PackageReference Include="CanFx.Persistence" />
+    <PackageReference Include="CanFx.MultiTenancy" />
+    <PackageReference Include="CanFx.BackgroundJobs" />
+    <PackageReference Include="CanFx.Mailing" />
+<!--#if (Sms)-->
+    <PackageReference Include="CanFx.Sms" />
+<!--#endif-->
+<!--#if (Realtime)-->
+    <PackageReference Include="CanFx.Realtime" />
+<!--#endif-->
+<!--#if (Search)-->
+    <PackageReference Include="CanFx.Search" />
+<!--#endif-->
+<!--#if (FileStorage)-->
+    <PackageReference Include="CanFx.FileStorage" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="CanFx.Settings" />
+<!--#endif-->
+<!--#if (Reporting)-->
+    <PackageReference Include="CanFx.Reporting" />
+<!--#endif-->
+  </ItemGroup>
+
+</Project>

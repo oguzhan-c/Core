@@ -27,7 +27,7 @@
     <PackageVersion Include="Microsoft.Extensions.Localization.Abstractions" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.13" />
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.13" />
-    <!-- Yalnızca Can.Core.Observability.OpenTelemetry: telemetriyi dışa aktarmak için -->
+    <!-- Yalnızca CanFx.Observability.OpenTelemetry: telemetriyi dışa aktarmak için -->
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
     <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
@@ -37,7 +37,7 @@
     <!-- MailKit (MimeKit) 10.0.0 çekiyor: CVE-2026-84008 / CVE-2026-70162 (GHSA-846f-f764-76mx, GHSA-2fmv-rv2c-59x7); düzeltilmiş sürüme sabitlenir. -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
 
-    <!-- Yalnızca Can.Core.WebApi.OpenApi -->
+    <!-- Yalnızca CanFx.WebApi.OpenApi -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <!-- AspNetCore.OpenApi 10.0.x yalnızca 2.x ile uyumlu (>= 2.12, < 3); en son 2.x. -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
@@ -45,7 +45,7 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.13" />
 
-    <!-- Yalnızca can-gen (tools/Can.Core.Generator): entity dosyalarını ayrıştırmak için -->
+    <!-- Yalnızca can-gen (tools/CanFx.Generator): entity dosyalarını ayrıştırmak için -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
 
     <!-- Test -->
@@ -58,7 +58,7 @@
     <!-- xUnit v3: test projeleri kendi kendini çalıştıran exe'lerdir; Microsoft Testing Platform (global.json) ile çalışır -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="Hangfire.InMemory" Version="1.0.0" />
-    <!-- Yalnızca karşılaştırma testleri: Can.Core.Resilience ile Polly aynı senaryolarda aynı davranıyor mu -->
+    <!-- Yalnızca karşılaştırma testleri: CanFx.Resilience ile Polly aynı senaryolarda aynı davranıyor mu -->
     <PackageVersion Include="Polly.Core" Version="8.8.0" />
     <PackageVersion Include="Polly.RateLimiting" Version="8.8.0" />
   </ItemGroup>

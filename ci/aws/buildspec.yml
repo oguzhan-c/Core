@@ -19,8 +19,8 @@ env:
     CAN_AZURITE_URL: http://localhost:10000/devstoreaccount1
   # Gizli değerler (Secrets Manager):
   # secrets-manager:
-  #   CAN_AZURE_SERVICEBUS_CONNECTION: can-core/ci:servicebus
-  #   NUGET_API_KEY: can-core/ci:nuget-api-key
+  #   CAN_AZURE_SERVICEBUS_CONNECTION: canfx/ci:servicebus
+  #   NUGET_API_KEY: canfx/ci:nuget-api-key
 
 phases:
   install:
@@ -44,7 +44,7 @@ phases:
       - ./build/ci.sh client
 
 reports:
-  can-core-tests:
+  canfx-tests:
     base-directory: artifacts/test-results
     files: ["**/*.xml"]
     file-format: JUNITXML

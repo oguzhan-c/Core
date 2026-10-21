@@ -1,10 +1,10 @@
-# @can-core/reporting-react
+# @canfx/reporting-react
 
-Can.Core.Reporting için React arayüzü. Bağımlılığı yalnızca React (19+); grafikler SVG, stiller düz CSS.
+CanFx.Reporting için React arayüzü. Bağımlılığı yalnızca React (19+); grafikler SVG, stiller düz CSS.
 
 ```tsx
-import { createReportingClient, ReportDesigner } from "@can-core/reporting-react";
-import "@can-core/reporting-react/styles.css";
+import { createReportingClient, ReportDesigner } from "@canfx/reporting-react";
+import "@canfx/reporting-react/styles.css";
 
 // bileşen dışında bir kez oluştur
 const client = createReportingClient({
@@ -34,7 +34,7 @@ Uygulamaya kurulum (monorepo dışından yayınlanmadan):
 
 ```jsonc
 // package.json
-"@can-core/reporting-react": "file:../../clients/reporting-react"
+"@canfx/reporting-react": "file:../../clients/reporting-react"
 ```
 ```ini
 # .npmrc — paket kopya olarak kurulsun (symlink değil): React ve tipler uygulamanınkinden çözülür

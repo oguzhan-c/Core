@@ -1,0 +1,18 @@
+bin/
+obj/
+.idea/
+.vs/
+*.user
+*.DotSettings.user
+.DS_Store
+*.log
+
+# Geliştirmede yazılan e-posta, SMS, dosya ve loglar (WebAPI'nin çalışma klasöründe). Desen yalnızca orayı kapsar:
+# "**/sms/" macOS'ta (büyük/küçük harf duyarsız) Infrastructure/Sms/ kaynak klasörünü de yok sayıyordu.
+/src/*.WebAPI/mails/
+/src/*.WebAPI/sms/
+/src/*.WebAPI/files/
+/src/*.WebAPI/logs/
+*.db
+*.db-shm
+*.db-wal

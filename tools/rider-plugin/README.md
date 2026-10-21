@@ -1,16 +1,15 @@
 # can-gen Rider eklentisi
 
-Rider'da entity dosyasına sağ tık (Solution Explorer ya da editör) → **Can.Core: Generate CRUD...**
+Rider'da entity dosyasına sağ tık (Solution Explorer ya da editör) → **CanFx: Generate CRUD...**
 
 Eklenti yalnızca arayüzdür: kodu `can-gen` komut satırı aracı üretir (`--json` ile çağrılır). Önce aracı kur:
 
 ```bash
-dotnet pack tools/Can.Core.Generator.Cli -c Release -o artifacts/tools -p:Version=0.1.0-local
-dotnet tool install -g Can.Core.Generator.Cli --add-source artifacts/tools --prerelease
+dotnet tool install -g CanFx.Generator.Cli      # nuget.org (yerel sürüm için: build/pack-local.sh --install)
 ```
 
-Araç PATH'te ya da `~/.dotnet/tools` altında değilse Settings → Tools → Can.Core Generator'da komutu yaz
-(kaynak koddan: `dotnet run --project /yol/Core/tools/Can.Core.Generator.Cli --`).
+Araç PATH'te ya da `~/.dotnet/tools` altında değilse Settings → Tools → CanFx Generator'da komutu yaz
+(kaynak koddan: `dotnet run --project /yol/Core/tools/CanFx.Generator.Cli --`).
 
 ## Derleme
 

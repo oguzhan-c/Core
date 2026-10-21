@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Testing.AspNetCore</RootNamespace>
+    <Description>API testleri için: istekte verilen kullanıcıyla (rol, yetki, tenant) kimlik doğrulayan test şeması ve TestServer üzerinde uygulama kurulumu. Yalnızca test projelerinde kullan.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Testing\CanFx.Testing.csproj" />
+    <ProjectReference Include="..\CanFx.WebApi\CanFx.WebApi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+  </ItemGroup>
+
+</Project>

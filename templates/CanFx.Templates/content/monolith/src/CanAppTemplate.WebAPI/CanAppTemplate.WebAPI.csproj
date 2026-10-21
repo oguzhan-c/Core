@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>canapptemplate-USER_SECRETS_ID</UserSecretsId>
+  </PropertyGroup>
+
+  <!-- Controller'lar, kimlik akışı (cookie), HTTP ara katmanları. Dış servisler Infrastructure'da, veritabanı Persistence'ta. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CanAppTemplate.Infrastructure\CanAppTemplate.Infrastructure.csproj" />
+    <ProjectReference Include="..\CanAppTemplate.Persistence\CanAppTemplate.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CanFx.WebApi" />
+    <PackageReference Include="CanFx.WebApi.OpenApi" />
+    <PackageReference Include="CanFx.Localization" />
+    <PackageReference Include="CanFx.Logging.Serilog" />
+<!--#if (OpenTelemetry)-->
+    <PackageReference Include="CanFx.Observability.OpenTelemetry" />
+<!--#endif-->
+<!--#if (Reporting)-->
+    <PackageReference Include="CanFx.Reporting.AspNetCore" />
+<!--#endif-->
+<!--#if (Settings)-->
+    <PackageReference Include="CanFx.Settings.AspNetCore" />
+<!--#endif-->
+    <!-- dotnet ef migrations add ... için -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Hata ve metin çevirileri (tr/en) -->
+    <Content Update="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

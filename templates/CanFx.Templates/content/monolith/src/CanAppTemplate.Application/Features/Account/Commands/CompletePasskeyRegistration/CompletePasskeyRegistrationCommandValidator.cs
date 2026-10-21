@@ -1,0 +1,28 @@
+using CanFx.Application;
+using CanFx.Domain.Results;
+using CanFx.Mediator;
+using CanFx.Persistence.Repositories;
+using CanFx.Security.Entities;
+using CanFx.Security.Events;
+using CanFx.Security.Otp;
+using CanFx.Security.Passkeys;
+using CanFx.Security.RecoveryCodes;
+using Fido2NetLib;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using CanAppTemplate.Application.Services.AuthService;
+using CanAppTemplate.Domain.Constants;
+using CanAppTemplate.Domain.Entities;
+
+namespace CanAppTemplate.Application.Features.Account.Commands.CompletePasskeyRegistration;
+
+public sealed class CompletePasskeyRegistrationCommandValidator : AbstractValidator<CompletePasskeyRegistrationCommand>
+{
+    public CompletePasskeyRegistrationCommandValidator()
+    {
+        RuleFor(c => c.Response).NotNull();
+        RuleFor(c => c.Options).NotNull();
+        RuleFor(c => c.Name).MaximumLength(PasskeyLimits.NameMaxLength);
+    }
+}

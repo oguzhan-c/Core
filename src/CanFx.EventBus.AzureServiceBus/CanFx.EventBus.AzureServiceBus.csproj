@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.EventBus.AzureServiceBus</RootNamespace>
+    <Description>CanFx.EventBus için Azure Service Bus taşıyıcısı: topic + servis başına subscription (correlation filtreleri), zamanlanmış yeniden deneme, yerleşik DLQ.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.EventBus\CanFx.EventBus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.EventBus.Brokers.Tests" />
+  </ItemGroup>
+
+</Project>

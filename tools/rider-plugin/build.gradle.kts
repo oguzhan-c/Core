@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
-group = "com.can.core"
+group = "com.canfx"
 version = providers.gradleProperty("pluginVersion").get()
 
 kotlin {

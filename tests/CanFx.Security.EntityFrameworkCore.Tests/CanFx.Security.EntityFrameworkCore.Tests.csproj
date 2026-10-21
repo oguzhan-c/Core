@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CanFx.Security.EntityFrameworkCore\CanFx.Security.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\CanFx.Persistence\CanFx.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+
+</Project>

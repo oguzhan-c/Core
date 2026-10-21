@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.WebApi</RootNamespace>
+    <Description>ASP.NET Core entegrasyonu: CanFx hata tiplerini ProblemDetails yanıtlarına çeviren exception handler, JWT claim'lerinden okuyan ICurrentUser ve üyelik kontrollü ICurrentTenant.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Application.Abstractions\CanFx.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\CanFx.Domain\CanFx.Domain.csproj" />
+    <ProjectReference Include="..\CanFx.Security\CanFx.Security.csproj" />
+    <ProjectReference Include="..\CanFx.MultiTenancy\CanFx.MultiTenancy.csproj" />
+    <ProjectReference Include="..\CanFx.Localization\CanFx.Localization.csproj" />
+    <ProjectReference Include="..\CanFx.Mediator.Abstractions\CanFx.Mediator.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Varsayılan tr/en metinler (problem başlıkları, ortak hata kodları); uygulama çevirileri bunları ezer. -->
+    <EmbeddedResource Include="Localization\*.json" WithCulture="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- JwtBearer'ın getirdiği IdentityModel sürümünü Security paketinin sürümüyle hizala -->
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.WebApi.Tests" />
+  </ItemGroup>
+
+</Project>

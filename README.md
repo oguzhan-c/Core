@@ -1,57 +1,70 @@
-# Can.Core
+# CanFx
 
 Yeni .NET projelerinde tekrar kullanılmak üzere yazılmış çekirdek paketler.
 nArchitecture, CCA (Backend) ve CleanArchitectureWithBlazorServer projelerinin en iyi yanlarından derlendi.
 Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımızı içerir.
 
+## Başlangıç
+
+```bash
+dotnet new install CanFx.Templates              # proje şablonu
+dotnet tool install -g CanFx.Generator.Cli      # can-gen (CRUD üretici)
+
+can-gen new MyShop                              # ya da: dotnet new canfx-monolith -n MyShop
+cd MyShop && can-gen generate crud Brand
+```
+
+Paketler nuget.org'dadır; şablonla oluşturulan proje şablonla aynı sürümdeki `CanFx.*` paketlerini kullanır. Var olan
+bir projeye tek tek de eklenebilir: `dotnet add package CanFx.Persistence`. Lisans: MIT.
+
 | Paket | Bağımlılık | İçerik |
 |---|---|---|
-| `Can.Core.Domain` | yok | `Entity<TId>`, `AggregateRoot<TId>`, audit/soft delete arayüzleri ve base sınıfları, `IDomainEvent`, `ValueObject` |
-| `Can.Core.Mediator.Abstractions` | yok | `IRequest`, `IRequestHandler`, `INotificationHandler`, `IPipelineBehavior`, `ISender`, `IPublisher` |
-| `Can.Core.Mediator` | DI.Abstractions | `Mediator`, publish stratejileri, `AddCanMediator(...)` |
-| `Can.Core.Mapping` | DI.Abstractions | `MappingProfile`, `IMapper`, `ProjectTo`, `AddCanMapping(...)` |
-| `Can.Core.Application.Abstractions` | yok | `ICurrentUser`, `ICurrentTenant`, istek işaretleyicileri (`ISecuredRequest`, `ICachableRequest` ...), hata tipleri |
-| `Can.Core.Application` | Mediator, FluentValidation, HybridCache | Pipeline behavior'ları, `BaseBusinessRules`, `AddCanApplication(...)` |
-| `Can.Core.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
-| `Can.Core.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()` |
-| `Can.Core.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
-| `Can.Core.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
-| `Can.Core.Redis.ScaleOut` | StackExchange.Redis, SignalR.StackExchangeRedis | Çok sunucu: ortak Data Protection anahtarları, SignalR backplane, sunucular arası hız sınırı, dağıtık kilit |
-| `Can.Core.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
-| `Can.Core.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı, inbox, ortak tüketim akışı (yeniden deneme, DLQ); outbox ile birlikte çalışır |
-| `Can.Core.EventBus.RabbitMQ` | RabbitMQ.Client | Topic exchange, quorum kuyruk, gönderim onayı, gecikmeli deneme kuyrukları, DLQ |
-| `Can.Core.EventBus.Kafka` | Confluent.Kafka | Event başına topic, idempotent producer, consumer group, retry/DLQ topic'leri |
-| `Can.Core.EventBus.AzureServiceBus` | Azure.Messaging.ServiceBus | Topic + subscription (correlation filtreleri), zamanlanmış deneme, yerleşik DLQ |
-| `Can.Core.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
-| `Can.Core.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
-| `Can.Core.FileStorage.AzureBlob` | Extensions.Http | Azure Blob Storage (ve Azurite); SDK'sız REST, Shared Key / SAS / Entra ID, süreli adres (SAS) |
-| `Can.Core.Search` | yok | `ISearchIndex<T>`: tam metin arama, filtre, sıralama, vurgulama, toplama, tenant yalıtımı; bellek içi motor |
-| `Can.Core.Search.Elasticsearch` | Extensions.Http | Elasticsearch / OpenSearch motoru; resmî istemci yerine HttpClient + Query DSL |
-| `Can.Core.Reporting` | DI.Abstractions | Pivot rapor motoru: satır/sütun gruplama, ara/genel toplam, 14 özet (ortanca, yüzdelik, std. sapma ...), yüzde/kümülatif/fark/sıra gösterimleri, Top N + "Diğer", ifade dili, veritabanında GROUP BY, CSV/Excel/PDF (paketsiz) |
-| `Can.Core.Reporting.EntityFrameworkCore` | EF Core | Kaydedilmiş raporlar tablosu ve deposu: `ApplyCanReportingModel()`, `UseEntityFrameworkStore<TContext>()` |
-| `Can.Core.Reporting.AspNetCore` | ASP.NET Core | `MapCanReporting()`: kaynaklar, çalıştır, dışa aktar, kayıtlı raporlar; yetki ve tenant denetimi |
-| `Can.Core.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
-| `Can.Core.Realtime` | yok | `IRealtimeNotifier`: kullanıcıya / role / tenant'a / gruba anlık mesaj (Application katmanı kullanır) |
-| `Can.Core.Realtime.SignalR` | ASP.NET Core | Bildirimleri SignalR ile ileten hub; bağlantılar tenant/kullanıcı/rol gruplarına otomatik girer |
-| `Can.Core.Resilience` | Threading.RateLimiting | Retry, circuit breaker, timeout, rate limiter/bulkhead, fallback, hedging pipeline'ları (Polly'siz) |
-| `Can.Core.Resilience.Http` | Extensions.Http | `AddCanStandardResilienceHandler()`: HttpClient için hazır dayanıklılık |
-| `Can.Core.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
-| `Can.Core.Sms` | Extensions.Http | `ISmsSender`, E.164 numara, GSM-7/UCS-2 parça hesabı, Türkçe karakter dönüştürme, HTTP sağlayıcı temeli |
-| `Can.Core.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
-| `Can.Core.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
-| `Can.Core.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
-| `Can.Core.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
-| `Can.Core.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
-| `Can.Core.WebApi.OpenApi` | WebApi, AspNetCore.OpenApi | Sürüm başına OpenAPI belgesi, cookie güvenlik şeması, ProblemDetails yanıtları, paketsiz Scalar arayüzü |
-| `Can.Core.Settings` | Caching.Hybrid | Tipli uygulama/tenant ayarları: tenant → uygulama → varsayılan, doğrulama, gizli (şifreli) değerler, önbellek |
-| `Can.Core.Settings.EntityFrameworkCore` | EF Core | `SettingValues` tablosu ve deposu: `ApplyCanSettingsModel()`, `UseEntityFrameworkStore<TContext>()` |
-| `Can.Core.Settings.AspNetCore` | ASP.NET Core | `MapCanSettings()`: listele/değiştir/sıfırla (düzey bazlı yetki), istemci ayarları; `UseDataProtection()` |
-| `Can.Core.Testing` | yok | Testler için: elle ilerletilen `TestClock` (zamanlayıcılar dahil), `TestCurrentUser`, `TestCurrentTenant` |
-| `Can.Core.Testing.EntityFrameworkCore` | EF Core SQLite | `SqliteTestDatabase`: test başına bellekte gerçek ilişkisel veritabanı |
-| `Can.Core.Testing.AspNetCore` | ASP.NET Core TestHost | Test kimlik doğrulaması (`client.AsUser(...)`), `CanTestApp` |
-| `Can.Core.Observability.OpenTelemetry` | OpenTelemetry | Can.Core ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
-| `Can.Core.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>`, `ICursorPage<T>` — EF'e bağımlı değil |
-| `Can.Core.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
+| `CanFx.Domain` | yok | `Entity<TId>`, `AggregateRoot<TId>`, audit/soft delete arayüzleri ve base sınıfları, `IDomainEvent`, `ValueObject` |
+| `CanFx.Mediator.Abstractions` | yok | `IRequest`, `IRequestHandler`, `INotificationHandler`, `IPipelineBehavior`, `ISender`, `IPublisher` |
+| `CanFx.Mediator` | DI.Abstractions | `Mediator`, publish stratejileri, `AddCanMediator(...)` |
+| `CanFx.Mapping` | DI.Abstractions | `MappingProfile`, `IMapper`, `ProjectTo`, `AddCanMapping(...)` |
+| `CanFx.Application.Abstractions` | yok | `ICurrentUser`, `ICurrentTenant`, istek işaretleyicileri (`ISecuredRequest`, `ICachableRequest` ...), hata tipleri |
+| `CanFx.Application` | Mediator, FluentValidation, HybridCache | Pipeline behavior'ları, `BaseBusinessRules`, `AddCanApplication(...)` |
+| `CanFx.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
+| `CanFx.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()` |
+| `CanFx.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
+| `CanFx.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
+| `CanFx.Redis.ScaleOut` | StackExchange.Redis, SignalR.StackExchangeRedis | Çok sunucu: ortak Data Protection anahtarları, SignalR backplane, sunucular arası hız sınırı, dağıtık kilit |
+| `CanFx.Caching.Redis` | StackExchangeRedis | Redis'i HybridCache'in ikinci (dağıtık) katmanı yapar: `AddCanRedisCache(...)` |
+| `CanFx.EventBus` | yok | `IEventBus`, sabit event adları, tenant'ı koruyan dağıtıcı, bellek içi taşıyıcı, inbox, ortak tüketim akışı (yeniden deneme, DLQ); outbox ile birlikte çalışır |
+| `CanFx.EventBus.RabbitMQ` | RabbitMQ.Client | Topic exchange, quorum kuyruk, gönderim onayı, gecikmeli deneme kuyrukları, DLQ |
+| `CanFx.EventBus.Kafka` | Confluent.Kafka | Event başına topic, idempotent producer, consumer group, retry/DLQ topic'leri |
+| `CanFx.EventBus.AzureServiceBus` | Azure.Messaging.ServiceBus | Topic + subscription (correlation filtreleri), zamanlanmış deneme, yerleşik DLQ |
+| `CanFx.FileStorage` | yok | `IFileStorage`, yerel disk, tenant'a göre otomatik klasörleme, güvenli yol doğrulama |
+| `CanFx.FileStorage.S3` | Extensions.Http | S3 uyumlu depolama (AWS, MinIO, R2); SDK'sız, kendi Signature V4 imzalaması, presigned URL |
+| `CanFx.FileStorage.AzureBlob` | Extensions.Http | Azure Blob Storage (ve Azurite); SDK'sız REST, Shared Key / SAS / Entra ID, süreli adres (SAS) |
+| `CanFx.Search` | yok | `ISearchIndex<T>`: tam metin arama, filtre, sıralama, vurgulama, toplama, tenant yalıtımı; bellek içi motor |
+| `CanFx.Search.Elasticsearch` | Extensions.Http | Elasticsearch / OpenSearch motoru; resmî istemci yerine HttpClient + Query DSL |
+| `CanFx.Reporting` | DI.Abstractions | Pivot rapor motoru: satır/sütun gruplama, ara/genel toplam, 14 özet (ortanca, yüzdelik, std. sapma ...), yüzde/kümülatif/fark/sıra gösterimleri, Top N + "Diğer", ifade dili, veritabanında GROUP BY, CSV/Excel/PDF (paketsiz) |
+| `CanFx.Reporting.EntityFrameworkCore` | EF Core | Kaydedilmiş raporlar tablosu ve deposu: `ApplyCanReportingModel()`, `UseEntityFrameworkStore<TContext>()` |
+| `CanFx.Reporting.AspNetCore` | ASP.NET Core | `MapCanReporting()`: kaynaklar, çalıştır, dışa aktar, kayıtlı raporlar; yetki ve tenant denetimi |
+| `CanFx.Localization` | Localization.Abstractions | JSON tabanlı `IStringLocalizer` (resx yok), kültür zinciri, hata kodu → metin |
+| `CanFx.Realtime` | yok | `IRealtimeNotifier`: kullanıcıya / role / tenant'a / gruba anlık mesaj (Application katmanı kullanır) |
+| `CanFx.Realtime.SignalR` | ASP.NET Core | Bildirimleri SignalR ile ileten hub; bağlantılar tenant/kullanıcı/rol gruplarına otomatik girer |
+| `CanFx.Resilience` | Threading.RateLimiting | Retry, circuit breaker, timeout, rate limiter/bulkhead, fallback, hedging pipeline'ları (Polly'siz) |
+| `CanFx.Resilience.Http` | Extensions.Http | `AddCanStandardResilienceHandler()`: HttpClient için hazır dayanıklılık |
+| `CanFx.MultiTenancy` | yok | `TenantInfo`, `ITenantStore`, `TenantContext`, tenant başına bağlantı dizesi, `CreateTenantScope` |
+| `CanFx.Sms` | Extensions.Http | `ISmsSender`, E.164 numara, GSM-7/UCS-2 parça hesabı, Türkçe karakter dönüştürme, HTTP sağlayıcı temeli |
+| `CanFx.Mailing` | yok | `IEmailSender`, `EmailMessage`, testler için `InMemoryEmailSender` |
+| `CanFx.Mailing.MailKit` | MailKit | SMTP göndericisi, geliştirme için `.eml` klasörü |
+| `CanFx.Mailing.SendGrid` | Extensions.Http | SendGrid Web API v3 göndericisi (SDK'sız, `IHttpClientFactory`) |
+| `CanFx.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
+| `CanFx.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
+| `CanFx.WebApi.OpenApi` | WebApi, AspNetCore.OpenApi | Sürüm başına OpenAPI belgesi, cookie güvenlik şeması, ProblemDetails yanıtları, paketsiz Scalar arayüzü |
+| `CanFx.Settings` | Caching.Hybrid | Tipli uygulama/tenant ayarları: tenant → uygulama → varsayılan, doğrulama, gizli (şifreli) değerler, önbellek |
+| `CanFx.Settings.EntityFrameworkCore` | EF Core | `SettingValues` tablosu ve deposu: `ApplyCanSettingsModel()`, `UseEntityFrameworkStore<TContext>()` |
+| `CanFx.Settings.AspNetCore` | ASP.NET Core | `MapCanSettings()`: listele/değiştir/sıfırla (düzey bazlı yetki), istemci ayarları; `UseDataProtection()` |
+| `CanFx.Testing` | yok | Testler için: elle ilerletilen `TestClock` (zamanlayıcılar dahil), `TestCurrentUser`, `TestCurrentTenant` |
+| `CanFx.Testing.EntityFrameworkCore` | EF Core SQLite | `SqliteTestDatabase`: test başına bellekte gerçek ilişkisel veritabanı |
+| `CanFx.Testing.AspNetCore` | ASP.NET Core TestHost | Test kimlik doğrulaması (`client.AsUser(...)`), `CanTestApp` |
+| `CanFx.Observability.OpenTelemetry` | OpenTelemetry | CanFx ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
+| `CanFx.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>`, `ICursorPage<T>` — EF'e bağımlı değil |
+| `CanFx.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
 
 ```bash
 dotnet build Core.slnx
@@ -62,18 +75,18 @@ Testler xUnit v3 ile yazılır ve Microsoft Testing Platform ile çalışır (`g
 Her test projesi kendi kendini çalıştırabilen bir programdır; sık kullanılan komutlar:
 
 ```bash
-dotnet test --project tests/Can.Core.Persistence.Tests                     # tek proje
+dotnet test --project tests/CanFx.Persistence.Tests                     # tek proje
 dotnet test --solution Core.slnx --filter-class "*SpecificationTests"      # sınıfa göre
 dotnet test --solution Core.slnx --filter-method "*Retries*"               # metoda göre
-dotnet test --project tests/Can.Core.Persistence.Tests --show-live-output on  # ITestOutputHelper çıktısı
-dotnet run --project tests/Can.Core.Persistence.Tests                      # doğrudan (xUnit'in kendi çalıştırıcısı)
+dotnet test --project tests/CanFx.Persistence.Tests --show-live-output on  # ITestOutputHelper çıktısı
+dotnet run --project tests/CanFx.Persistence.Tests                      # doğrudan (xUnit'in kendi çalıştırıcısı)
 ```
 
 **CI.** Hazır yapılandırmalar: GitHub Actions, GitLab CI/CD, Azure DevOps, Bitbucket Pipelines, Jenkins, AWS CodeBuild
 ve Google Cloud Build (hepsinde entegrasyon testleri dahil).
 Hepsi aynı betiği (`./build/ci.sh`) çağırır; kullandığını seç, diğerlerini sil. Ayrıntı: [ci/README.md](ci/README.md).
 
-**Kendi uygulamanın testleri** için `Can.Core.Testing*` paketleri (yalnızca test projelerine ekle):
+**Kendi uygulamanın testleri** için `CanFx.Testing*` paketleri (yalnızca test projelerine ekle):
 
 ```csharp
 // birim / handler testi
@@ -581,7 +594,7 @@ group'u tutar.
 
 **Sağlık ve metrikler.** `AddHealthChecks().AddCanEventBusCheck()` (`/health/ready`): broker'a ulaşılamıyorsa ya da
 tüketici dinlemiyorsa `Unhealthy`, DLQ'da `DeadLetterThreshold`'dan (varsayılan 0) fazla mesaj varsa `Degraded`.
-Sonuçta `broker`, `consuming`, `deadLetters` verileri. Metrikler (`Can.Core.EventBus` meter'ı, OpenTelemetry
+Sonuçta `broker`, `consuming`, `deadLetters` verileri. Metrikler (`CanFx.EventBus` meter'ı, OpenTelemetry
 paketinde açık):
 
 | Metrik | Etiketler | Ne gösterir |
@@ -598,7 +611,7 @@ hata verirse ikisi birden geri alınır). Veritabanı dışı yan etkileri (e-po
 `Retention` (7 gün) sonra silinir. Tek örnekli uygulamalarda `AddCanInMemoryInbox()`.
 
 Gerçek broker'a karşı testler (`./build/ci.sh services` ile servisleri aç):
-`CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/ CAN_KAFKA_BOOTSTRAP=localhost:9092 dotnet test --project tests/Can.Core.EventBus.Brokers.Tests`.
+`CAN_RABBITMQ_URL=amqp://guest:guest@localhost:5672/ CAN_KAFKA_BOOTSTRAP=localhost:9092 dotnet test --project tests/CanFx.EventBus.Brokers.Tests`.
 Azure için gerçek ad alanı ya da [Service Bus emülatörü](https://learn.microsoft.com/azure/service-bus-messaging/overview-emulator):
 `CAN_AZURE_SERVICEBUS_CONNECTION="Endpoint=...;UseDevelopmentEmulator=true;"`.
 
@@ -788,7 +801,7 @@ builder.Services.AddCanSecurity(o =>
         Origins = ["https://example.com"],
     };
 });
-builder.Services.AddCanJwtAuthentication();   // Can.Core.WebApi: aynı ayarlarla doğrulama, token HttpOnly cookie'de
+builder.Services.AddCanJwtAuthentication();   // CanFx.WebApi: aynı ayarlarla doğrulama, token HttpOnly cookie'de
 ```
 
 | Servis | Ne yapar | nArchitecture'dan farkı |
@@ -804,7 +817,7 @@ security stamp), `Role<TId>`, `UserRole<TId>`, `RefreshToken<TId>` (rotasyon ve 
 `EmailAuthenticator<TId>`, `UserPasskey<TId>`, `UserLogin<TId>` (bağlı Google/Microsoft/GitHub hesabı),
 `OperationClaim<TId>` + `RoleOperationClaim<TId>` + `UserOperationClaim<TId>`.
 
-Tabloları kurmak için (`Can.Core.Security.EntityFrameworkCore`):
+Tabloları kurmak için (`CanFx.Security.EntityFrameworkCore`):
 
 ```csharp
 protected override void ConfigureModel(ModelBuilder modelBuilder) =>
@@ -973,7 +986,7 @@ yeni cihazdan giriş, şifre değişimi, oturum kapatma... Olaylar loga, metriğ
 uygulama kendi sink'iyle e-posta bildirimi ya da SIEM'e aktarım ekler.
 
 ```csharp
-builder.Services.AddCanSecurityEvents();                          // log (Can.Core.Security.Events) + can.security.events metriği
+builder.Services.AddCanSecurityEvents();                          // log (CanFx.Security.Events) + can.security.events metriği
 builder.Services.AddCanSecurityEventStore<AppDbContext>();        // isteğe bağlı: SecurityEvents tablosu
 builder.Services.AddSingleton<ISecurityEventSink, NewDeviceMailer>(); // isteğe bağlı: kendi sink'in
 
@@ -1112,7 +1125,7 @@ if (!result.Succeeded) ...               // geçersiz numara, boş/uzun metin, s
 | Numara | `PhoneNumbers.TryNormalize`: `0532 123 45 67`, `+90 532...`, `0090...`, `532...` → `+905321234567` (E.164); `Mask` loglar için |
 | Parça hesabı | `SmsText.Analyze`: GSM-7 160/153, UCS-2 70/67 karakter; `€ [ ] { }` GSM'de 2 sayılır. `ç ğ ı ş İ` GSM'de yok → metin UCS-2 olur |
 | Hatalar | Doğrulama ve sağlayıcının reddi `SmsSendResult.Failed`; ağ hatası, 5xx ve 429 `SmsException` (tekrar denenebilir) |
-| Gözlemlenebilirlik | `Can.Core.Sms` span'ı; `can.sms.messages` (sent/rejected/failed) ve maliyet için `can.sms.segments`. Numara ve metin etiketlenmez |
+| Gözlemlenebilirlik | `CanFx.Sms` span'ı; `can.sms.messages` (sent/rejected/failed) ve maliyet için `can.sms.segments`. Numara ve metin etiketlenmez |
 
 Yeni bir sağlayıcı `HttpSmsProvider`'dan türetilir: yalnızca isteği kurmak (`CreateRequest`) ve yanıtı okumak
 (`ReadResponseAsync`) yazılır; zaman aşımı, bağlantı ve sunucu hataları temel sınıftadır.
@@ -1180,7 +1193,7 @@ birden fazla sunucu aynı önbelleği paylaşır, uygulama yeniden başlasa da �
 ## Çok sunucu: Redis (scale-out)
 
 Uygulama birden çok sunucuda (ya da konteynerde) çalışınca belleğinde tuttuğu bazı şeyler ortak olmalı. Önbellek
-`Can.Core.Caching.Redis`'te; geri kalanı `Can.Core.Redis.ScaleOut`'ta (tek Redis bağlantısı paylaşılır, özellikler tek tek açılır):
+`CanFx.Caching.Redis`'te; geri kalanı `CanFx.Redis.ScaleOut`'ta (tek Redis bağlantısı paylaşılır, özellikler tek tek açılır):
 
 ```csharp
 builder.Services.AddCanRedisScaleOut(o =>
@@ -1213,7 +1226,7 @@ if (handle is null)
 
 StackExchange.Redis 3.x çıktı, ancak Microsoft'un Redis paketleri (önbellek, SignalR) 2.x'e göre derlendiği için en son
 2.x (2.13) kullanılıyor; Microsoft 3.x'e geçince yükseltilir. Gerçek Redis'e karşı testler:
-`CAN_REDIS_URL=localhost:6379 dotnet test --project tests/Can.Core.Redis.ScaleOut.Tests`.
+`CAN_REDIS_URL=localhost:6379 dotnet test --project tests/CanFx.Redis.ScaleOut.Tests`.
 
 ## Localization
 
@@ -1291,7 +1304,7 @@ SearchResult<ProductDocument> result = await products.SearchAsync(new SearchQuer
 | Derin sayfalama | `(Page + 1) × Size` en fazla 10.000 (`index.max_result_window`) |
 | Dayanıklılık | `services.AddHttpClient(ElasticsearchClient.HttpClientName).AddCanStandardResilienceHandler()` |
 | Özel istekler | `ElasticsearchClient.SendAsync(HttpMethod.Post, "/products/_search", jsonBody)`: alias, reindex, özel DSL |
-| Gözlemlenebilirlik | `Can.Core.Search` span'ları (`search.search products`); HTTP çağrıları altında |
+| Gözlemlenebilirlik | `CanFx.Search` span'ları (`search.search products`); HTTP çağrıları altında |
 
 Veritabanı esas kaynaktır, dizin bir kopyadır: entity değişince dizini güncelle (domain event handler'ı), arama
 sonucundaki kimliklerle güncel veriyi veritabanından oku ve dizini istendiğinde baştan kurabil (`DeleteAllAsync` +
@@ -1307,13 +1320,13 @@ da sabit düğüm listesi); `application/vnd.elasticsearch+json; compatible-with
 ile de çalışsın diye).
 
 Gerçek sunucuya karşı entegrasyon testi:
-`CAN_ELASTICSEARCH_URL=http://localhost:9200 dotnet test --project tests/Can.Core.Search.Tests`.
+`CAN_ELASTICSEARCH_URL=http://localhost:9200 dotnet test --project tests/CanFx.Search.Tests`.
 
 ## Raporlama
 
 Son kullanıcının kendi raporunu kurduğu pivot raporlama (DevExpress PivotGrid / Excel PivotTable benzeri). Üç .NET
-paketi ve bir React paketi: motor (`Can.Core.Reporting`), kaydedilmiş raporlar (`.EntityFrameworkCore`), HTTP uçları
-(`.AspNetCore`) ve arayüz (`clients/reporting-react`, npm adı `@can-core/reporting-react`). Dış paket yok: Excel
+paketi ve bir React paketi: motor (`CanFx.Reporting`), kaydedilmiş raporlar (`.EntityFrameworkCore`), HTTP uçları
+(`.AspNetCore`) ve arayüz (`clients/reporting-react`, npm adı `@canfx/reporting-react`). Dış paket yok: Excel
 (OpenXML) ve PDF dosyaları elle yazılır.
 
 ```csharp
@@ -1404,8 +1417,8 @@ builder.Services.AddScoped<IReportAccessPolicy>(sp => new DelegateReportAccessPo
 **Arayüz.** `clients/reporting-react` her React projesinde kullanılır; bağımlılığı yalnızca React:
 
 ```tsx
-import { createReportingClient, ReportDesigner } from "@can-core/reporting-react";
-import "@can-core/reporting-react/styles.css";
+import { createReportingClient, ReportDesigner } from "@canfx/reporting-react";
+import "@canfx/reporting-react/styles.css";
 
 const client = createReportingClient({ baseUrl: "/api/reporting" }); // bileşen dışında bir kez
 <ReportDesigner client={client} locale="tr-TR" onNotify={(m, kind) => toast[kind](m)} />
@@ -1415,8 +1428,8 @@ Sürükle-bırak tasarımcı (alan listesi, dört bölge, öğe ayarları, hesap
 tablo, SVG grafikler (sütun, çizgi, pasta), Excel/PDF/CSV, kaydet/paylaş. `PivotTable` ve `ReportChart` tek başına da
 kullanılır (ör. panoda kayıtlı bir raporun sonucu). Metinler `labels` ile çevrilir; renkler `--cr-*` CSS
 değişkenleriyle uygulamanın temasına bağlanır. Kurulum: uygulamanın `package.json`'ına
-`"@can-core/reporting-react": "file:<yol>/clients/reporting-react"` ve `.npmrc`'ye `install-links=true` (paket kopya
-olarak kurulur, React tek kopya kalır). Paket değişince `npm install @can-core/reporting-react`.
+`"@canfx/reporting-react": "file:<yol>/clients/reporting-react"` ve `.npmrc`'ye `install-links=true` (paket kopya
+olarak kurulur, React tek kopya kalır). Paket değişince `npm install @canfx/reporting-react`.
 
 ## Dosya depolama
 
@@ -1471,7 +1484,7 @@ builder.Services.AddCanSignalR();            // SignalR ASP.NET Core'un içinde:
 app.UseAuthentication();
 app.MapCanRealtimeHub();                     // /hubs/notifications, yalnızca giriş yapmış kullanıcılar
 
-// Application katmanı yalnızca soyutlamayı bilir (Can.Core.Realtime)
+// Application katmanı yalnızca soyutlamayı bilir (CanFx.Realtime)
 public sealed class NotifyWarehouse(IRealtimeNotifier realtime) : INotificationHandler<OrderPlaced>
 {
     public Task Handle(OrderPlaced e, CancellationToken ct) =>
@@ -1541,7 +1554,7 @@ await start();
   `Microsoft.AspNetCore.Http.Connections`) ve hub span'leri (`Microsoft.AspNetCore.SignalR.Server`) de dışa aktarılır.
 - Mesaj taşıyıcıdır, depolama değil: istemci bağlı değilse kaybolur, gerçek durum veritabanındadır. Mesaja id ve
   durum koy, büyük nesne ya da kişisel veri koyma. Birden fazla sunucuda backplane gerekir
-  (`Can.Core.Redis.ScaleOut`: `AddCanSignalR().AddCanRedisBackplane()`).
+  (`CanFx.Redis.ScaleOut`: `AddCanSignalR().AddCanRedisBackplane()`).
 
 ## Dayanıklılık (resilience)
 
@@ -1582,9 +1595,9 @@ provider.GetPipeline("payments");
 services.AddHttpClient<PaymentClient>().AddCanStandardResilienceHandler(o => o.Retry.MaxRetryAttempts = 5);
 ```
 
-`tests/Can.Core.Resilience.Comparison.Tests` aynı senaryoları Polly ile de çalıştırıp davranışı karşılaştırır
+`tests/CanFx.Resilience.Comparison.Tests` aynı senaryoları Polly ile de çalıştırıp davranışı karşılaştırır
 (deneme sayısı, bekleme süreleri, devre durum geçişleri, exception tipleri) ve kaba bir ek yük ölçümü yazar
-(ölçümü anlamlı yapmak için Release: `dotnet test --project tests/Can.Core.Resilience.Comparison.Tests -c Release --show-live-output on`).
+(ölçümü anlamlı yapmak için Release: `dotnet test --project tests/CanFx.Resilience.Comparison.Tests -c Release --show-live-output on`).
 Polly yalnızca bu test projesindedir.
 
 Strateji sırası önemlidir: ilk eklenen en dıştadır. Timeout iyimserdir: iş, verilen `CancellationToken`'a uymalı.

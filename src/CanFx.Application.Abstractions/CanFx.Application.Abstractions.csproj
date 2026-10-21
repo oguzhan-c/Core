@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Application</RootNamespace>
+    <Description>Uygulama katmanının altyapıdan beklediği ortak sözleşmeler: ICurrentUser, ICurrentTenant, istek işaretleyicileri ve hata tipleri. Yalnızca CanFx.Domain'e bağımlıdır.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Domain\CanFx.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

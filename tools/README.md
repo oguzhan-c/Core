@@ -1,12 +1,16 @@
 # can-gen
 
-Can.Core şablonuyla oluşturulmuş çözümlerde entity'den CRUD (CQRS) kodu üretir.
+CanFx şablonuyla oluşturulmuş çözümlerde entity'den CRUD (CQRS) kodu üretir.
 
-## Kurulum (yerel)
+## Kurulum
 
 ```bash
-build/pack-local.sh --install      # Core + can-gen + şablon, aynı yeni yerel sürümle paketlenir ve kurulur
+dotnet tool install -g CanFx.Generator.Cli      # nuget.org
+dotnet new install CanFx.Templates              # can-gen new bu şablonu kullanır
 ```
+
+Yayınlanmamış (yerel) sürümle denemek için: `build/pack-local.sh --install` (Core + can-gen + şablon aynı yeni yerel
+sürümle paketlenir ve kurulur; projeyi `can-gen new MyShop --feed <repo>/artifacts/packages` ile oluştur).
 
 ## Kullanım
 
@@ -33,4 +37,4 @@ Core, can-gen ve şablon aynı sürümle paketlenir: `build/pack-local.sh --inst
 
 ## Rider eklentisi
 
-`tools/rider-plugin`: Rider'da sağ tık → Can.Core: Generate CRUD. Derleme ve kurulum: [rider-plugin/README.md](rider-plugin/README.md).
+`tools/rider-plugin`: Rider'da sağ tık → CanFx: Generate CRUD. Derleme ve kurulum: [rider-plugin/README.md](rider-plugin/README.md).

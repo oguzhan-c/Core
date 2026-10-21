@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.Mailing.MailKit</RootNamespace>
+    <Description>IEmailSender'ın MailKit (MIT) ile SMTP implementasyonu ve geliştirme ortamı için e-postaları .eml dosyası olarak klasöre yazan gönderici.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanFx.Mailing\CanFx.Mailing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" />
+    <!-- Güvenlik açığı olan geçişli sürümün yerine düzeltilmiş sürüm (Directory.Packages.props) -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.Mailing.Tests" />
+  </ItemGroup>
+
+</Project>
