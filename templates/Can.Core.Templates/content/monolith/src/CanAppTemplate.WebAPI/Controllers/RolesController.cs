@@ -3,7 +3,6 @@ using Can.Core.Application.Responses;
 using Can.Core.WebApi.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using CanAppTemplate.Application.Features.OperationClaims.Queries.GetList;
-using CanAppTemplate.Application.Features.Roles.Commands;
 using CanAppTemplate.Application.Features.Roles.Commands.Create;
 using CanAppTemplate.Application.Features.Roles.Commands.Delete;
 using CanAppTemplate.Application.Features.Roles.Commands.GrantPermissions;
@@ -63,7 +62,7 @@ public class RolesController : BaseController
     public async Task<IActionResult> GrantPermissions([FromRoute] IdentityKey id, [FromBody] GrantRolePermissionsCommand command, CancellationToken cancellationToken)
     {
         command.RoleId = id;
-        RolePermissionsResponse response = await Mediator.Send(command, cancellationToken);
+        GrantedRolePermissionsResponse response = await Mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
@@ -72,7 +71,7 @@ public class RolesController : BaseController
     public async Task<IActionResult> RevokePermissions([FromRoute] IdentityKey id, [FromBody] RevokeRolePermissionsCommand command, CancellationToken cancellationToken)
     {
         command.RoleId = id;
-        RolePermissionsResponse response = await Mediator.Send(command, cancellationToken);
+        RevokedRolePermissionsResponse response = await Mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
@@ -80,7 +79,7 @@ public class RolesController : BaseController
     [HttpGet("operation-claims")]
     public async Task<IActionResult> GetOperationClaims([FromQuery] bool includeDeprecated, CancellationToken cancellationToken)
     {
-        IReadOnlyList<OperationClaimDto> response = await Mediator.Send(new GetListOperationClaimQuery { IncludeDeprecated = includeDeprecated }, cancellationToken);
+        IReadOnlyList<GetListOperationClaimListItemDto> response = await Mediator.Send(new GetListOperationClaimQuery { IncludeDeprecated = includeDeprecated }, cancellationToken);
         return Ok(response);
     }
 }

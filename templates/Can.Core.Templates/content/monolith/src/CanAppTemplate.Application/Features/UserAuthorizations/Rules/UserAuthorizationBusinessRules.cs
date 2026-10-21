@@ -25,4 +25,12 @@ public sealed class UserAuthorizationBusinessRules : BaseBusinessRules
     /// <summary>Bu rolü taşıyan kullanıcı sayısı (tenant filtresi uygulanır: tenant içinde son yönetici korunur).</summary>
     public Task<int> CountUsersInRole(IdentityKey roleId, CancellationToken cancellationToken = default) =>
         _userRepository.CountAsync(u => u.UserRoles.Any(ur => ur.RoleId == roleId), cancellationToken: cancellationToken);
+
+    /// <summary>Kullanıcının doğrudan verilmiş yetki adları (<see cref="UserIdShouldExistWhenSelected"/> ile yüklenmiş olmalı).</summary>
+    public static IReadOnlyList<string> DirectPermissionNamesOf(AppUser user) =>
+        user.OperationClaims
+            .Where(uc => uc.OperationClaim is not null)
+            .Select(uc => uc.OperationClaim!.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 }

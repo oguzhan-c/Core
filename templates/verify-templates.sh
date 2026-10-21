@@ -127,20 +127,38 @@ generate Minimal
 generate Full
 
 # ---------------------------------------------------------------- standart
-# Şablonla gelen (Auth, Account, Roles ...) ve can-gen'in ürettiği (Brands ...) özellikler aynı kurala uymalı:
-# handler'lar hata için exception fırlatır (Rules), Result<T> dönmez.
+# Şablonla gelen (Auth, Account, Roles ...) ve can-gen'in ürettiği (Brands ...) özellikler aynı kurala uyar:
+#   Features/{Özellik}/Constants/ + Rules/  (mesajlar, yetkiler, iş kuralları)
+#   Commands|Queries/{İstek}/  {İstek}.cs (istek + handler), {İstek}Validator.cs, {...}Response.cs / {...}Dto.cs
+#   hatalar exception (Rules) ile; istekler Result<T> dönmez.
 standards() {
   local name="$1"
   local features="$OUT/$name/src/$name.Application/Features"
   [[ -d "$features" ]] || return
-  local bad
-  bad="$(grep -rlE 'IRequest<Result<|Task<Result<|IRequestHandler<[^>]*Result<' --include=*.cs "$features" || true)"
-  if [[ -n "$bad" ]]; then
-    step "HATA: $name: Features altında Result dönen istek var (exception + Rules kullanılmalı):"
-    echo "$bad" | tee -a "$LOG"
+  local problems=""
+  local f d
+
+  f="$(grep -rlE 'IRequest<Result<|Task<Result<|IRequestHandler<[^>]*Result<' --include=*.cs "$features" || true)"
+  [[ -n "$f" ]] && problems+=$'\n  Result dönen istek (exception + Rules kullanılmalı):\n'"$f"
+
+  for f in $(grep -rlE 'AbstractValidator<' --include=*.cs "$features"); do
+    grep -qE 'IRequest(<|,|[[:space:]]|$)' "$f" && problems+=$'\n  Validator istek dosyasında (ayrı {İstek}Validator.cs olmalı): '"$f"
+  done
+
+  for f in $(grep -rlE 'IRequest(<|,|[[:space:]]|$)' --include=*.cs "$features"); do
+    grep -qE '(record|class) [A-Za-z0-9_]+(Response|Dto)\b' "$f" && problems+=$'\n  Yanıt/DTO istek dosyasında (ayrı dosya olmalı): '"$f"
+  done
+
+  for d in "$features"/*/; do
+    [[ -d "$d/Constants" && -d "$d/Rules" ]] || problems+=$'\n  Constants/ ya da Rules/ eksik: '"$d"
+  done
+
+  if [[ -n "$problems" ]]; then
+    step "HATA: $name standarda uymuyor:"
+    echo "$problems" | tee -a "$LOG"
     failed=1
   else
-    step "TAMAM: $name standarda uygun (Features'ta Result yok)"
+    step "TAMAM: $name standarda uygun (Constants/Rules, ayrı validator ve yanıt dosyaları, Result yok)"
   fi
 }
 standards Minimal

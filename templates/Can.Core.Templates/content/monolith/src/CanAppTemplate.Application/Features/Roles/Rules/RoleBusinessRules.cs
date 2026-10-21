@@ -10,24 +10,21 @@ using CanAppTemplate.Application.Features.Roles.Constants;
 namespace CanAppTemplate.Application.Features.Roles.Rules;
 
 /// <summary>
-/// Rol ve yetki kataloğu kuralları. Yetki YÜKSELTME kuralları (alt küme, kendini değiştirememe, sistem rolleri, son
-/// yönetici) Core'daki <c>IAccessGrantGuard</c>'dadır; burada kayıtların varlığı ve tutarlılığı kontrol edilir.
+/// Rol kuralları: kayıtların varlığı ve tutarlılığı. Yetki YÜKSELTME kuralları (alt küme, kendini değiştirememe, sistem
+/// rolleri, son yönetici) Core'daki <c>IAccessGrantGuard</c>'dadır; yetki kataloğu kuralları <c>OperationClaimBusinessRules</c>'ta.
 /// </summary>
 public sealed class RoleBusinessRules : BaseBusinessRules
 {
     private readonly IRepository<Role<IdentityKey>, IdentityKey> _roleRepository;
-    private readonly IRepository<OperationClaim<IdentityKey>, IdentityKey> _operationClaimRepository;
     private readonly IRepository<UserRole<IdentityKey>, IdentityKey> _userRoleRepository;
     private readonly ICurrentTenant _currentTenant;
 
     public RoleBusinessRules(
         IRepository<Role<IdentityKey>, IdentityKey> roleRepository,
-        IRepository<OperationClaim<IdentityKey>, IdentityKey> operationClaimRepository,
         IRepository<UserRole<IdentityKey>, IdentityKey> userRoleRepository,
         ICurrentTenant currentTenant)
     {
         _roleRepository = roleRepository;
-        _operationClaimRepository = operationClaimRepository;
         _userRoleRepository = userRoleRepository;
         _currentTenant = currentTenant;
     }
@@ -60,26 +57,6 @@ public sealed class RoleBusinessRules : BaseBusinessRules
     {
         if (await _userRoleRepository.AnyAsync(ur => ur.RoleId == roleId, cancellationToken: cancellationToken))
             throw new ConflictException(RolesBusinessMessages.RoleInUse) { Code = RolesBusinessMessages.RoleInUseCode };
-    }
-
-    /// <summary>Katalogdaki yetkileri getirir; biri yoksa 404, verilirken kullanımdan kalkmışsa 400.</summary>
-    public async Task<IReadOnlyList<OperationClaim<IdentityKey>>> OperationClaimsShouldExist(
-        IReadOnlyCollection<IdentityKey> ids,
-        bool allowDeprecated,
-        CancellationToken cancellationToken = default)
-    {
-        IdentityKey[] distinct = ids.Distinct().ToArray();
-        List<OperationClaim<IdentityKey>> claims = await _operationClaimRepository.Query(enableTracking: false)
-            .Where(c => distinct.Contains(c.Id))
-            .ToListAsync(cancellationToken);
-
-        if (claims.Count != distinct.Length)
-            throw new NotFoundException(RolesBusinessMessages.OperationClaimNotExists) { Code = RolesBusinessMessages.OperationClaimNotExistsCode };
-
-        if (!allowDeprecated && claims.Any(c => c.IsDeprecated))
-            throw new BusinessException(RolesBusinessMessages.OperationClaimDeprecated) { Code = RolesBusinessMessages.OperationClaimDeprecatedCode };
-
-        return claims;
     }
 
     /// <summary>Rolün etkin yetki adları (<see cref="IncludeOperationClaims"/> ile yüklenmiş olmalı).</summary>

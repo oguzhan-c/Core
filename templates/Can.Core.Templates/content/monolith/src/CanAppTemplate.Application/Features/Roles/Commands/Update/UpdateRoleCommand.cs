@@ -4,6 +4,7 @@ using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using Can.Core.Security.Authorization;
 using Can.Core.Security.Entities;
+using CanAppTemplate.Application.Features.Roles.Constants;
 using CanAppTemplate.Application.Features.Roles.Rules;
 
 namespace CanAppTemplate.Application.Features.Roles.Commands.Update;
@@ -17,7 +18,7 @@ public sealed class UpdateRoleCommand : IRequest<UpdatedRoleResponse>, ISecuredR
     public string? Description { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesWrite];
+    public IReadOnlyCollection<string> Permissions => [RolesOperationClaims.Write];
 }
 
 public sealed class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, UpdatedRoleResponse>

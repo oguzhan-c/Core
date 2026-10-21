@@ -19,21 +19,21 @@ public class UserAuthorizationsController : BaseController
     [HttpGet("authorization")]
     public async Task<IActionResult> Get([FromRoute] IdentityKey userId, CancellationToken cancellationToken)
     {
-        UserAuthorizationResponse response = await Mediator.Send(new GetUserAuthorizationQuery { UserId = userId }, cancellationToken);
+        GetByUserIdUserAuthorizationResponse response = await Mediator.Send(new GetByUserIdUserAuthorizationQuery { UserId = userId }, cancellationToken);
         return Ok(response);
     }
 
     [HttpPost("roles/{roleId}")]
     public async Task<IActionResult> AssignRole([FromRoute] IdentityKey userId, [FromRoute] IdentityKey roleId, CancellationToken cancellationToken)
     {
-        UserAuthorizationResponse response = await Mediator.Send(new AssignUserRoleCommand { UserId = userId, RoleId = roleId }, cancellationToken);
+        AssignedUserRoleResponse response = await Mediator.Send(new AssignUserRoleCommand { UserId = userId, RoleId = roleId }, cancellationToken);
         return Ok(response);
     }
 
     [HttpDelete("roles/{roleId}")]
     public async Task<IActionResult> RemoveRole([FromRoute] IdentityKey userId, [FromRoute] IdentityKey roleId, CancellationToken cancellationToken)
     {
-        UserAuthorizationResponse response = await Mediator.Send(new RemoveUserRoleCommand { UserId = userId, RoleId = roleId }, cancellationToken);
+        RemovedUserRoleResponse response = await Mediator.Send(new RemoveUserRoleCommand { UserId = userId, RoleId = roleId }, cancellationToken);
         return Ok(response);
     }
 
@@ -42,7 +42,7 @@ public class UserAuthorizationsController : BaseController
     public async Task<IActionResult> GrantPermissions([FromRoute] IdentityKey userId, [FromBody] GrantUserPermissionsCommand command, CancellationToken cancellationToken)
     {
         command.UserId = userId;
-        UserAuthorizationResponse response = await Mediator.Send(command, cancellationToken);
+        GrantedUserPermissionsResponse response = await Mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
@@ -51,7 +51,7 @@ public class UserAuthorizationsController : BaseController
     public async Task<IActionResult> RevokePermissions([FromRoute] IdentityKey userId, [FromBody] RevokeUserPermissionsCommand command, CancellationToken cancellationToken)
     {
         command.UserId = userId;
-        UserAuthorizationResponse response = await Mediator.Send(command, cancellationToken);
+        RevokedUserPermissionsResponse response = await Mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 }

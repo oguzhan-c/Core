@@ -1,5 +1,5 @@
-using FluentValidation;
 using Can.Core.Security.Entities;
+using FluentValidation;
 
 namespace CanAppTemplate.Application.Features.Roles.Commands.Update;
 

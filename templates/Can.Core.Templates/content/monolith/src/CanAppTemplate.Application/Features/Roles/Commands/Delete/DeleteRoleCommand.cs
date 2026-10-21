@@ -4,6 +4,7 @@ using Can.Core.Mediator;
 using Can.Core.Persistence.Repositories;
 using Can.Core.Security.Authorization;
 using Can.Core.Security.Entities;
+using CanAppTemplate.Application.Features.Roles.Constants;
 using CanAppTemplate.Application.Features.Roles.Rules;
 
 namespace CanAppTemplate.Application.Features.Roles.Commands.Delete;
@@ -13,7 +14,7 @@ public sealed class DeleteRoleCommand : IRequest<DeletedRoleResponse>, ISecuredR
     public IdentityKey Id { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesWrite];
+    public IReadOnlyCollection<string> Permissions => [RolesOperationClaims.Write];
 }
 
 public sealed class DeleteRoleCommandHandler : IRequestHandler<DeleteRoleCommand, DeletedRoleResponse>

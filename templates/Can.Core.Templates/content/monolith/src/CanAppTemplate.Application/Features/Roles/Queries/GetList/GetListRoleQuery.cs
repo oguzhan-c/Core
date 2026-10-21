@@ -4,11 +4,9 @@ using Can.Core.Application.Responses;
 using Can.Core.Mediator;
 using Can.Core.Persistence.Paging;
 using Can.Core.Persistence.Repositories;
-using Can.Core.Security.Authorization;
 using Can.Core.Security.Entities;
-using FluentValidation;
+using CanAppTemplate.Application.Features.Roles.Constants;
 using CanAppTemplate.Application.Features.Roles.Rules;
-using CanAppTemplate.Application.Services.Validation;
 
 namespace CanAppTemplate.Application.Features.Roles.Queries.GetList;
 
@@ -17,14 +15,7 @@ public sealed class GetListRoleQuery : IRequest<GetListResponse<GetListRoleListI
     public PageRequest PageRequest { get; set; } = new();
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesRead];
-}
-
-public sealed record GetListRoleListItemDto(IdentityKey Id, string Name, string? Description, bool IsSystem, int PermissionCount);
-
-public sealed class GetListRoleQueryValidator : AbstractValidator<GetListRoleQuery>
-{
-    public GetListRoleQueryValidator() => RuleFor(x => x.PageRequest).ValidPage();
+    public IReadOnlyCollection<string> Permissions => [RolesOperationClaims.Read];
 }
 
 public sealed class GetListRoleQueryHandler : IRequestHandler<GetListRoleQuery, GetListResponse<GetListRoleListItemDto>>
