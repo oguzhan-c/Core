@@ -17,16 +17,16 @@ namespace CanAppTemplate.Application.Features.Auth.Commands.LinkExternalLogin;
 /// Giriş yapmış kullanıcının hesabına dış hesap bağlar. Kullanıcı, sağlayıcıya giden şifreli state'ten gelir (dönüşte
 /// oturum cookie'si gönderilmez); istemciden alınmaz.
 /// </summary>
-public sealed record LinkExternalLoginCommand(Guid UserId, string Provider, string ProviderDisplayName, string ProviderKey)
+public sealed record LinkExternalLoginCommand(IdentityKey UserId, string Provider, string ProviderDisplayName, string ProviderKey)
     : IRequest<Result<Success>>, ITransactionalRequest, ILoggableRequest;
 
 public sealed class LinkExternalLoginCommandHandler : IRequestHandler<LinkExternalLoginCommand, Result<Success>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly ISecurityEvents _events;
     private readonly TimeProvider _timeProvider;
 
-    public LinkExternalLoginCommandHandler(IRepository<AppUser, Guid> users, ISecurityEvents events, TimeProvider timeProvider)
+    public LinkExternalLoginCommandHandler(IRepository<AppUser, IdentityKey> users, ISecurityEvents events, TimeProvider timeProvider)
     {
         _users = users;
         _events = events;

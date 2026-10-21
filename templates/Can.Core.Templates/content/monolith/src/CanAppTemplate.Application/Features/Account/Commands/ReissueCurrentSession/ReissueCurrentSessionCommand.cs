@@ -23,8 +23,8 @@ public sealed class ReissueCurrentSessionCommandHandler : IRequestHandler<Reissu
 {
     private readonly ICurrentUser _currentUser;
     private readonly ITokenService _tokens;
-    private readonly IRepository<RefreshToken<Guid>, Guid> _refreshTokens;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<RefreshToken<IdentityKey>, IdentityKey> _refreshTokens;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly AuthTokenIssuer _tokenIssuer;
     private readonly ISecurityStampValidator? _stampValidator;
     private readonly IUnitOfWork _unitOfWork;
@@ -33,8 +33,8 @@ public sealed class ReissueCurrentSessionCommandHandler : IRequestHandler<Reissu
     public ReissueCurrentSessionCommandHandler(
         ICurrentUser currentUser,
         ITokenService tokens,
-        IRepository<RefreshToken<Guid>, Guid> refreshTokens,
-        IRepository<AppUser, Guid> users,
+        IRepository<RefreshToken<IdentityKey>, IdentityKey> refreshTokens,
+        IRepository<AppUser, IdentityKey> users,
         AuthTokenIssuer tokenIssuer,
         IEnumerable<ISecurityStampValidator> stampValidators,
         IUnitOfWork unitOfWork,
@@ -52,7 +52,7 @@ public sealed class ReissueCurrentSessionCommandHandler : IRequestHandler<Reissu
 
     public async Task<Result<AuthResult>> Handle(ReissueCurrentSessionCommand request, CancellationToken cancellationToken)
     {
-        Result<Guid> userId = _currentUser.UserId();
+        Result<IdentityKey> userId = _currentUser.UserId();
         if (userId.IsFailure)
             return userId.Errors;
 
@@ -63,7 +63,7 @@ public sealed class ReissueCurrentSessionCommandHandler : IRequestHandler<Reissu
             return AuthErrors.SessionExpired;
 
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
-        RefreshToken<Guid>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash && t.UserId == userId.Value, cancellationToken: cancellationToken);
+        RefreshToken<IdentityKey>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash && t.UserId == userId.Value, cancellationToken: cancellationToken);
         if (token is null || !token.IsActive(_timeProvider.GetUtcNow()))
             return AuthErrors.SessionExpired;
 

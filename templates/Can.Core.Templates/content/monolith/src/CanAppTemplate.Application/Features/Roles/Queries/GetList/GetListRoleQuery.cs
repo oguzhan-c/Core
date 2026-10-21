@@ -20,7 +20,7 @@ public sealed class GetListRoleQuery : IRequest<GetListResponse<GetListRoleListI
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesRead];
 }
 
-public sealed record GetListRoleListItemDto(Guid Id, string Name, string? Description, bool IsSystem, int PermissionCount);
+public sealed record GetListRoleListItemDto(IdentityKey Id, string Name, string? Description, bool IsSystem, int PermissionCount);
 
 public sealed class GetListRoleQueryValidator : AbstractValidator<GetListRoleQuery>
 {
@@ -29,13 +29,13 @@ public sealed class GetListRoleQueryValidator : AbstractValidator<GetListRoleQue
 
 public sealed class GetListRoleQueryHandler : IRequestHandler<GetListRoleQuery, GetListResponse<GetListRoleListItemDto>>
 {
-    private readonly IRepository<Role<Guid>, Guid> _roleRepository;
+    private readonly IRepository<Role<IdentityKey>, IdentityKey> _roleRepository;
 
-    public GetListRoleQueryHandler(IRepository<Role<Guid>, Guid> roleRepository) => _roleRepository = roleRepository;
+    public GetListRoleQueryHandler(IRepository<Role<IdentityKey>, IdentityKey> roleRepository) => _roleRepository = roleRepository;
 
     public async Task<GetListResponse<GetListRoleListItemDto>> Handle(GetListRoleQuery request, CancellationToken cancellationToken)
     {
-        IPaginate<Role<Guid>> roles = await _roleRepository.GetListAsync(
+        IPaginate<Role<IdentityKey>> roles = await _roleRepository.GetListAsync(
             orderBy: q => q.OrderBy(r => r.Name),
             include: RoleBusinessRules.IncludeOperationClaims,
             index: request.PageRequest.Page,

@@ -9,16 +9,16 @@ namespace CanAppTemplate.Application.Features.UserAuthorizations.Queries.GetByUs
 /// <summary>Kullanıcının rolleri, doğrudan yetkileri ve etkin yetkileri.</summary>
 public sealed class GetUserAuthorizationQuery : IRequest<UserAuthorizationResponse>, ISecuredRequest
 {
-    public Guid UserId { get; set; }
+    public IdentityKey UserId { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.UsersRead];
 }
 
-public sealed record UserAuthorizationItem(Guid Id, string Name);
+public sealed record UserAuthorizationItem(IdentityKey Id, string Name);
 
 public sealed record UserAuthorizationResponse(
-    Guid UserId,
+    IdentityKey UserId,
     string Email,
     IReadOnlyList<UserAuthorizationItem> Roles,
     IReadOnlyList<UserAuthorizationItem> DirectPermissions,

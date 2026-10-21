@@ -24,16 +24,16 @@ public sealed record DisableTwoFactorCommand(string Password) : IRequest<Result<
 public sealed class DisableTwoFactorCommandHandler : IRequestHandler<DisableTwoFactorCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<OtpAuthenticator<Guid>, Guid> _otpAuthenticators;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> _otpAuthenticators;
     private readonly Can.Core.Security.Hashing.IPasswordHasher _passwordHasher;
     private readonly RecoveryCodeIssuer _recoveryCodes;
     private readonly ISecurityEvents _events;
 
     public DisableTwoFactorCommandHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
-        IRepository<OtpAuthenticator<Guid>, Guid> otpAuthenticators,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> otpAuthenticators,
         Can.Core.Security.Hashing.IPasswordHasher passwordHasher,
         RecoveryCodeIssuer recoveryCodes,
         ISecurityEvents events)

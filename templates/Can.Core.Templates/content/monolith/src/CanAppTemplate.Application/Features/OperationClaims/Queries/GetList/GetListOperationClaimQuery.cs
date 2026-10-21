@@ -20,21 +20,21 @@ public sealed class GetListOperationClaimQuery : IRequest<IReadOnlyList<Operatio
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesRead];
 }
 
-public sealed record OperationClaimDto(Guid Id, string Name, string? Description, bool IsDeprecated)
+public sealed record OperationClaimDto(IdentityKey Id, string Name, string? Description, bool IsDeprecated)
 {
-    public static OperationClaimDto From(OperationClaim<Guid> claim) => new(claim.Id, claim.Name, claim.Description, claim.IsDeprecated);
+    public static OperationClaimDto From(OperationClaim<IdentityKey> claim) => new(claim.Id, claim.Name, claim.Description, claim.IsDeprecated);
 }
 
 public sealed class GetListOperationClaimQueryHandler : IRequestHandler<GetListOperationClaimQuery, IReadOnlyList<OperationClaimDto>>
 {
-    private readonly IRepository<OperationClaim<Guid>, Guid> _operationClaimRepository;
+    private readonly IRepository<OperationClaim<IdentityKey>, IdentityKey> _operationClaimRepository;
 
-    public GetListOperationClaimQueryHandler(IRepository<OperationClaim<Guid>, Guid> operationClaimRepository) =>
+    public GetListOperationClaimQueryHandler(IRepository<OperationClaim<IdentityKey>, IdentityKey> operationClaimRepository) =>
         _operationClaimRepository = operationClaimRepository;
 
     public async Task<IReadOnlyList<OperationClaimDto>> Handle(GetListOperationClaimQuery request, CancellationToken cancellationToken)
     {
-        IQueryable<OperationClaim<Guid>> query = _operationClaimRepository.Query(enableTracking: false);
+        IQueryable<OperationClaim<IdentityKey>> query = _operationClaimRepository.Query(enableTracking: false);
         if (!request.IncludeDeprecated)
             query = query.Where(c => !c.IsDeprecated);
 

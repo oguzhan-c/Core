@@ -65,21 +65,17 @@
 <!--#endif-->
 
     <!-- Veritabanı -->
-<!--#if (UsePostgreSql)-->
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-<!--#elif (UseSqlServer)-->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" />
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-<!--#else-->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
-<!--#endif-->
+    <!--
+      TODO(can-gen): Veritabanı sağlayıcısının sürümünü buraya ekle (Persistence projesine de PackageReference ekle):
+        PostgreSQL : Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3
+        SQL Server : Microsoft.EntityFrameworkCore.SqlServer 10.0.13 (+ System.Security.Cryptography.Pkcs 10.0.13, güvenlik yaması)
+        SQLite     : Microsoft.EntityFrameworkCore.Sqlite 10.0.13
+      Örnek: <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.13" />
-<!--#if (Hangfire && UsePostgreSql)-->
-    <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
-<!--#elif (Hangfire && UseSqlServer)-->
-    <PackageVersion Include="Hangfire.SqlServer" Version="1.8.25" />
-<!--#elif (Hangfire)-->
+<!--#if (Hangfire)-->
+    <!-- Hangfire deposu: başlangıçta bellek içi. Kalıcı depo için Hangfire.PostgreSql 1.21.1 ya da Hangfire.SqlServer 1.8.25 ekle. -->
     <PackageVersion Include="Hangfire.InMemory" Version="1.0.0" />
 <!--#endif-->
   </ItemGroup>

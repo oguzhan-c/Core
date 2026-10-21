@@ -8,7 +8,7 @@ using CanAppTemplate.Domain.Entities;
 namespace CanAppTemplate.Application.Services.AuthService;
 
 public sealed record UserProfileDto(
-    Guid Id,
+    IdentityKey Id,
     string Email,
     string FirstName,
     string LastName,
@@ -56,7 +56,7 @@ public sealed record AuthResult(AccessToken AccessToken, RefreshTokenValue Refre
 /// Şifre doğrulandı ama ikinci adım gerekiyor. İstemciye gönderilmez: WebApi şifreleyip kısa ömürlü HttpOnly cookie'ye
 /// yazar, ikinci adımda geri okur. <see cref="SecurityStamp"/> değiştiyse (şifre/2FA değişti) geçersizdir.
 /// </summary>
-public sealed record TwoFactorChallenge(Guid UserId, string SecurityStamp, AuthenticatorType Method);
+public sealed record TwoFactorChallenge(IdentityKey UserId, string SecurityStamp, AuthenticatorType Method);
 
 /// <summary>İkinci adım için istemciye gösterilecek bilgi.</summary>
 public sealed record TwoFactorPrompt(AuthenticatorType Method, string? Destination);

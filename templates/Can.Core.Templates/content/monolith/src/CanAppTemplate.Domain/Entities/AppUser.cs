@@ -2,13 +2,14 @@ using Can.Core.Domain.Auditing;
 using Can.Core.Domain.Results;
 using Can.Core.Security.Entities;
 using CanAppTemplate.Domain.Constants;
+using CanAppTemplate.Domain.Identity;
 
 namespace CanAppTemplate.Domain.Entities;
 
 /// <summary>Uygulamanın kullanıcısı (Can.Core.Security <see cref="User{TId}"/> üzerine ad, soyad, telefon).</summary>
 /// <remarks>TODO(can-gen): Uygulamaya özel kullanıcı alanlarını (ör. avatar, dil tercihi) buraya ekle.</remarks>
 [Audited]
-public sealed class AppUser : User<Guid>
+public sealed class AppUser : User<IdentityKey>
 {
     public const int NameMaxLength = 50;
     public const int PhoneMaxLength = 20;
@@ -20,7 +21,7 @@ public sealed class AppUser : User<Guid>
     }
 
     private AppUser(string email, string firstName, string lastName)
-        : base(Guid.CreateVersion7(), email)
+        : base(IdentityKeys.New(), email)
     {
         FirstName = Check.Clean(firstName);
         LastName = Check.Clean(lastName);
@@ -94,16 +95,16 @@ public sealed class AppUser : User<Guid>
     public void AssignToTenant(Guid? tenantId) => TenantId = tenantId;
 #endif
 
-    public void AddRole(Role<Guid> role)
+    public void AddRole(Role<IdentityKey> role)
     {
         ArgumentNullException.ThrowIfNull(role);
         if (UserRoles.All(r => r.RoleId != role.Id))
-            UserRoles.Add(new UserRole<Guid>(Id, role.Id));
+            UserRoles.Add(new UserRole<IdentityKey>(Id, role.Id));
     }
 
-    public void RemoveRole(Guid roleId)
+    public void RemoveRole(IdentityKey roleId)
     {
-        UserRole<Guid>? userRole = UserRoles.FirstOrDefault(r => r.RoleId == roleId);
+        UserRole<IdentityKey>? userRole = UserRoles.FirstOrDefault(r => r.RoleId == roleId);
         if (userRole is not null)
             UserRoles.Remove(userRole);
     }

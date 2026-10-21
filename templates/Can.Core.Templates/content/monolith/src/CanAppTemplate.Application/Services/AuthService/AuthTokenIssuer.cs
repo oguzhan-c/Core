@@ -10,12 +10,12 @@ namespace CanAppTemplate.Application.Services.AuthService;
 public sealed class AuthTokenIssuer
 {
     private readonly ITokenService _tokens;
-    private readonly IRepository<RefreshToken<Guid>, Guid> _refreshTokens;
+    private readonly IRepository<RefreshToken<IdentityKey>, IdentityKey> _refreshTokens;
     private readonly TimeProvider _timeProvider;
 
     public AuthTokenIssuer(
         ITokenService tokens,
-        IRepository<RefreshToken<Guid>, Guid> refreshTokens,
+        IRepository<RefreshToken<IdentityKey>, IdentityKey> refreshTokens,
         TimeProvider timeProvider)
     {
         _tokens = tokens;
@@ -28,7 +28,7 @@ public sealed class AuthTokenIssuer
     public async Task<AuthResult> IssueAsync(AppUser user, ClientInfo client, CancellationToken cancellationToken)
     {
         RefreshTokenValue refreshToken = _tokens.CreateRefreshToken();
-        var session = new RefreshToken<Guid>(
+        var session = new RefreshToken<IdentityKey>(
             user.Id,
             refreshToken,
             _timeProvider.GetUtcNow(),
@@ -42,10 +42,10 @@ public sealed class AuthTokenIssuer
     }
 
     /// <summary>Yenileme: eski refresh token "rotated" olarak kapanır, aynı oturum yeni token'la sürer.</summary>
-    public async Task<AuthResult> RotateAsync(AppUser user, RefreshToken<Guid> current, ClientInfo client, CancellationToken cancellationToken)
+    public async Task<AuthResult> RotateAsync(AppUser user, RefreshToken<IdentityKey> current, ClientInfo client, CancellationToken cancellationToken)
     {
         RefreshTokenValue refreshToken = _tokens.CreateRefreshToken();
-        RefreshToken<Guid> next = current.Rotate(refreshToken, _timeProvider.GetUtcNow(), client.IpAddress, user.SecurityStamp, client.UserAgent);
+        RefreshToken<IdentityKey> next = current.Rotate(refreshToken, _timeProvider.GetUtcNow(), client.IpAddress, user.SecurityStamp, client.UserAgent);
         await _refreshTokens.AddAsync(next, cancellationToken);
 
         return await CreateAsync(user, refreshToken, next.SessionId, cancellationToken);

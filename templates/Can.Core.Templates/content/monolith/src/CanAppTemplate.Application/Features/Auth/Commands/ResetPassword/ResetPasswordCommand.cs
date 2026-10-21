@@ -22,7 +22,7 @@ public sealed record ResetPasswordCommand(string Email, string Code, string NewP
 
 public sealed class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand, Result<Success>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IUserSessionService _sessions;
@@ -31,7 +31,7 @@ public sealed class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordC
     private readonly IUnitOfWork _unitOfWork;
 
     public ResetPasswordCommandHandler(
-        IRepository<AppUser, Guid> users,
+        IRepository<AppUser, IdentityKey> users,
         EmailVerification emailVerification,
         IPasswordHasher passwordHasher,
         IUserSessionService sessions,

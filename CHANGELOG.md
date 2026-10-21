@@ -18,6 +18,7 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ### Eklendi
 
+- **Şablon**: kimlik tablolarının anahtar tipi seçilebilir (`--IdKeyType guid|int|long`); tek yerde (`Directory.Build.props` → `IdentityKey` alias) tanımlı, kod her yerde `IdentityKey` / `IdentityKeys.New()` kullanır.
 - **Rol / yetki yönetimi**: `PermissionSet` (joker dahil alt küme kontrolü, ad doğrulama), yetki yükseltmeyi engelleyen
   `IAccessGrantGuard` (alt küme, kendini değiştirememe, sistem rolleri, son yönetici), `IdentityPermissions`
   ("yetki verme yetkisi"), sunucu taraflı rol/yetki çözümleme (`IUserAuthorizationStore`,

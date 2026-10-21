@@ -32,13 +32,7 @@
 <!--#endif-->
 <!--#if (Hangfire)-->
     <PackageReference Include="Can.Core.BackgroundJobs.Hangfire" />
-<!--#if (UsePostgreSql)-->
-    <PackageReference Include="Hangfire.PostgreSql" />
-<!--#elif (UseSqlServer)-->
-    <PackageReference Include="Hangfire.SqlServer" />
-<!--#else-->
     <PackageReference Include="Hangfire.InMemory" />
-<!--#endif-->
 <!--#endif-->
   </ItemGroup>
 

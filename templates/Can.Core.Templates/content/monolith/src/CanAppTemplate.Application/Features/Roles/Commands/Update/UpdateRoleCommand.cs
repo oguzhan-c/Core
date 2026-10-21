@@ -10,7 +10,7 @@ namespace CanAppTemplate.Application.Features.Roles.Commands.Update;
 
 public sealed class UpdateRoleCommand : IRequest<UpdatedRoleResponse>, ISecuredRequest, ILoggableRequest
 {
-    public Guid Id { get; set; }
+    public IdentityKey Id { get; set; }
 
     public string Name { get; set; } = string.Empty;
 
@@ -22,14 +22,14 @@ public sealed class UpdateRoleCommand : IRequest<UpdatedRoleResponse>, ISecuredR
 
 public sealed class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, UpdatedRoleResponse>
 {
-    private readonly IRepository<Role<Guid>, Guid> _roleRepository;
+    private readonly IRepository<Role<IdentityKey>, IdentityKey> _roleRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly RoleBusinessRules _roleBusinessRules;
     private readonly IAccessGrantGuard _accessGrantGuard;
     private readonly IUserAuthorizationStore _authorizationStore;
 
     public UpdateRoleCommandHandler(
-        IRepository<Role<Guid>, Guid> roleRepository,
+        IRepository<Role<IdentityKey>, IdentityKey> roleRepository,
         IUnitOfWork unitOfWork,
         RoleBusinessRules roleBusinessRules,
         IAccessGrantGuard accessGrantGuard,
@@ -45,7 +45,7 @@ public sealed class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand
     public async Task<UpdatedRoleResponse> Handle(UpdateRoleCommand request, CancellationToken cancellationToken)
     {
         _roleBusinessRules.RoleDefinitionsShouldBeManagedFromHost();
-        Role<Guid> role = await _roleBusinessRules.RoleIdShouldExistWhenSelected(request.Id, cancellationToken);
+        Role<IdentityKey> role = await _roleBusinessRules.RoleIdShouldExistWhenSelected(request.Id, cancellationToken);
 
         bool renamed = !string.Equals(role.Name, request.Name.Trim(), StringComparison.Ordinal);
         _accessGrantGuard.EnsureCanManageRole(role.Name, role.IsSystem, renamed ? RoleChange.Rename : RoleChange.Details);

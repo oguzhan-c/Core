@@ -16,8 +16,8 @@ public sealed class ExternalLoginCommandValidator : AbstractValidator<ExternalLo
 {
     public ExternalLoginCommandValidator()
     {
-        RuleFor(c => c.Provider).NotEmpty().MaximumLength(UserLogin<Guid>.ProviderMaxLength);
-        RuleFor(c => c.ProviderKey).NotEmpty().MaximumLength(UserLogin<Guid>.ProviderKeyMaxLength);
+        RuleFor(c => c.Provider).NotEmpty().MaximumLength(UserLogin<IdentityKey>.ProviderMaxLength);
+        RuleFor(c => c.ProviderKey).NotEmpty().MaximumLength(UserLogin<IdentityKey>.ProviderKeyMaxLength);
         RuleFor(c => c.Email).MaximumLength(256);
     }
 }

@@ -7,7 +7,7 @@ public sealed class CreateRoleCommandValidator : AbstractValidator<CreateRoleCom
 {
     public CreateRoleCommandValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(Role<Guid>.NameMaxLength);
-        RuleFor(x => x.Description).MaximumLength(Role<Guid>.DescriptionMaxLength);
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(Role<IdentityKey>.NameMaxLength);
+        RuleFor(x => x.Description).MaximumLength(Role<IdentityKey>.DescriptionMaxLength);
     }
 }

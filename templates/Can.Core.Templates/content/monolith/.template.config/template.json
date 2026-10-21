@@ -19,42 +19,6 @@
     "type": "solution"
   },
   "symbols": {
-    "Database": {
-      "type": "parameter",
-      "displayName": "Veritabanı",
-      "description": "EF Core sağlayıcısı.",
-      "datatype": "choice",
-      "choices": [
-        {
-          "choice": "postgresql",
-          "displayName": "PostgreSQL",
-          "description": "Npgsql (docker compose ile)"
-        },
-        {
-          "choice": "sqlserver",
-          "displayName": "SQL Server",
-          "description": "Microsoft.EntityFrameworkCore.SqlServer (docker compose ile)"
-        },
-        {
-          "choice": "sqlite",
-          "displayName": "SQLite",
-          "description": "Dosya veritabanı; kurulum gerekmez"
-        }
-      ],
-      "defaultValue": "postgresql"
-    },
-    "UsePostgreSql": {
-      "type": "computed",
-      "value": "(Database == \"postgresql\")"
-    },
-    "UseSqlServer": {
-      "type": "computed",
-      "value": "(Database == \"sqlserver\")"
-    },
-    "UseSqlite": {
-      "type": "computed",
-      "value": "(Database == \"sqlite\")"
-    },
     "MultiTenancy": {
       "type": "parameter",
       "displayName": "Tenancy: Multi-tenancy",
@@ -170,6 +134,32 @@
       "description": "İz ve metrikleri OTLP ile dışa aktarır (Aspire dashboard).",
       "datatype": "bool",
       "defaultValue": "false"
+    },
+    "IdKeyType": {
+      "type": "parameter",
+      "displayName": "Kimlik anahtar tipi",
+      "description": "Kullanıcı, rol, yetki, oturum gibi kimlik tablolarının Id tipi. Sonradan Directory.Build.props'taki tek satırdan değiştirilebilir.",
+      "datatype": "choice",
+      "defaultValue": "guid",
+      "choices": [
+        { "choice": "guid", "description": "Guid v7 (kodda üretilir, zamana göre sıralı)" },
+        { "choice": "int", "description": "int (veritabanı üretir)" },
+        { "choice": "long", "description": "long (veritabanı üretir)" }
+      ]
+    },
+    "IdKeyClrType": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "IDKEY_CLR_TYPE",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          { "condition": "(IdKeyType == \"int\")", "value": "System.Int32" },
+          { "condition": "(IdKeyType == \"long\")", "value": "System.Int64" },
+          { "condition": "", "value": "System.Guid" }
+        ]
+      }
     },
     "CanCoreVersion": {
       "type": "parameter",

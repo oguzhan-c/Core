@@ -4,6 +4,7 @@ using Can.Core.Persistence.Repositories;
 using Can.Core.Security.Authorization;
 using Can.Core.Security.Entities;
 using CanAppTemplate.Application.Features.Roles.Rules;
+using CanAppTemplate.Domain.Identity;
 
 namespace CanAppTemplate.Application.Features.Roles.Commands.Create;
 
@@ -19,11 +20,11 @@ public sealed class CreateRoleCommand : IRequest<CreatedRoleResponse>, ISecuredR
 
 public sealed class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, CreatedRoleResponse>
 {
-    private readonly IRepository<Role<Guid>, Guid> _roleRepository;
+    private readonly IRepository<Role<IdentityKey>, IdentityKey> _roleRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly RoleBusinessRules _roleBusinessRules;
 
-    public CreateRoleCommandHandler(IRepository<Role<Guid>, Guid> roleRepository, IUnitOfWork unitOfWork, RoleBusinessRules roleBusinessRules)
+    public CreateRoleCommandHandler(IRepository<Role<IdentityKey>, IdentityKey> roleRepository, IUnitOfWork unitOfWork, RoleBusinessRules roleBusinessRules)
     {
         _roleRepository = roleRepository;
         _unitOfWork = unitOfWork;
@@ -35,7 +36,7 @@ public sealed class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand
         _roleBusinessRules.RoleDefinitionsShouldBeManagedFromHost();
         await _roleBusinessRules.RoleNameCanNotBeDuplicated(request.Name, exceptId: null, cancellationToken);
 
-        var role = new Role<Guid>(Guid.CreateVersion7(), request.Name);
+        var role = new Role<IdentityKey>(IdentityKeys.New(), request.Name);
         role.SetDescription(request.Description);
 
         await _roleRepository.AddAsync(role, cancellationToken);

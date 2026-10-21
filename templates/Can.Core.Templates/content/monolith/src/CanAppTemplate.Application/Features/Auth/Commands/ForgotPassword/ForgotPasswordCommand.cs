@@ -20,11 +20,11 @@ public sealed record ForgotPasswordCommand(string Email) : IRequest<Result<Succe
 
 public sealed class ForgotPasswordCommandHandler : IRequestHandler<ForgotPasswordCommand, Result<Success>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
     private readonly ISecurityEvents _events;
 
-    public ForgotPasswordCommandHandler(IRepository<AppUser, Guid> users, EmailVerification emailVerification, ISecurityEvents events)
+    public ForgotPasswordCommandHandler(IRepository<AppUser, IdentityKey> users, EmailVerification emailVerification, ISecurityEvents events)
     {
         _users = users;
         _emailVerification = emailVerification;

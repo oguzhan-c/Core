@@ -19,10 +19,10 @@ public sealed record ResendTwoFactorCodeCommand(TwoFactorChallenge Challenge) : 
 
 public sealed class ResendTwoFactorCodeCommandHandler : IRequestHandler<ResendTwoFactorCodeCommand, Result<Success>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
 
-    public ResendTwoFactorCodeCommandHandler(IRepository<AppUser, Guid> users, EmailVerification emailVerification)
+    public ResendTwoFactorCodeCommandHandler(IRepository<AppUser, IdentityKey> users, EmailVerification emailVerification)
     {
         _users = users;
         _emailVerification = emailVerification;

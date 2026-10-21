@@ -6,9 +6,9 @@
   ],
   "symbolInfo": [
     {
-      "id": "Database",
+      "id": "IdKeyType",
       "name": {
-        "text": "Veritabanı"
+        "text": "Kimlik anahtar tipi (kullanıcı, rol, yetki)"
       },
       "isVisible": true,
       "persistenceScope": "templateGroup"

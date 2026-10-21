@@ -25,8 +25,8 @@ public sealed record CompleteTwoFactorLoginCommand(TwoFactorChallenge Challenge,
 
 public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<CompleteTwoFactorLoginCommand, Result<AuthResult>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<RecoveryCode<Guid>, Guid> _recoveryCodes;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<RecoveryCode<IdentityKey>, IdentityKey> _recoveryCodes;
     private readonly IRecoveryCodeService _recoveryCodeService;
     private readonly TwoFactorCodeVerifier _verifier;
     private readonly AuthTokenIssuer _tokenIssuer;
@@ -36,8 +36,8 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
     private readonly TimeProvider _timeProvider;
 
     public CompleteTwoFactorLoginCommandHandler(
-        IRepository<AppUser, Guid> users,
-        IRepository<RecoveryCode<Guid>, Guid> recoveryCodes,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<RecoveryCode<IdentityKey>, IdentityKey> recoveryCodes,
         IRecoveryCodeService recoveryCodeService,
         TwoFactorCodeVerifier verifier,
         AuthTokenIssuer tokenIssuer,
@@ -95,7 +95,7 @@ public sealed class CompleteTwoFactorLoginCommandHandler : IRequestHandler<Compl
     private async Task<bool> UseRecoveryCodeAsync(AppUser user, string code, DateTimeOffset now, CancellationToken cancellationToken)
     {
         string hash = _recoveryCodeService.Hash(code);
-        RecoveryCode<Guid>? recovery = await _recoveryCodes.GetAsync(r => r.UserId == user.Id && r.CodeHash == hash && r.UsedAt == null, cancellationToken: cancellationToken);
+        RecoveryCode<IdentityKey>? recovery = await _recoveryCodes.GetAsync(r => r.UserId == user.Id && r.CodeHash == hash && r.UsedAt == null, cancellationToken: cancellationToken);
         if (recovery is null)
             return false;
 

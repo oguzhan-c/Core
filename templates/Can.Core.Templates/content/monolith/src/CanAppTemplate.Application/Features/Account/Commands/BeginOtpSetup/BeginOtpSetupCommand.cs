@@ -27,15 +27,15 @@ public sealed record BeginOtpSetupCommand : IRequest<Result<OtpSetupDto>>, ISecu
 public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupCommand, Result<OtpSetupDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<OtpAuthenticator<Guid>, Guid> _otpAuthenticators;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> _otpAuthenticators;
     private readonly ITotpService _totp;
     private readonly IUnitOfWork _unitOfWork;
 
     public BeginOtpSetupCommandHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
-        IRepository<OtpAuthenticator<Guid>, Guid> otpAuthenticators,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> otpAuthenticators,
         ITotpService totp,
         IUnitOfWork unitOfWork)
     {
@@ -64,7 +64,7 @@ public sealed class BeginOtpSetupCommandHandler : IRequestHandler<BeginOtpSetupC
         }
 
         byte[] secret = _totp.GenerateSecret();
-        await _otpAuthenticators.AddAsync(new OtpAuthenticator<Guid>(user.Id, secret), cancellationToken);
+        await _otpAuthenticators.AddAsync(new OtpAuthenticator<IdentityKey>(user.Id, secret), cancellationToken);
 
         string base32 = Base32.Encode(secret);
         return new OtpSetupDto(

@@ -24,7 +24,7 @@ public sealed record LoginCommand(string Email, string Password, ClientInfo Clie
 
 public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, Result<LoginResult>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly IPasswordHasher _passwordHasher;
     private readonly AuthTokenIssuer _tokenIssuer;
     private readonly EmailVerification _emailVerification;
@@ -34,7 +34,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, Result<L
     private readonly TimeProvider _timeProvider;
 
     public LoginCommandHandler(
-        IRepository<AppUser, Guid> users,
+        IRepository<AppUser, IdentityKey> users,
         IPasswordHasher passwordHasher,
         AuthTokenIssuer tokenIssuer,
         EmailVerification emailVerification,

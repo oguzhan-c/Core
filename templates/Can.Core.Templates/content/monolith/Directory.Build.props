@@ -8,4 +8,13 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Kimlik tablolarının (kullanıcı, rol, yetki, oturum, passkey ...) anahtar tipi: TEK yer. Kod her yerde "IdentityKey" kullanır.
+      Seçenekler: System.Guid (v7, kodda üretilir) | System.Int32 | System.Int64 (veritabanı üretir).
+      Değiştirirsen yeni bir migration ekle (var olan veritabanında anahtar tipi değişir; veri taşıması gerekir).
+    -->
+    <Using Include="IDKEY_CLR_TYPE" Alias="IdentityKey" />
+  </ItemGroup>
 </Project>

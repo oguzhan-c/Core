@@ -10,7 +10,7 @@ namespace CanAppTemplate.Application.Features.Roles.Commands.Delete;
 
 public sealed class DeleteRoleCommand : IRequest<DeletedRoleResponse>, ISecuredRequest, ILoggableRequest
 {
-    public Guid Id { get; set; }
+    public IdentityKey Id { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesWrite];
@@ -18,14 +18,14 @@ public sealed class DeleteRoleCommand : IRequest<DeletedRoleResponse>, ISecuredR
 
 public sealed class DeleteRoleCommandHandler : IRequestHandler<DeleteRoleCommand, DeletedRoleResponse>
 {
-    private readonly IRepository<Role<Guid>, Guid> _roleRepository;
+    private readonly IRepository<Role<IdentityKey>, IdentityKey> _roleRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly RoleBusinessRules _roleBusinessRules;
     private readonly IAccessGrantGuard _accessGrantGuard;
     private readonly IUserAuthorizationStore _authorizationStore;
 
     public DeleteRoleCommandHandler(
-        IRepository<Role<Guid>, Guid> roleRepository,
+        IRepository<Role<IdentityKey>, IdentityKey> roleRepository,
         IUnitOfWork unitOfWork,
         RoleBusinessRules roleBusinessRules,
         IAccessGrantGuard accessGrantGuard,
@@ -41,7 +41,7 @@ public sealed class DeleteRoleCommandHandler : IRequestHandler<DeleteRoleCommand
     public async Task<DeletedRoleResponse> Handle(DeleteRoleCommand request, CancellationToken cancellationToken)
     {
         _roleBusinessRules.RoleDefinitionsShouldBeManagedFromHost();
-        Role<Guid> role = await _roleBusinessRules.RoleIdShouldExistWhenSelected(request.Id, cancellationToken);
+        Role<IdentityKey> role = await _roleBusinessRules.RoleIdShouldExistWhenSelected(request.Id, cancellationToken);
         _accessGrantGuard.EnsureCanManageRole(role.Name, role.IsSystem, RoleChange.Delete);
         await _roleBusinessRules.RoleShouldNotBeInUse(role.Id, cancellationToken);
 

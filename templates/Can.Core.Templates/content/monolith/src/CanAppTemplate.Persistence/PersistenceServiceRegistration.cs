@@ -73,15 +73,20 @@ public static class PersistenceServiceRegistration
             {
                 string tenantConnectionString = connectionString;
 #endif
-#if (UsePostgreSql)
-                options.UseNpgsql(tenantConnectionString, npgsql => npgsql.EnableRetryOnFailure());
-#elif (UseSqlServer)
-                options.UseSqlServer(tenantConnectionString, sql => sql.EnableRetryOnFailure());
-#else
-                options.UseSqlite(tenantConnectionString);
-#endif
                 // Aggregate'ler arası ilişkiler navigation'sız olabilir; filtreli zorunlu ilişki uyarısı burada geçersiz.
                 options.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
+
+                // TODO(can-gen): Veritabanı sağlayıcını seç. Paketi Directory.Packages.props'a ve bu projeye ekle, aşağıdaki
+                // satırlardan birini aç ve throw satırını sil. Bağlantı dizesi: ConnectionStrings:CanAppTemplate (user-secrets).
+                //   PostgreSQL (Npgsql.EntityFrameworkCore.PostgreSQL):
+                //     options.UseNpgsql(tenantConnectionString, npgsql => npgsql.EnableRetryOnFailure());
+                //   SQL Server (Microsoft.EntityFrameworkCore.SqlServer):
+                //     options.UseSqlServer(tenantConnectionString, sql => sql.EnableRetryOnFailure());
+                //   SQLite (Microsoft.EntityFrameworkCore.Sqlite):
+                //     options.UseSqlite(tenantConnectionString);
+                throw new InvalidOperationException(
+                    $"Veritabanı ayarlanmadı (bağlantı dizesi uzunluğu: {tenantConnectionString.Length}). " +
+                    "CanAppTemplate.Persistence/PersistenceServiceRegistration.cs içindeki TODO(can-gen)'e bak.");
             }
         );
 
@@ -95,10 +100,10 @@ public static class PersistenceServiceRegistration
         services.AddCanQueryDiagnostics(o => configuration.GetSection("QueryDiagnostics").Bind(o));
 
         // Güvenlik: oturumlar, kayıtlı cihazlar, damga doğrulayıcı ve güvenlik olaylarının veritabanı kaydı.
-        services.AddCanUserSessions<BaseDbContext, Guid>();
-        services.AddCanTrustedDevices<BaseDbContext, Guid>();
-        services.AddCanSecurityStampValidator<BaseDbContext, AppUser, Guid>();
-        services.AddCanUserAuthorizationStore<BaseDbContext, AppUser, Guid>(); // rol / yetkiler her istekte (önbellekli) veritabanından
+        services.AddCanUserSessions<BaseDbContext, IdentityKey>();
+        services.AddCanTrustedDevices<BaseDbContext, IdentityKey>();
+        services.AddCanSecurityStampValidator<BaseDbContext, AppUser, IdentityKey>();
+        services.AddCanUserAuthorizationStore<BaseDbContext, AppUser, IdentityKey>(); // rol / yetkiler her istekte (önbellekli) veritabanından
         services.AddCanSecurityEventStore<BaseDbContext>();
 
         var seed = new SeedOptions();
@@ -151,8 +156,8 @@ public static class PersistenceServiceRegistration
             o.Keep<SecurityEventRecord>(TimeSpan.FromDays(Days("SecurityEvents", 180)), e => e.OccurredAt);
             o.Keep<SecurityEventRecord>(TimeSpan.FromDays(Days("SuccessfulLogins", 30)), e => e.OccurredAt, where: e => e.Type == SecurityEventTypes.LoginSucceeded);
             o.Keep<RequestActivityRecord>(TimeSpan.FromDays(Days("RequestActivities", 90)), a => a.Timestamp);
-            o.Keep<RefreshToken<Guid>>(TimeSpan.FromDays(Days("ExpiredRefreshTokens", 30)), t => t.ExpiresAt);
-            o.Keep<TrustedDevice<Guid>>(TimeSpan.FromDays(Days("RevokedDevices", 90)), d => d.RevokedAt);
+            o.Keep<RefreshToken<IdentityKey>>(TimeSpan.FromDays(Days("ExpiredRefreshTokens", 30)), t => t.ExpiresAt);
+            o.Keep<TrustedDevice<IdentityKey>>(TimeSpan.FromDays(Days("RevokedDevices", 90)), d => d.RevokedAt);
             // TODO(can-gen): Zamanla birikip silinebilecek uygulama kayıtlarını (bildirim, log ...) buraya ekle.
         });
     }

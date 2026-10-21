@@ -11,6 +11,7 @@ using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
+using CanAppTemplate.Domain.Identity;
 
 namespace CanAppTemplate.Application.Features.Auth.Commands.ExternalLogin;
 
@@ -37,22 +38,24 @@ public sealed record ExternalLoginCommand(
 
 public sealed class ExternalLoginCommandHandler : IRequestHandler<ExternalLoginCommand, Result<LoginResult>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<Role<Guid>, Guid> _roles;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<Role<IdentityKey>, IdentityKey> _roles;
     private readonly AuthTokenIssuer _tokenIssuer;
     private readonly EmailVerification _emailVerification;
     private readonly IUserSessionService _sessions;
     private readonly ISecurityEvents _events;
     private readonly TimeProvider _timeProvider;
+    private readonly IUnitOfWork _unitOfWork;
 
     public ExternalLoginCommandHandler(
-        IRepository<AppUser, Guid> users,
-        IRepository<Role<Guid>, Guid> roles,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<Role<IdentityKey>, IdentityKey> roles,
         AuthTokenIssuer tokenIssuer,
         EmailVerification emailVerification,
         IUserSessionService sessions,
         ISecurityEvents events,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IUnitOfWork unitOfWork)
     {
         _users = users;
         _roles = roles;
@@ -61,6 +64,7 @@ public sealed class ExternalLoginCommandHandler : IRequestHandler<ExternalLoginC
         _sessions = sessions;
         _events = events;
         _timeProvider = timeProvider;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<LoginResult>> Handle(ExternalLoginCommand request, CancellationToken cancellationToken)
@@ -152,6 +156,8 @@ public sealed class ExternalLoginCommandHandler : IRequestHandler<ExternalLoginC
         AppUser user = registered.Value;
         user.AddRole(await DefaultRoles.GetAsync(_roles, cancellationToken));
         await _users.AddAsync(user, cancellationToken);
+        if (IdentityKeys.IsDatabaseGenerated)
+            await _unitOfWork.SaveChangesAsync(cancellationToken); // int / long anahtar: Id'ye bağlı kayıtlardan (doğrulama kodu, oturum) önce
         return user;
     }
 }

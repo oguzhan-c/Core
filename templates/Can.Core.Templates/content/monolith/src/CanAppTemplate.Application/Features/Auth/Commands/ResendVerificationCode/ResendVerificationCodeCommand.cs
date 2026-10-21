@@ -20,10 +20,10 @@ public sealed record ResendVerificationCodeCommand(string Email) : IRequest<Resu
 
 public sealed class ResendVerificationCodeCommandHandler : IRequestHandler<ResendVerificationCodeCommand, Result<Success>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
 
-    public ResendVerificationCodeCommandHandler(IRepository<AppUser, Guid> users, EmailVerification emailVerification)
+    public ResendVerificationCodeCommandHandler(IRepository<AppUser, IdentityKey> users, EmailVerification emailVerification)
     {
         _users = users;
         _emailVerification = emailVerification;

@@ -23,7 +23,12 @@ ve ProblemDetails yanıtına çevrilir.
 ## İlk çalıştırma
 
 1. Can.Core paket kaynağını `nuget.config`'e ekle (proje oluştururken verilmediyse).
-2. Veritabanı: `docker compose up -d` (SQLite seçildiyse gerekmez).
+2. Veritabanı (şablon sağlayıcı seçmez; `TODO(can-gen)` işaretli yerleri doldur):
+   - `Directory.Packages.props` + `Persistence` projesine sağlayıcı paketi (Npgsql / SqlServer / Sqlite),
+   - `Persistence/PersistenceServiceRegistration.cs` → `options.UseNpgsql(...)` (ya da diğeri), `throw` satırını sil,
+   - bağlantı dizesi: `appsettings.Development.json` ya da user-secrets (`ConnectionStrings:CanAppTemplate`),
+   - gerekirse `docker-compose.yml`'deki veritabanı servisini aç, `docker compose up -d`.
+   Doldurulmadan çalıştırılırsa uygulama açılışta "Veritabanı ayarlanmadı" hatasıyla durur.
 3. Gizli değerler (appsettings'e YAZMA):
 
    ```bash
@@ -50,6 +55,19 @@ CRUD** (ya da terminalde `can-gen generate crud Brand`; komut/sorgu eklemek içi
 
 Generator `// can-gen:...` işaretlerinin olduğu yerlere ekleme yapar; bu satırları silme. Senin doldurman gereken yerler
 `TODO(can-gen)` ile işaretlidir (Rider: View → Tool Windows → TODO).
+
+## Kimlik anahtar tipi
+
+Kullanıcı, rol, yetki, oturum, passkey gibi kimlik tablolarının Id tipi tek yerde seçilir: kökteki `Directory.Build.props`
+
+```xml
+<Using Include="System.Guid" Alias="IdentityKey" />   <!-- System.Int32 | System.Int64 -->
+```
+
+Kod her yerde `IdentityKey` kullanır (`Role<IdentityKey>`, `IRepository<AppUser, IdentityKey>` ...); yeni kayıt anahtarı
+`IdentityKeys.New()` ile alınır (Guid: kodda v7, int / long: veritabanı üretir). Tipi değiştirince başka dosyaya dokunma,
+yalnızca yeni bir migration ekle (var olan veritabanında veri taşıması gerekir). Uygulama entity'lerinin (ör. `Color : Entity<int>`)
+anahtarı bundan bağımsızdır, her entity kendi tipini seçer.
 
 ## Roller ve yetkiler
 

@@ -1,8 +1,5 @@
 using Can.Core.BackgroundJobs.Hangfire;
 using Hangfire;
-#if (UsePostgreSql)
-using Hangfire.PostgreSql;
-#endif
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,25 +14,14 @@ public static class HangfireServiceRegistration
         if (!config.GetValue("Hangfire:Enabled", false))
             return false;
 
-#if (UsePostgreSql)
-        string connectionString = config.GetConnectionString("CanAppTemplate") ?? "";
-        services.AddCanHangfire(
-            c => c.UsePostgreSqlStorage(o => o.UseNpgsqlConnection(connectionString)),
-            o => o.WorkerCount = config.GetValue<int?>("Hangfire:WorkerCount")
-        );
-#elif (UseSqlServer)
-        string connectionString = config.GetConnectionString("CanAppTemplate") ?? "";
-        services.AddCanHangfire(
-            c => c.UseSqlServerStorage(connectionString),
-            o => o.WorkerCount = config.GetValue<int?>("Hangfire:WorkerCount")
-        );
-#else
-        // TODO(can-gen): SQLite için kalıcı Hangfire deposu yok; bellek içi depo kullanılıyor (yeniden başlatınca işler kaybolur).
+        // TODO(can-gen): Hangfire deposu bellek içi (yeniden başlatınca işler kaybolur). Kalıcı depo için veritabanına uygun
+        // paketi ekle ve aşağıdakini değiştir (bağlantı: config.GetConnectionString("CanAppTemplate")):
+        //   PostgreSQL (Hangfire.PostgreSql): c => c.UsePostgreSqlStorage(o => o.UseNpgsqlConnection(connectionString))
+        //   SQL Server (Hangfire.SqlServer) : c => c.UseSqlServerStorage(connectionString)
         services.AddCanHangfire(
             c => c.UseInMemoryStorage(),
             o => o.WorkerCount = config.GetValue<int?>("Hangfire:WorkerCount")
         );
-#endif
         return true;
     }
 

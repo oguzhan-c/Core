@@ -16,15 +16,15 @@ using CanAppTemplate.Domain.Entities;
 
 namespace CanAppTemplate.Application.Services.AuthService;
 
-public sealed record PasskeyDto(Guid Id, string Name, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt, bool IsBackedUp)
+public sealed record PasskeyDto(IdentityKey Id, string Name, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt, bool IsBackedUp)
 {
-    public static PasskeyDto From(UserPasskey<Guid> passkey) => new(passkey.Id, passkey.Name, passkey.CreatedAt, passkey.LastUsedAt, passkey.IsBackedUp);
+    public static PasskeyDto From(UserPasskey<IdentityKey> passkey) => new(passkey.Id, passkey.Name, passkey.CreatedAt, passkey.LastUsedAt, passkey.IsBackedUp);
 }
 
 /// <summary>Hesaba bağlı dış hesap (Google, Microsoft, GitHub ...).</summary>
 public sealed record ExternalLoginDto(string Provider, string? DisplayName, DateTimeOffset CreatedAt)
 {
-    public static ExternalLoginDto From(UserLogin<Guid> login) => new(login.LoginProvider, login.ProviderDisplayName, login.CreatedAt);
+    public static ExternalLoginDto From(UserLogin<IdentityKey> login) => new(login.LoginProvider, login.ProviderDisplayName, login.CreatedAt);
 }
 
 /// <summary>Hesap güvenliği sayfasının özeti.</summary>

@@ -16,9 +16,9 @@ public sealed record UpdateProfileCommand(string FirstName, string LastName, str
 public sealed class UpdateProfileCommandHandler : IRequestHandler<UpdateProfileCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
 
-    public UpdateProfileCommandHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users)
+    public UpdateProfileCommandHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users)
     {
         _currentUser = currentUser;
         _users = users;

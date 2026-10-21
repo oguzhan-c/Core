@@ -18,16 +18,16 @@ using CanAppTemplate.Domain.Entities;
 
 namespace CanAppTemplate.Application.Features.Account.Commands.DeletePasskey;
 
-public sealed record DeletePasskeyCommand(Guid Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
+public sealed record DeletePasskeyCommand(IdentityKey Id) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest, ILoggableRequest;
 
 public sealed class DeletePasskeyCommandHandler : IRequestHandler<DeletePasskeyCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly ISecurityEvents _events;
 
-    public DeletePasskeyCommandHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users, IRepository<UserPasskey<Guid>, Guid> passkeys, ISecurityEvents events)
+    public DeletePasskeyCommandHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users, IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys, ISecurityEvents events)
     {
         _currentUser = currentUser;
         _users = users;
@@ -37,11 +37,11 @@ public sealed class DeletePasskeyCommandHandler : IRequestHandler<DeletePasskeyC
 
     public async Task<Result<Success>> Handle(DeletePasskeyCommand request, CancellationToken cancellationToken)
     {
-        Result<Guid> userId = _currentUser.UserId();
+        Result<IdentityKey> userId = _currentUser.UserId();
         if (userId.IsFailure)
             return userId.Errors;
 
-        UserPasskey<Guid>? passkey = await _passkeys.GetAsync(p => p.Id == request.Id && p.UserId == userId.Value, cancellationToken: cancellationToken);
+        UserPasskey<IdentityKey>? passkey = await _passkeys.GetAsync(p => p.Id == request.Id && p.UserId == userId.Value, cancellationToken: cancellationToken);
         if (passkey is null)
             return AccountUsers.PasskeyNotFound;
 

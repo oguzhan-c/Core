@@ -27,13 +27,13 @@ public enum VerificationPurpose
 /// </summary>
 public sealed class EmailVerification
 {
-    private readonly IRepository<EmailAuthenticator<Guid>, Guid> _authenticators;
+    private readonly IRepository<EmailAuthenticator<IdentityKey>, IdentityKey> _authenticators;
     private readonly IVerificationCodeService _codes;
     private readonly IEmailSender _emailSender;
     private readonly TimeProvider _timeProvider;
 
     public EmailVerification(
-        IRepository<EmailAuthenticator<Guid>, Guid> authenticators,
+        IRepository<EmailAuthenticator<IdentityKey>, IdentityKey> authenticators,
         IVerificationCodeService codes,
         IEmailSender emailSender,
         TimeProvider timeProvider)
@@ -46,7 +46,7 @@ public sealed class EmailVerification
 
     public async Task<DateTimeOffset> SendCodeAsync(AppUser user, VerificationPurpose purpose, CancellationToken cancellationToken)
     {
-        EmailAuthenticator<Guid> authenticator = await GetOrCreateAsync(user, cancellationToken);
+        EmailAuthenticator<IdentityKey> authenticator = await GetOrCreateAsync(user, cancellationToken);
         VerificationCode code = _codes.Generate();
         authenticator.SetCode(code);
 
@@ -78,7 +78,7 @@ public sealed class EmailVerification
 
     public async Task<bool> VerifyAsync(AppUser user, string code, CancellationToken cancellationToken)
     {
-        EmailAuthenticator<Guid>? authenticator = await _authenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken);
+        EmailAuthenticator<IdentityKey>? authenticator = await _authenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken);
         if (authenticator is null || !authenticator.CanAttempt(_timeProvider.GetUtcNow()))
             return false;
 
@@ -92,13 +92,13 @@ public sealed class EmailVerification
         return true;
     }
 
-    private async Task<EmailAuthenticator<Guid>> GetOrCreateAsync(AppUser user, CancellationToken cancellationToken)
+    private async Task<EmailAuthenticator<IdentityKey>> GetOrCreateAsync(AppUser user, CancellationToken cancellationToken)
     {
-        EmailAuthenticator<Guid>? existing = await _authenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken);
+        EmailAuthenticator<IdentityKey>? existing = await _authenticators.GetAsync(a => a.UserId == user.Id, cancellationToken: cancellationToken);
         if (existing is not null)
             return existing;
 
-        var created = new EmailAuthenticator<Guid>(user.Id);
+        var created = new EmailAuthenticator<IdentityKey>(user.Id);
         await _authenticators.AddAsync(created, cancellationToken);
         return created;
     }

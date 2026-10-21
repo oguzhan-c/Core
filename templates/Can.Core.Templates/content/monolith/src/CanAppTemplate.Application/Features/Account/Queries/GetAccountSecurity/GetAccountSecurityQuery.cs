@@ -22,18 +22,18 @@ public sealed record GetAccountSecurityQuery : IRequest<Result<AccountSecurityDt
 public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountSecurityQuery, Result<AccountSecurityDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
-    private readonly IRepository<UserLogin<Guid>, Guid> _logins;
-    private readonly IRepository<RecoveryCode<Guid>, Guid> _recoveryCodes;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
+    private readonly IRepository<UserLogin<IdentityKey>, IdentityKey> _logins;
+    private readonly IRepository<RecoveryCode<IdentityKey>, IdentityKey> _recoveryCodes;
     private readonly IServiceProvider _services;
 
     public GetAccountSecurityQueryHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
-        IRepository<UserPasskey<Guid>, Guid> passkeys,
-        IRepository<UserLogin<Guid>, Guid> logins,
-        IRepository<RecoveryCode<Guid>, Guid> recoveryCodes,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys,
+        IRepository<UserLogin<IdentityKey>, IdentityKey> logins,
+        IRepository<RecoveryCode<IdentityKey>, IdentityKey> recoveryCodes,
         IServiceProvider services)
     {
         _currentUser = currentUser;
@@ -52,8 +52,8 @@ public sealed class GetAccountSecurityQueryHandler : IRequestHandler<GetAccountS
 
         AppUser user = current.Value;
 
-        List<UserPasskey<Guid>> passkeys = await _passkeys.Query(enableTracking: false).Where(p => p.UserId == user.Id).OrderBy(p => p.CreatedAt).ToListAsync(cancellationToken);
-        List<UserLogin<Guid>> logins = await _logins.Query(enableTracking: false).Where(l => l.UserId == user.Id).OrderBy(l => l.LoginProvider).ToListAsync(cancellationToken);
+        List<UserPasskey<IdentityKey>> passkeys = await _passkeys.Query(enableTracking: false).Where(p => p.UserId == user.Id).OrderBy(p => p.CreatedAt).ToListAsync(cancellationToken);
+        List<UserLogin<IdentityKey>> logins = await _logins.Query(enableTracking: false).Where(l => l.UserId == user.Id).OrderBy(l => l.LoginProvider).ToListAsync(cancellationToken);
         int recoveryLeft = await _recoveryCodes.CountAsync(c => c.UserId == user.Id && c.UsedAt == null, cancellationToken: cancellationToken);
 
         return new AccountSecurityDto(

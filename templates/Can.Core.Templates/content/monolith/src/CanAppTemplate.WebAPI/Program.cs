@@ -73,10 +73,7 @@ if (config.GetValue("OpenTelemetry:Enabled", false))
         o.ServiceVersion = typeof(Program).Assembly.GetName().Version?.ToString();
         if (config["OpenTelemetry:Endpoint"] is { Length: > 0 } endpoint)
             o.OtlpEndpoint = new Uri(endpoint);
-#if (UsePostgreSql)
-        o.AdditionalSources.Add("Npgsql");
-        o.AdditionalMeters.Add("Npgsql");
-#endif
+        // TODO(can-gen): PostgreSQL kullanıyorsan veritabanı izlerini de topla: o.AdditionalSources.Add("Npgsql"); o.AdditionalMeters.Add("Npgsql");
     });
 }
 #endif

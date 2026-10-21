@@ -39,10 +39,10 @@ variant() {
   echo "    TODO(can-gen): $(grep -r --include=*.cs --include=*.json --include=*.config 'TODO(can-gen)' "$OUT/$name" | wc -l | tr -d ' ')" | tee -a "$LOG"
 }
 
-variant Minimal --Database sqlite --Otp false --EmailTwoFactor false --Passkey false --AuditTrail false
-variant Full --Database postgresql --MultiTenancy true --ExternalLogin true --Redis true --EventBus true --Hangfire true \
+variant Minimal --IdKeyType int --Otp false --EmailTwoFactor false --Passkey false --AuditTrail false
+variant Full --MultiTenancy true --ExternalLogin true --Redis true --EventBus true --Hangfire true \
   --FileStorage true --Search true --Realtime true --Sms true --Settings true --Reporting true --OpenTelemetry true
-variant Tenant --Database sqlserver --MultiTenancy true --Settings true --Hangfire true
+variant Tenant --IdKeyType long --ExternalLogin true --MultiTenancy true --Settings true --Hangfire true
 
 # ---------------------------------------------------------------- can-gen
 # Üretilen çözümlere iki entity eklenir (biri fabrika/Update metotlu, biri metotsuz: TODO yolları) ve CRUD üretilip

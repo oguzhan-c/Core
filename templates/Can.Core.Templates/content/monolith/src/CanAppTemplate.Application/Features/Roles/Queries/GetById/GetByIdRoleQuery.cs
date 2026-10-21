@@ -9,13 +9,13 @@ namespace CanAppTemplate.Application.Features.Roles.Queries.GetById;
 
 public sealed class GetByIdRoleQuery : IRequest<GetByIdRoleResponse>, ISecuredRequest
 {
-    public Guid Id { get; set; }
+    public IdentityKey Id { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.RolesRead];
 }
 
-public sealed record GetByIdRoleResponse(Guid Id, string Name, string? Description, bool IsSystem, IReadOnlyList<OperationClaimDto> Permissions);
+public sealed record GetByIdRoleResponse(IdentityKey Id, string Name, string? Description, bool IsSystem, IReadOnlyList<OperationClaimDto> Permissions);
 
 public sealed class GetByIdRoleQueryHandler : IRequestHandler<GetByIdRoleQuery, GetByIdRoleResponse>
 {
@@ -25,7 +25,7 @@ public sealed class GetByIdRoleQueryHandler : IRequestHandler<GetByIdRoleQuery, 
 
     public async Task<GetByIdRoleResponse> Handle(GetByIdRoleQuery request, CancellationToken cancellationToken)
     {
-        Role<Guid> role = await _roleBusinessRules.RoleIdShouldExistWhenSelected(request.Id, cancellationToken);
+        Role<IdentityKey> role = await _roleBusinessRules.RoleIdShouldExistWhenSelected(request.Id, cancellationToken);
         OperationClaimDto[] permissions = role.OperationClaims
             .Where(rc => rc.OperationClaim is not null)
             .Select(rc => OperationClaimDto.From(rc.OperationClaim!))

@@ -23,14 +23,14 @@ public sealed record BeginPasskeyRegistrationCommand : IRequest<Result<Credentia
 public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<BeginPasskeyRegistrationCommand, Result<CredentialCreateOptions>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly IPasskeyService _passkeyService;
 
     public BeginPasskeyRegistrationCommandHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
-        IRepository<UserPasskey<Guid>, Guid> passkeys,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys,
         IPasskeyService passkeyService)
     {
         _currentUser = currentUser;

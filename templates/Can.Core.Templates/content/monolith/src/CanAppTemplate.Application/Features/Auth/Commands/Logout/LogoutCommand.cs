@@ -17,11 +17,11 @@ public sealed record LogoutCommand(string? RefreshToken, ClientInfo Client) : IR
 public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result<Success>>
 {
     private readonly ITokenService _tokens;
-    private readonly IRepository<RefreshToken<Guid>, Guid> _refreshTokens;
+    private readonly IRepository<RefreshToken<IdentityKey>, IdentityKey> _refreshTokens;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
 
-    public LogoutCommandHandler(ITokenService tokens, IRepository<RefreshToken<Guid>, Guid> refreshTokens, IUnitOfWork unitOfWork, TimeProvider timeProvider)
+    public LogoutCommandHandler(ITokenService tokens, IRepository<RefreshToken<IdentityKey>, IdentityKey> refreshTokens, IUnitOfWork unitOfWork, TimeProvider timeProvider)
     {
         _tokens = tokens;
         _refreshTokens = refreshTokens;
@@ -35,7 +35,7 @@ public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result
             return Result.Success;
 
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
-        RefreshToken<Guid>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
+        RefreshToken<IdentityKey>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
         if (token is null || token.IsRevoked)
             return Result.Success;
 

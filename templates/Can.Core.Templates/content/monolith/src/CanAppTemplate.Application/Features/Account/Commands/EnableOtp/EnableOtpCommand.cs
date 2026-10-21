@@ -27,12 +27,12 @@ public sealed record EnableOtpCommand(string Code) : IRequest<Result<RecoveryCod
 public sealed class EnableOtpCommandHandler : IRequestHandler<EnableOtpCommand, Result<RecoveryCodesDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly TwoFactorCodeVerifier _verifier;
     private readonly RecoveryCodeIssuer _recoveryCodes;
     private readonly ISecurityEvents _events;
 
-    public EnableOtpCommandHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users, TwoFactorCodeVerifier verifier, RecoveryCodeIssuer recoveryCodes, ISecurityEvents events)
+    public EnableOtpCommandHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users, TwoFactorCodeVerifier verifier, RecoveryCodeIssuer recoveryCodes, ISecurityEvents events)
     {
         _currentUser = currentUser;
         _users = users;

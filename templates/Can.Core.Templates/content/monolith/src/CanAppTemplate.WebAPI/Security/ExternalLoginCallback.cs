@@ -27,7 +27,7 @@ internal static class ExternalLoginCallback
 
         if (info.IsLink)
         {
-            if (!Guid.TryParse(info.LinkUserId, out Guid userId))
+            if (!IdentityKey.TryParse(info.LinkUserId, out IdentityKey userId))
                 return info.RedirectWithError(options, "failed");
 
             Result<Success> linked = await sender.Send(new LinkExternalLoginCommand(userId, info.Provider, info.ProviderDisplayName, info.ProviderKey), ct);

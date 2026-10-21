@@ -17,14 +17,14 @@ using CanAppTemplate.Domain.Entities;
 
 namespace CanAppTemplate.Application.Features.Account.Commands.RenamePasskey;
 
-public sealed record RenamePasskeyCommand(Guid Id, string Name) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest;
+public sealed record RenamePasskeyCommand(IdentityKey Id, string Name) : IRequest<Result<Success>>, ISecuredRequest, ITransactionalRequest;
 
 public sealed class RenamePasskeyCommandHandler : IRequestHandler<RenamePasskeyCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+    private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
 
-    public RenamePasskeyCommandHandler(ICurrentUser currentUser, IRepository<UserPasskey<Guid>, Guid> passkeys)
+    public RenamePasskeyCommandHandler(ICurrentUser currentUser, IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys)
     {
         _currentUser = currentUser;
         _passkeys = passkeys;

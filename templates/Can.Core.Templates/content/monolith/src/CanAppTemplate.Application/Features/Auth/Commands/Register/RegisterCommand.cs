@@ -13,6 +13,7 @@ using CanAppTemplate.Application.Features.Auth.Constants;
 using CanAppTemplate.Application.Services.AuthService;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
+using CanAppTemplate.Domain.Identity;
 
 namespace CanAppTemplate.Application.Features.Auth.Commands.Register;
 
@@ -25,17 +26,19 @@ public sealed record RegisterCommand(string Email, string Password, string First
 
 public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Result<RegisterResult>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<Role<Guid>, Guid> _roles;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<Role<IdentityKey>, IdentityKey> _roles;
     private readonly IPasswordHasher _passwordHasher;
     private readonly EmailVerification _emailVerification;
+    private readonly IUnitOfWork _unitOfWork;
 
-    public RegisterCommandHandler(IRepository<AppUser, Guid> users, IRepository<Role<Guid>, Guid> roles, IPasswordHasher passwordHasher, EmailVerification emailVerification)
+    public RegisterCommandHandler(IRepository<AppUser, IdentityKey> users, IRepository<Role<IdentityKey>, IdentityKey> roles, IPasswordHasher passwordHasher, EmailVerification emailVerification, IUnitOfWork unitOfWork)
     {
         _users = users;
         _roles = roles;
         _passwordHasher = passwordHasher;
         _emailVerification = emailVerification;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<RegisterResult>> Handle(RegisterCommand request, CancellationToken cancellationToken)
@@ -58,6 +61,8 @@ public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Re
         user.UpdateProfile(user.FirstName, user.LastName, request.PhoneNumber, request.MarketingConsent);
         user.AddRole(await DefaultRoles.GetAsync(_roles, cancellationToken));
         await _users.AddAsync(user, cancellationToken);
+        if (IdentityKeys.IsDatabaseGenerated)
+            await _unitOfWork.SaveChangesAsync(cancellationToken); // int / long anahtar: Id'ye bağlı kayıtlardan (doğrulama kodu, oturum) önce
 
         DateTimeOffset expiresAt = await _emailVerification.SendCodeAsync(user, VerificationPurpose.ConfirmEmail, cancellationToken);
         return new RegisterResult(user.Email, expiresAt);

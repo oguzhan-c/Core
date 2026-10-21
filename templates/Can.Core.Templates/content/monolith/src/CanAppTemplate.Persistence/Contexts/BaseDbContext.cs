@@ -37,15 +37,15 @@ public sealed class BaseDbContext : CanDbContext
     }
 
     public DbSet<AppUser> Users => Set<AppUser>();
-    public DbSet<Role<Guid>> Roles => Set<Role<Guid>>();
-    public DbSet<OperationClaim<Guid>> OperationClaims => Set<OperationClaim<Guid>>();
+    public DbSet<Role<IdentityKey>> Roles => Set<Role<IdentityKey>>();
+    public DbSet<OperationClaim<IdentityKey>> OperationClaims => Set<OperationClaim<IdentityKey>>();
     // can-gen:dbsets
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
         // Kimlik tabloları: kullanıcı, rol, yetki, refresh token (oturum), 2FA, passkey, kurtarma kodu, kayıtlı cihaz.
         // TOTP anahtarları Data Protection ile şifreli saklanır.
-        modelBuilder.ApplyCanSecurityModel<AppUser, Guid>(o =>
+        modelBuilder.ApplyCanSecurityModel<AppUser, IdentityKey>(o =>
         {
             o.Schema = Schemas.Identity;
             o.SecretProtector = _secretProtector;
@@ -79,12 +79,10 @@ public sealed class BaseDbContext : CanDbContext
 #if (Settings)
         modelBuilder.ApplyCanSettingsModel(schema: Schemas.Infrastructure);
 #endif
-#if (UsePostgreSql)
 
-        // TODO(can-gen): Eşzamanlı güncellemeye açık entity'lere (stok, bakiye ...) satır sürümü ekle:
-        // if (Database.IsNpgsql())
+        // TODO(can-gen): Eşzamanlı güncellemeye açık entity'lere (stok, bakiye ...) satır sürümü ekle, ör. PostgreSQL:
         //     modelBuilder.Entity<Product>().Property<uint>("xmin").HasColumnType("xid").ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
-#endif
+        // SQL Server: entity'ye [Timestamp] byte[] RowVersion.
     }
 }
 

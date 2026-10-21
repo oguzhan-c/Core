@@ -15,9 +15,9 @@ public sealed record GetProfileQuery : IRequest<Result<UserProfileDto>>, ISecure
 public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, Result<UserProfileDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
 
-    public GetProfileQueryHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users)
+    public GetProfileQueryHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users)
     {
         _currentUser = currentUser;
         _users = users;
@@ -25,7 +25,7 @@ public sealed class GetProfileQueryHandler : IRequestHandler<GetProfileQuery, Re
 
     public async Task<Result<UserProfileDto>> Handle(GetProfileQuery request, CancellationToken cancellationToken)
     {
-        Result<Guid> userId = _currentUser.UserId();
+        Result<IdentityKey> userId = _currentUser.UserId();
         if (userId.IsFailure)
             return userId.Errors;
 

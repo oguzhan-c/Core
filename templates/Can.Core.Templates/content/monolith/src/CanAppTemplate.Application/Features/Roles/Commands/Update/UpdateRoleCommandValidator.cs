@@ -8,7 +8,7 @@ public sealed class UpdateRoleCommandValidator : AbstractValidator<UpdateRoleCom
     public UpdateRoleCommandValidator()
     {
         RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(Role<Guid>.NameMaxLength);
-        RuleFor(x => x.Description).MaximumLength(Role<Guid>.DescriptionMaxLength);
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(Role<IdentityKey>.NameMaxLength);
+        RuleFor(x => x.Description).MaximumLength(Role<IdentityKey>.DescriptionMaxLength);
     }
 }

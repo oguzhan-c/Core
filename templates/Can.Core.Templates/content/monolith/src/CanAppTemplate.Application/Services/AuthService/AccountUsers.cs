@@ -19,9 +19,9 @@ namespace CanAppTemplate.Application.Services.AuthService;
 
 internal static class AccountUsers
 {
-    public static async Task<Result<AppUser>> CurrentAsync(ICurrentUser currentUser, IRepository<AppUser, Guid> users, CancellationToken cancellationToken)
+    public static async Task<Result<AppUser>> CurrentAsync(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users, CancellationToken cancellationToken)
     {
-        Result<Guid> id = currentUser.UserId();
+        Result<IdentityKey> id = currentUser.UserId();
         if (id.IsFailure)
             return id.Errors;
 

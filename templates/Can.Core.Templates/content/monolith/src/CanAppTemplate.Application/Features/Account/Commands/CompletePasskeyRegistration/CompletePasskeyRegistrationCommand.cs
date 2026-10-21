@@ -25,16 +25,16 @@ public sealed record CompletePasskeyRegistrationCommand(AuthenticatorAttestation
 public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<CompletePasskeyRegistrationCommand, Result<PasskeyDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly IPasskeyService _passkeyService;
     private readonly ISecurityEvents _events;
     private readonly TimeProvider _timeProvider;
 
     public CompletePasskeyRegistrationCommandHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
-        IRepository<UserPasskey<Guid>, Guid> passkeys,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys,
         IPasskeyService passkeyService,
         ISecurityEvents events,
         TimeProvider timeProvider)
@@ -74,7 +74,7 @@ public sealed class CompletePasskeyRegistrationCommandHandler : IRequestHandler<
             return Error.Failure(AuthErrorCodes.PasskeyFailed, "Passkey kaydedilemedi; tekrar dene.");
         }
 
-        var passkey = new UserPasskey<Guid>(user.Id, credential, request.Name ?? string.Empty, _timeProvider.GetUtcNow());
+        var passkey = new UserPasskey<IdentityKey>(user.Id, credential, request.Name ?? string.Empty, _timeProvider.GetUtcNow());
         await _passkeys.AddAsync(passkey, cancellationToken);
         await _events.PublishAsync(new SecurityEvent(SecurityEventTypes.PasskeyAdded, user.Id.ToString()), cancellationToken);
         return PasskeyDto.From(passkey);

@@ -59,8 +59,8 @@ int New(Arguments a)
 
     if (a.PassThrough.Count == 0 && Interactive)
     {
-        string database = Select($"Hangi {G("veritabanı")}?", ["postgresql", "sqlserver", "sqlite"]);
-        templateArgs.AddRange(["--Database", database]);
+        string idKey = Select($"Kimlik {G("anahtar tipi")} (kullanıcı, rol, yetki)?", ["guid", "int", "long"]);
+        templateArgs.AddRange(["--IdKeyType", idKey]);
 
         (string Symbol, string Label, bool Default)[] options =
         [

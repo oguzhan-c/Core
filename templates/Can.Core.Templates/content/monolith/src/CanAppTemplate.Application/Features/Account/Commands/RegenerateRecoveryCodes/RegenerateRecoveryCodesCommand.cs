@@ -24,13 +24,13 @@ public sealed record RegenerateRecoveryCodesCommand(string? Password) : IRequest
 public sealed class RegenerateRecoveryCodesCommandHandler : IRequestHandler<RegenerateRecoveryCodesCommand, Result<RecoveryCodesDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly Can.Core.Security.Hashing.IPasswordHasher _passwordHasher;
     private readonly RecoveryCodeIssuer _recoveryCodes;
 
     public RegenerateRecoveryCodesCommandHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
+        IRepository<AppUser, IdentityKey> users,
         Can.Core.Security.Hashing.IPasswordHasher passwordHasher,
         RecoveryCodeIssuer recoveryCodes)
     {

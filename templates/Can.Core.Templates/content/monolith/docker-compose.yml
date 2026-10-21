@@ -1,4 +1,4 @@
-# Geliştirme servisleri. Veritabanı profilsizdir: `docker compose up -d` yalnızca onu başlatır.
+# Geliştirme servisleri. Veritabanı servisini sen açarsın (aşağıdaki TODO); `docker compose up -d` yalnızca onu başlatır.
 # Diğerleri profillerle, appsettings'te açıldıkça:
 #   docker compose --profile mail up -d           # mailpit (http://localhost:8025)
 #   docker compose --profile all up -d            # hepsi
@@ -6,30 +6,28 @@
 name: canapptemplate
 
 services:
-#if (UsePostgreSql)
-  postgres:
-    image: postgres:18-alpine
-    ports: ["5432:5432"]
-    environment:
-      POSTGRES_DB: canapptemplate
-      POSTGRES_USER: canapptemplate
-      POSTGRES_PASSWORD: canapptemplate
-    volumes: ["db-data:/var/lib/postgresql"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U canapptemplate"]
-      interval: 5s
-      retries: 10
+  # TODO(can-gen): Seçtiğin veritabanının servisini aç (başındaki "# " işaretlerini kaldır) ve aşağıdaki volumes'ta db-data'yı aç.
+  # postgres:
+  #   image: postgres:18-alpine
+  #   ports: ["5432:5432"]
+  #   environment:
+  #     POSTGRES_DB: canapptemplate
+  #     POSTGRES_USER: canapptemplate
+  #     POSTGRES_PASSWORD: canapptemplate
+  #   volumes: ["db-data:/var/lib/postgresql"]
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U canapptemplate"]
+  #     interval: 5s
+  #     retries: 10
 
-#elif (UseSqlServer)
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2025-latest
-    ports: ["1433:1433"]
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: CanAppTemplate_Dev_123
-    volumes: ["db-data:/var/opt/mssql"]
+  # sqlserver:
+  #   image: mcr.microsoft.com/mssql/server:2025-latest
+  #   ports: ["1433:1433"]
+  #   environment:
+  #     ACCEPT_EULA: "Y"
+  #     MSSQL_SA_PASSWORD: CanAppTemplate_Dev_123
+  #   volumes: ["db-data:/var/opt/mssql"]
 
-#endif
   mailpit:
     profiles: [mail, all]
     image: axllent/mailpit:latest
@@ -85,16 +83,18 @@ services:
     environment:
       DASHBOARD__FRONTEND__AUTHMODE: Unsecured
 #endif
-#if (!UseSqlite || Search || FileStorage)
+#if (Search || FileStorage)
 
 volumes:
-#if (!UseSqlite)
-  db-data:
-#endif
+  # db-data:
 #if (Search)
   es-data:
 #endif
 #if (FileStorage)
   s3-data:
 #endif
+#else
+
+# volumes:
+#   db-data:
 #endif

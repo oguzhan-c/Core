@@ -114,7 +114,7 @@ internal static class AuthEvents
 internal static class DefaultRoles
 {
     /// <summary>Seed eksikse bu bir kurulum hatasıdır (beklenmeyen): exception olarak kalır.</summary>
-    public static async Task<Role<Guid>> GetAsync(IRepository<Role<Guid>, Guid> roles, CancellationToken cancellationToken) =>
+    public static async Task<Role<IdentityKey>> GetAsync(IRepository<Role<IdentityKey>, IdentityKey> roles, CancellationToken cancellationToken) =>
         await roles.GetAsync(r => r.Name == Roles.User, cancellationToken: cancellationToken)
         ?? throw new InvalidOperationException("User rolü bulunamadı; seed çalıştı mı?");
 }

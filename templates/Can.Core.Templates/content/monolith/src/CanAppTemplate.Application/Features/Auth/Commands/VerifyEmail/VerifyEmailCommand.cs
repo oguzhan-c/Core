@@ -21,7 +21,7 @@ public sealed record VerifyEmailCommand(string Email, string Code, ClientInfo Cl
 
 public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailCommand, Result<AuthResult>>
 {
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly EmailVerification _emailVerification;
     private readonly AuthTokenIssuer _tokenIssuer;
     private readonly IUserSessionService _sessions;
@@ -29,7 +29,7 @@ public sealed class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailComma
     private readonly IUnitOfWork _unitOfWork;
 
     public VerifyEmailCommandHandler(
-        IRepository<AppUser, Guid> users,
+        IRepository<AppUser, IdentityKey> users,
         EmailVerification emailVerification,
         AuthTokenIssuer tokenIssuer,
         IUserSessionService sessions,

@@ -24,8 +24,8 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
     public static readonly TimeSpan ConcurrentRefreshGrace = TimeSpan.FromSeconds(30);
 
     private readonly ITokenService _tokens;
-    private readonly IRepository<RefreshToken<Guid>, Guid> _refreshTokens;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<RefreshToken<IdentityKey>, IdentityKey> _refreshTokens;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly AuthTokenIssuer _tokenIssuer;
     private readonly IUserSessionService _sessions;
     private readonly ISecurityEvents _events;
@@ -34,8 +34,8 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
 
     public RefreshTokenCommandHandler(
         ITokenService tokens,
-        IRepository<RefreshToken<Guid>, Guid> refreshTokens,
-        IRepository<AppUser, Guid> users,
+        IRepository<RefreshToken<IdentityKey>, IdentityKey> refreshTokens,
+        IRepository<AppUser, IdentityKey> users,
         AuthTokenIssuer tokenIssuer,
         IUserSessionService sessions,
         ISecurityEvents events,
@@ -55,7 +55,7 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
     public async Task<Result<AuthResult>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
         string hash = _tokens.HashRefreshToken(request.RefreshToken);
-        RefreshToken<Guid>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
+        RefreshToken<IdentityKey>? token = await _refreshTokens.GetAsync(t => t.TokenHash == hash, cancellationToken: cancellationToken);
         if (token is null)
             return AuthErrors.SessionExpired;
 
@@ -65,7 +65,7 @@ public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCom
         {
             // Rotasyonla kapanmış token'ın tekrar gelmesi: token kopyalanmış, hepsini kapat. Birkaç saniye içindeki tekrar
             // ise aynı tarayıcının iki sekmesinin aynı anda yenilemesidir (ilki yeni cookie'yi zaten yazdı): saldırı sayılmaz.
-            if (token.RevokedReason == RefreshToken<Guid>.RotatedReason && now - token.RevokedAt > ConcurrentRefreshGrace)
+            if (token.RevokedReason == RefreshToken<IdentityKey>.RotatedReason && now - token.RevokedAt > ConcurrentRefreshGrace)
             {
                 await _sessions.RevokeAllAsync(token.UserId.ToString(), cancellationToken);
                 await _events.PublishAsync(

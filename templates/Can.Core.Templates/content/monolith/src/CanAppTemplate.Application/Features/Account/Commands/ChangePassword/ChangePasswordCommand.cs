@@ -27,11 +27,11 @@ public sealed record ChangePasswordCommand(string? CurrentPassword, string NewPa
 public sealed class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
+    private readonly IRepository<AppUser, IdentityKey> _users;
     private readonly Can.Core.Security.Hashing.IPasswordHasher _passwordHasher;
     private readonly ISecurityEvents _events;
 
-    public ChangePasswordCommandHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users, Can.Core.Security.Hashing.IPasswordHasher passwordHasher, ISecurityEvents events)
+    public ChangePasswordCommandHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users, Can.Core.Security.Hashing.IPasswordHasher passwordHasher, ISecurityEvents events)
     {
         _currentUser = currentUser;
         _users = users;

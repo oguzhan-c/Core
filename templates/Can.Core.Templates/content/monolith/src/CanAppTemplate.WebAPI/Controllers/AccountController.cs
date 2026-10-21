@@ -164,13 +164,13 @@ public class AccountController : BaseController
     }
 
     /// <summary>Passkey'in adını değiştirir.</summary>
-    [HttpPut("passkeys/{id:guid}")]
-    public async Task<IResult> RenamePasskey(Guid id, [FromBody] NameRequest body, CancellationToken ct) =>
+    [HttpPut("passkeys/{id}")]
+    public async Task<IResult> RenamePasskey(IdentityKey id, [FromBody] NameRequest body, CancellationToken ct) =>
         (await Mediator.Send(new RenamePasskeyCommand(id, body.Name), ct)).ToHttpResult();
 
     /// <summary>Passkey'i siler; hesaba girmenin tek yolu buysa silinmez.</summary>
-    [HttpDelete("passkeys/{id:guid}")]
-    public async Task<IResult> DeletePasskey(Guid id, CancellationToken ct) =>
+    [HttpDelete("passkeys/{id}")]
+    public async Task<IResult> DeletePasskey(IdentityKey id, CancellationToken ct) =>
         (await Mediator.Send(new DeletePasskeyCommand(id), ct)).ToHttpResult();
 #endif
 

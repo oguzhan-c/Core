@@ -17,7 +17,7 @@ namespace CanAppTemplate.Application.Services.AuthService;
 internal static class TwoFactorChallenges
 {
     /// <summary>Bekleyen girişin kullanıcısını yükler; şifre/2FA ayarı o arada değiştiyse geçersiz sayar.</summary>
-    public static async Task<Result<AppUser>> ResolveUserAsync(IRepository<AppUser, Guid> users, TwoFactorChallenge challenge, CancellationToken cancellationToken)
+    public static async Task<Result<AppUser>> ResolveUserAsync(IRepository<AppUser, IdentityKey> users, TwoFactorChallenge challenge, CancellationToken cancellationToken)
     {
         AppUser? user = await users.GetByIdAsync(challenge.UserId, include: q => q.WithRolesAndPermissions(), cancellationToken: cancellationToken);
 
@@ -31,11 +31,11 @@ internal static class TwoFactorChallenges
 /// <summary>Kullanıcının seçtiği yönteme göre (authenticator uygulaması / e-posta) ikinci adım kodunu doğrular.</summary>
 public sealed class TwoFactorCodeVerifier
 {
-    private readonly IRepository<OtpAuthenticator<Guid>, Guid> _otpAuthenticators;
+    private readonly IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> _otpAuthenticators;
     private readonly ITotpService _totp;
     private readonly EmailVerification _emailVerification;
 
-    public TwoFactorCodeVerifier(IRepository<OtpAuthenticator<Guid>, Guid> otpAuthenticators, ITotpService totp, EmailVerification emailVerification)
+    public TwoFactorCodeVerifier(IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> otpAuthenticators, ITotpService totp, EmailVerification emailVerification)
     {
         _otpAuthenticators = otpAuthenticators;
         _totp = totp;
@@ -54,9 +54,9 @@ public sealed class TwoFactorCodeVerifier
     /// Authenticator uygulamasının kodunu doğrular; başarılıysa kaydı döndürür (kod tekrar kullanılamaz).
     /// <paramref name="requireVerified"/> <see langword="false"/>: kurulumun son adımı (ilk kod).
     /// </summary>
-    public async Task<OtpAuthenticator<Guid>?> VerifyOtpAsync(Guid userId, string code, bool requireVerified, CancellationToken cancellationToken)
+    public async Task<OtpAuthenticator<IdentityKey>?> VerifyOtpAsync(IdentityKey userId, string code, bool requireVerified, CancellationToken cancellationToken)
     {
-        OtpAuthenticator<Guid>? authenticator = await _otpAuthenticators.GetAsync(a => a.UserId == userId, cancellationToken: cancellationToken);
+        OtpAuthenticator<IdentityKey>? authenticator = await _otpAuthenticators.GetAsync(a => a.UserId == userId, cancellationToken: cancellationToken);
         if (authenticator is null || (requireVerified && !authenticator.IsVerified))
             return null;
 

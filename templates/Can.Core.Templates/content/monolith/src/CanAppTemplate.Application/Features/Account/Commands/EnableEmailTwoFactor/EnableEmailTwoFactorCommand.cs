@@ -22,15 +22,15 @@ public sealed record EnableEmailTwoFactorCommand : IRequest<Result<RecoveryCodes
 public sealed class EnableEmailTwoFactorCommandHandler : IRequestHandler<EnableEmailTwoFactorCommand, Result<RecoveryCodesDto>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<OtpAuthenticator<Guid>, Guid> _otpAuthenticators;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> _otpAuthenticators;
     private readonly RecoveryCodeIssuer _recoveryCodes;
     private readonly ISecurityEvents _events;
 
     public EnableEmailTwoFactorCommandHandler(
         ICurrentUser currentUser,
-        IRepository<AppUser, Guid> users,
-        IRepository<OtpAuthenticator<Guid>, Guid> otpAuthenticators,
+        IRepository<AppUser, IdentityKey> users,
+        IRepository<OtpAuthenticator<IdentityKey>, IdentityKey> otpAuthenticators,
         RecoveryCodeIssuer recoveryCodes,
         ISecurityEvents events)
     {

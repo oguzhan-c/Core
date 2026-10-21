@@ -29,8 +29,8 @@ public class RolesController : BaseController
         return Ok(response);
     }
 
-    [HttpGet("roles/{id:guid}")]
-    public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken cancellationToken)
+    [HttpGet("roles/{id}")]
+    public async Task<IActionResult> GetById([FromRoute] IdentityKey id, CancellationToken cancellationToken)
     {
         GetByIdRoleResponse response = await Mediator.Send(new GetByIdRoleQuery { Id = id }, cancellationToken);
         return Ok(response);
@@ -43,24 +43,24 @@ public class RolesController : BaseController
         return Created(uri: $"api/identity/roles/{response.Id}", response);
     }
 
-    [HttpPut("roles/{id:guid}")]
-    public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] UpdateRoleCommand updateRoleCommand, CancellationToken cancellationToken)
+    [HttpPut("roles/{id}")]
+    public async Task<IActionResult> Update([FromRoute] IdentityKey id, [FromBody] UpdateRoleCommand updateRoleCommand, CancellationToken cancellationToken)
     {
         updateRoleCommand.Id = id;
         UpdatedRoleResponse response = await Mediator.Send(updateRoleCommand, cancellationToken);
         return Ok(response);
     }
 
-    [HttpDelete("roles/{id:guid}")]
-    public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken cancellationToken)
+    [HttpDelete("roles/{id}")]
+    public async Task<IActionResult> Delete([FromRoute] IdentityKey id, CancellationToken cancellationToken)
     {
         DeletedRoleResponse response = await Mediator.Send(new DeleteRoleCommand { Id = id }, cancellationToken);
         return Ok(response);
     }
 
     /// <summary>Gövde: <c>{ "operationClaimIds": ["..."] }</c>.</summary>
-    [HttpPost("roles/{id:guid}/permissions/grant")]
-    public async Task<IActionResult> GrantPermissions([FromRoute] Guid id, [FromBody] GrantRolePermissionsCommand command, CancellationToken cancellationToken)
+    [HttpPost("roles/{id}/permissions/grant")]
+    public async Task<IActionResult> GrantPermissions([FromRoute] IdentityKey id, [FromBody] GrantRolePermissionsCommand command, CancellationToken cancellationToken)
     {
         command.RoleId = id;
         RolePermissionsResponse response = await Mediator.Send(command, cancellationToken);
@@ -68,8 +68,8 @@ public class RolesController : BaseController
     }
 
     /// <summary>Gövde: <c>{ "operationClaimIds": ["..."] }</c>.</summary>
-    [HttpPost("roles/{id:guid}/permissions/revoke")]
-    public async Task<IActionResult> RevokePermissions([FromRoute] Guid id, [FromBody] RevokeRolePermissionsCommand command, CancellationToken cancellationToken)
+    [HttpPost("roles/{id}/permissions/revoke")]
+    public async Task<IActionResult> RevokePermissions([FromRoute] IdentityKey id, [FromBody] RevokeRolePermissionsCommand command, CancellationToken cancellationToken)
     {
         command.RoleId = id;
         RolePermissionsResponse response = await Mediator.Send(command, cancellationToken);

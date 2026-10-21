@@ -18,9 +18,9 @@ namespace CanAppTemplate.Application.Features.UserAuthorizations.Commands.Remove
 /// </summary>
 public sealed class RemoveUserRoleCommand : IRequest<UserAuthorizationResponse>, ISecuredRequest, ILoggableRequest
 {
-    public Guid UserId { get; set; }
+    public IdentityKey UserId { get; set; }
 
-    public Guid RoleId { get; set; }
+    public IdentityKey RoleId { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.UsersAssignRole];
@@ -60,7 +60,7 @@ public sealed class RemoveUserRoleCommandHandler : IRequestHandler<RemoveUserRol
     public async Task<UserAuthorizationResponse> Handle(RemoveUserRoleCommand request, CancellationToken cancellationToken)
     {
         AppUser user = await _userRules.UserIdShouldExistWhenSelected(request.UserId, cancellationToken);
-        Role<Guid> role = await _roleRules.RoleIdShouldExistWhenSelected(request.RoleId, cancellationToken);
+        Role<IdentityKey> role = await _roleRules.RoleIdShouldExistWhenSelected(request.RoleId, cancellationToken);
         _accessGrantGuard.EnsureCanAssignRole(user.Id.ToString(), role.Name, RoleBusinessRules.PermissionNamesOf(role));
 
         if (_accessGrantGuard.IsAdminRole(role.Name) && user.UserRoles.Any(ur => ur.RoleId == role.Id))

@@ -27,11 +27,11 @@ public sealed record UnlinkExternalLoginCommand(string Provider) : IRequest<Resu
 public sealed class UnlinkExternalLoginCommandHandler : IRequestHandler<UnlinkExternalLoginCommand, Result<Success>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IRepository<AppUser, Guid> _users;
-    private readonly IRepository<UserPasskey<Guid>, Guid> _passkeys;
+    private readonly IRepository<AppUser, IdentityKey> _users;
+    private readonly IRepository<UserPasskey<IdentityKey>, IdentityKey> _passkeys;
     private readonly ISecurityEvents _events;
 
-    public UnlinkExternalLoginCommandHandler(ICurrentUser currentUser, IRepository<AppUser, Guid> users, IRepository<UserPasskey<Guid>, Guid> passkeys, ISecurityEvents events)
+    public UnlinkExternalLoginCommandHandler(ICurrentUser currentUser, IRepository<AppUser, IdentityKey> users, IRepository<UserPasskey<IdentityKey>, IdentityKey> passkeys, ISecurityEvents events)
     {
         _currentUser = currentUser;
         _users = users;
@@ -41,7 +41,7 @@ public sealed class UnlinkExternalLoginCommandHandler : IRequestHandler<UnlinkEx
 
     public async Task<Result<Success>> Handle(UnlinkExternalLoginCommand request, CancellationToken cancellationToken)
     {
-        Result<Guid> userId = _currentUser.UserId();
+        Result<IdentityKey> userId = _currentUser.UserId();
         if (userId.IsFailure)
             return userId.Errors;
 

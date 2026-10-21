@@ -18,9 +18,9 @@ namespace CanAppTemplate.Application.Features.UserAuthorizations.Commands.Assign
 /// </summary>
 public sealed class AssignUserRoleCommand : IRequest<UserAuthorizationResponse>, ISecuredRequest, ILoggableRequest
 {
-    public Guid UserId { get; set; }
+    public IdentityKey UserId { get; set; }
 
-    public Guid RoleId { get; set; }
+    public IdentityKey RoleId { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.UsersAssignRole];
@@ -60,7 +60,7 @@ public sealed class AssignUserRoleCommandHandler : IRequestHandler<AssignUserRol
     public async Task<UserAuthorizationResponse> Handle(AssignUserRoleCommand request, CancellationToken cancellationToken)
     {
         AppUser user = await _userRules.UserIdShouldExistWhenSelected(request.UserId, cancellationToken);
-        Role<Guid> role = await _roleRules.RoleIdShouldExistWhenSelected(request.RoleId, cancellationToken);
+        Role<IdentityKey> role = await _roleRules.RoleIdShouldExistWhenSelected(request.RoleId, cancellationToken);
         _accessGrantGuard.EnsureCanAssignRole(user.Id.ToString(), role.Name, RoleBusinessRules.PermissionNamesOf(role));
 
         user.AddRole(role);

@@ -8,6 +8,7 @@ using CanAppTemplate.Application.Services.OperationClaims;
 using CanAppTemplate.Domain.Constants;
 using CanAppTemplate.Domain.Entities;
 using CanAppTemplate.Persistence.Contexts;
+using CanAppTemplate.Domain.Identity;
 
 namespace CanAppTemplate.Persistence.Seeding;
 
@@ -34,8 +35,15 @@ internal sealed partial class IdentitySeeder : IDataSeeder
         if (!context.IsHost)
             return;
 
-        Dictionary<string, OperationClaim<Guid>> claims = await SeedPermissionsAsync(cancellationToken);
-        Dictionary<string, Role<Guid>> roles = await SeedRolesAsync(claims, cancellationToken);
+        Dictionary<string, OperationClaim<IdentityKey>> claims = await SeedPermissionsAsync(cancellationToken);
+        HashSet<string> newClaims = claims.Where(c => _db.Entry(c.Value).State == EntityState.Added).Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+        // int / long anahtarda yeni yetkilerin Id'si kaydedince belli olur; rollere bağlamadan önce kaydet.
+        if (IdentityKeys.IsDatabaseGenerated)
+            await _db.SaveChangesAsync(cancellationToken);
+
+        Dictionary<string, Role<IdentityKey>> roles = await SeedRolesAsync(claims, newClaims, cancellationToken);
+        if (IdentityKeys.IsDatabaseGenerated)
+            await _db.SaveChangesAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(_options.AdminPassword))
             LogAdminPasswordMissing(_options.AdminEmail);
@@ -48,22 +56,22 @@ internal sealed partial class IdentitySeeder : IDataSeeder
     }
 
     /// <summary>Yetki tablosunu koddaki kataloğa eşitler (eksik → eklenir, koddan çıkan → kullanımdan kalkar).</summary>
-    private Task<Dictionary<string, OperationClaim<Guid>>> SeedPermissionsAsync(CancellationToken cancellationToken) =>
-        _db.SyncOperationClaimsAsync<Guid>(AppOperationClaims.All, () => Guid.CreateVersion7(), cancellationToken);
+    private Task<Dictionary<string, OperationClaim<IdentityKey>>> SeedPermissionsAsync(CancellationToken cancellationToken) =>
+        _db.SyncOperationClaimsAsync<IdentityKey>(AppOperationClaims.All, () => IdentityKeys.New(), cancellationToken);
 
     /// <summary>
     /// Sistem rollerini oluşturur ve başlangıç yetkilerini verir. Başlangıç yetkisi yalnızca rol YENİ oluşturulduysa ya da
     /// yetki kataloğa YENİ eklendiyse verilir: yönetim uçlarından geri alınan yetki yeniden başlatınca geri gelmez.
     /// </summary>
-    private async Task<Dictionary<string, Role<Guid>>> SeedRolesAsync(Dictionary<string, OperationClaim<Guid>> claims, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, Role<IdentityKey>>> SeedRolesAsync(Dictionary<string, OperationClaim<IdentityKey>> claims, HashSet<string> newClaims, CancellationToken cancellationToken)
     {
-        Dictionary<string, Role<Guid>> existing = await _db.Roles.Include(r => r.OperationClaims).ToDictionaryAsync(r => r.Name, cancellationToken);
+        Dictionary<string, Role<IdentityKey>> existing = await _db.Roles.Include(r => r.OperationClaims).ToDictionaryAsync(r => r.Name, cancellationToken);
         foreach (string name in Roles.All)
         {
             bool created = false;
-            if (!existing.TryGetValue(name, out Role<Guid>? role))
+            if (!existing.TryGetValue(name, out Role<IdentityKey>? role))
             {
-                role = new Role<Guid>(Guid.CreateVersion7(), name);
+                role = new Role<IdentityKey>(IdentityKeys.New(), name);
                 _db.Roles.Add(role);
                 existing[name] = role;
                 created = true;
@@ -76,8 +84,8 @@ internal sealed partial class IdentitySeeder : IDataSeeder
             {
                 foreach (string grant in grants)
                 {
-                    OperationClaim<Guid> claim = claims[grant];
-                    if (created || _db.Entry(claim).State == EntityState.Added)
+                    OperationClaim<IdentityKey> claim = claims[grant];
+                    if (created || newClaims.Contains(claim.Name))
                         role.GrantOperationClaim(claim);
                 }
             }
@@ -87,7 +95,7 @@ internal sealed partial class IdentitySeeder : IDataSeeder
     }
 
     /// <summary>Kullanıcı yoksa oluşturur (varsa dokunmaz: şifresi değiştirilmiş olabilir).</summary>
-    internal async Task<AppUser> EnsureUserAsync(string email, string firstName, string lastName, string password, Role<Guid> role, CancellationToken cancellationToken)
+    internal async Task<AppUser> EnsureUserAsync(string email, string firstName, string lastName, string password, Role<IdentityKey> role, CancellationToken cancellationToken)
     {
         string normalized = email.ToUpperInvariant();
         AppUser? user = await _db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, cancellationToken)

@@ -18,9 +18,9 @@ namespace CanAppTemplate.Application.Features.UserAuthorizations.Commands.Revoke
 /// </summary>
 public sealed class RevokeUserPermissionsCommand : IRequest<UserAuthorizationResponse>, ISecuredRequest, ILoggableRequest
 {
-    public Guid UserId { get; set; }
+    public IdentityKey UserId { get; set; }
 
-    public IReadOnlyCollection<Guid> OperationClaimIds { get; set; } = [];
+    public IReadOnlyCollection<IdentityKey> OperationClaimIds { get; set; } = [];
 
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyCollection<string> Permissions => [IdentityPermissions.UsersGrant];
@@ -60,11 +60,11 @@ public sealed class RevokeUserPermissionsCommandHandler : IRequestHandler<Revoke
     public async Task<UserAuthorizationResponse> Handle(RevokeUserPermissionsCommand request, CancellationToken cancellationToken)
     {
         AppUser user = await _userRules.UserIdShouldExistWhenSelected(request.UserId, cancellationToken);
-        IReadOnlyList<OperationClaim<Guid>> claims =
+        IReadOnlyList<OperationClaim<IdentityKey>> claims =
             await _roleRules.OperationClaimsShouldExist(request.OperationClaimIds, allowDeprecated: true, cancellationToken);
         _accessGrantGuard.EnsureCanChangeUserPermissions(user.Id.ToString(), claims.Select(c => c.Name));
 
-        foreach (OperationClaim<Guid> claim in claims)
+        foreach (OperationClaim<IdentityKey> claim in claims)
             user.RevokeOperationClaim(claim.Id);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
