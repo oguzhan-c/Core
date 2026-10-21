@@ -1,4 +1,0 @@
-<Project>
-  <!-- Geliştirici araçları (can-gen): kökteki ortak ayarları (sürüm, paket bilgileri, uyarı = hata) alır. -->
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
-</Project>

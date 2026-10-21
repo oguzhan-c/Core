@@ -4,7 +4,7 @@
 #   ./build/ci.sh            restore + build + test
 #   ./build/ci.sh restore | build | test | client
 #   ./build/ci.sh services | services-down   entegrasyon servislerini docker compose ile başlat / kaldır
-#   ./build/ci.sh pack       NuGet paketleri + proje şablonu (artifacts/packages)
+#   ./build/ci.sh pack       NuGet paketleri (artifacts/packages)
 #   ./build/ci.sh publish    etiketli derlemede (v1.2.0) paketleri yayınlar; etiket yoksa hiçbir şey yapmaz
 #   ./build/ci.sh version    hesaplanan sürümü yazar
 # Ortam değişkenleri:
@@ -142,8 +142,6 @@ pack() {
   rm -rf "$ARTIFACTS/packages"
   # --no-build: test edilen ikililer paketlenir (build aynı sürümle yapılmış olmalı)
   dotnet pack Core.slnx -c "$CONFIGURATION" --no-build -p:Version="$VERSION" -o "$ARTIFACTS/packages"
-  # Proje şablonu (dotnet new canfx-monolith): aynı sürümle, aynı klasöre (publish hepsini birlikte gönderir)
-  ./build/pack-templates.sh "$VERSION" "$ARTIFACTS/packages"
   printf '    %s paket\n' "$(find "$ARTIFACTS/packages" -name '*.nupkg' | wc -l | tr -d ' ')"
 }
 

@@ -14,8 +14,9 @@ can-gen new MyShop                              # ya da: dotnet new canfx-monoli
 cd MyShop && can-gen generate crud Brand
 ```
 
-Paketler nuget.org'dadır; şablonla oluşturulan proje şablonla aynı sürümdeki `CanFx.*` paketlerini kullanır. Var olan
-bir projeye tek tek de eklenebilir: `dotnet add package CanFx.Persistence`. Lisans: MIT.
+Paketler nuget.org'dadır; var olan bir projeye tek tek de eklenebilir: `dotnet add package CanFx.Persistence`.
+Proje şablonu ve can-gen ayrı repoda geliştirilir: [CanFx Generator](https://github.com/oguzhan-c/Generator).
+Lisans: MIT.
 
 | Paket | Bağımlılık | İçerik |
 |---|---|---|
