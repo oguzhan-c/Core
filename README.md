@@ -8,7 +8,7 @@ Lisans derdi olan MediatR ve AutoMapper'ın yerine kendi implementasyonlarımız
 
 ```bash
 dotnet new install CanFx.Templates              # proje şablonu
-dotnet tool install -g CanFxGen                 # canfxgen (CRUD üretici)
+dotnet tool install -g CanFx.Generator          # canfxgen (CRUD üretici)
 
 canfxgen new MyShop                             # ya da: dotnet new canfx-monolith -n MyShop
 cd MyShop && canfxgen generate crud Brand
