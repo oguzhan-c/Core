@@ -14,6 +14,13 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-02
+
+### Değişti
+
+- Hata yanıtları: `ValidationException`'daki alan hatası metni bir çeviri anahtarıysa (ör. `account.current_password_invalid`)
+  isteğin diline çevrilir; düz metin olduğu gibi kalır. Böylece mesaj metinleri yalnızca `*.json` çeviri dosyalarında tutulabilir.
+
 ## [0.2.0] - 2026-11-02
 
 ### Eklendi

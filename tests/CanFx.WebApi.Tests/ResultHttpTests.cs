@@ -121,7 +121,7 @@ public class LocalizedProblemTests
     {
         string directory = Path.Combine(Path.GetTempPath(), "can-loc-" + Guid.NewGuid().ToString("N"));
         System.IO.Directory.CreateDirectory(directory);
-        await File.WriteAllTextAsync(Path.Combine(directory, "en.json"), """{ "order": { "shipped": "Order {id} is already shipped.", "named": "Order {name} is on its way." } }""");
+        await File.WriteAllTextAsync(Path.Combine(directory, "en.json"), """{ "order": { "shipped": "Order {id} is already shipped.", "named": "Order {name} is on its way." }, "account": { "bad_password": "Current password is wrong." } }""");
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
         builder.WebHost.UseTestServer();
@@ -135,6 +135,8 @@ public class LocalizedProblemTests
         app.MapGet("/forbidden", () => Result.Fail<int>(Error.Forbidden()).ToHttpResult());
         app.MapGet("/exception", IResult () =>
             throw new BusinessException("{name} adlı sipariş yolda.") { Code = "order.named" }.With("name", "A-1"));
+        app.MapGet("/field", IResult () =>
+            throw new CanFx.Application.Exceptions.ValidationException("CurrentPassword", "account.bad_password") { Code = "account.bad_password" });
 
         await app.StartAsync();
         return (app, app.GetTestClient(), directory);
@@ -170,6 +172,11 @@ public class LocalizedProblemTests
                 // exception + yer tutucu: çeviride de varsayılan metinde de doldurulur
                 Assert.Equal("Order A-1 is on its way.", (await GetAsync(client, "/exception", "en")).GetProperty("detail").GetString());
                 Assert.Equal("A-1 adlı sipariş yolda.", (await GetAsync(client, "/exception", null)).GetProperty("detail").GetString());
+
+                // alan hatasındaki metin bir çeviri anahtarıysa çevrilir
+                JsonElement field = await GetAsync(client, "/field", "en");
+                Assert.Equal("Current password is wrong.", field.GetProperty("errors").GetProperty("CurrentPassword")[0].GetString());
+                Assert.Equal("Current password is wrong.", field.GetProperty("detail").GetString());
 
                 JsonElement forbidden = await GetAsync(client, "/forbidden?culture=en", null);
                 Assert.Equal("You are not allowed to do this.", forbidden.GetProperty("detail").GetString());

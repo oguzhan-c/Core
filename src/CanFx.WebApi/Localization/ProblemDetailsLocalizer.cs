@@ -50,6 +50,18 @@ internal static class ProblemDetailsLocalizer
             return;
         }
 
+        // Exception yolu: alan hatalarındaki metin bir çeviri anahtarıysa (ör. "account.current_password_invalid")
+        // çevrilir; anahtar değilse (düz metin) olduğu gibi kalır.
+        if (problem is HttpValidationProblemDetails { Errors.Count: > 0 } fieldProblem)
+        {
+            foreach (KeyValuePair<string, string[]> entry in fieldProblem.Errors.ToList())
+            {
+                fieldProblem.Errors[entry.Key] = entry.Value
+                    .Select(message => localizer[message] is { ResourceNotFound: false } translated ? translated.Value : message)
+                    .ToArray();
+            }
+        }
+
         // Exception yolu: kod sözlükte varsa açıklama çevrilir.
         if (problem.Extensions.TryGetValue("code", out object? code) && code is string { Length: > 0 } key)
         {
