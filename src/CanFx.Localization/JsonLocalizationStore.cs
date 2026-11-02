@@ -79,6 +79,34 @@ public sealed class JsonLocalizationStore
             : null;
     }
 
+    /// <summary>
+    /// Desteklenen kültürlerde eksik çeviriler: herhangi bir kültürde olan ama verilen kültürde olmayan anahtarlar
+    /// (kültür adı → eksik anahtarlar). Eksiksiz kültürler sonuçta yer almaz.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> FindMissingTranslations(IEnumerable<string> cultures)
+    {
+        ArgumentNullException.ThrowIfNull(cultures);
+        string[] names = cultures.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+        var allKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string name in names)
+        {
+            if (_cultures.TryGetValue(name, out FrozenDictionary<string, string>? texts))
+                allKeys.UnionWith(texts.Keys);
+        }
+
+        var missing = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in names)
+        {
+            _cultures.TryGetValue(name, out FrozenDictionary<string, string>? texts);
+            string[] absent = allKeys.Where(k => texts is null || !texts.ContainsKey(k)).Order(StringComparer.Ordinal).ToArray();
+            if (absent.Length > 0)
+                missing[name] = absent;
+        }
+
+        return missing;
+    }
+
     /// <summary>Kültürün (ve üst kültürlerinin) tüm metinleri; yakın kültür önceliklidir.</summary>
     public IReadOnlyDictionary<string, string> GetAll(CultureInfo culture, bool includeParentCultures)
     {

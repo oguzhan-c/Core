@@ -10,6 +10,8 @@ using CanFx.WebApi.Localization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace CanFx.WebApi.DependencyInjection;
 
@@ -80,6 +82,7 @@ public static class WebApiExtensions
             app.ApplicationServices.GetService<CanLocalizationOptions>() ?? new CanLocalizationOptions();
 
         CultureInfo[] cultures = options.SupportedCultures.Select(CultureInfo.GetCultureInfo).ToArray();
+        ReportMissingTranslations(app, options);
         return app.UseRequestLocalization(o =>
         {
             o.DefaultRequestCulture = new Microsoft.AspNetCore.Localization.RequestCulture(options.DefaultCulture);
@@ -88,6 +91,23 @@ public static class WebApiExtensions
             o.FallBackToParentCultures = true;
             o.FallBackToParentUICultures = true;
         });
+    }
+
+    /// <summary>Geliştirmede: bir dilde olup diğerinde olmayan çevirileri açılışta loglar (uygulama durmaz).</summary>
+    private static void ReportMissingTranslations(IApplicationBuilder app, CanLocalizationOptions options)
+    {
+        if (app.ApplicationServices.GetService<IHostEnvironment>() is not { } environment || !environment.IsDevelopment())
+            return;
+        if (app.ApplicationServices.GetService<JsonLocalizationStore>() is not { } store)
+            return;
+
+        ILogger logger = app.ApplicationServices.GetRequiredService<ILoggerFactory>().CreateLogger("CanFx.Localization");
+        foreach ((string culture, IReadOnlyList<string> keys) in store.FindMissingTranslations(options.SupportedCultures))
+        {
+            logger.LogWarning(
+                "Eksik çeviri ({Culture}.json, {Count} anahtar): {Keys}. Bu dilde varsayılan dilin metni gösterilir.",
+                culture, keys.Count, string.Join(", ", keys.Take(20)) + (keys.Count > 20 ? " ..." : string.Empty));
+        }
     }
 
     /// <summary>

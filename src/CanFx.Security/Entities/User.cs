@@ -12,13 +12,14 @@ public enum AuthenticatorType
 }
 
 /// <summary>
-/// Kullanıcı. Projede türetip kendi alanlarını ekle:
+/// Kullanıcı: kimlik bilgileri (e-posta, şifre hash'i, güvenlik damgası, kilitlenme, 2FA), rol / yetki / dış giriş
+/// ilişkileri ve denetim alanları (oluşturan, güncelleyen, yumuşak silme). Domain event'i yoktur; gerekiyorsa
+/// <see cref="UserAggregateRoot{TId}"/>'ten türet. Projede türetip yalnızca uygulamaya özel alanları ekle:
 /// <code>
 /// public sealed class AppUser : User&lt;Guid&gt;
 /// {
-///     private AppUser() { }
-///     public AppUser(string email, string firstName) : base(Guid.CreateVersion7(), email) =&gt; FirstName = firstName;
-///     public string FirstName { get; private set; } = "";
+///     public string FirstName { get; set; } = "";
+///     public string LastName { get; set; } = "";
 /// }
 /// </code>
 /// </summary>
@@ -26,7 +27,7 @@ public enum AuthenticatorType
 /// Şifre yalnızca hash'lenmiş hâliyle tutulur (<see cref="PasswordHash"/>; salt hash'in içindedir).
 /// Sadece passkey ile giriş yapan kullanıcıların şifresi olmayabilir.
 /// </remarks>
-public class User<TId> : FullAuditedAggregateRoot<TId>
+public class User<TId> : FullAuditedEntity<TId>
     where TId : notnull, IEquatable<TId>
 {
     protected User()

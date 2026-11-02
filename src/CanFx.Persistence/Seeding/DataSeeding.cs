@@ -37,6 +37,12 @@ public interface IDataSeeder
     /// <summary>Küçük değer önce çalışır (ör. önce kategoriler, sonra ürünler).</summary>
     int Order => 0;
 
+    /// <summary>
+    /// <see langword="true"/>: örnek (sahte) veri; yalnızca geliştirmede eklenir (<c>SeedDataAsync(includeDevelopmentData: true)</c>).
+    /// <see langword="false"/> (varsayılan): uygulamanın çalışması için gereken veri (roller, para birimleri ...); her ortamda.
+    /// </summary>
+    bool DevelopmentOnly => false;
+
     /// <summary>Scope ilgili tenant adına açılır; eklenen kayıtlara <c>TenantId</c> otomatik yazılır.</summary>
     Task SeedAsync(DataSeedContext context, CancellationToken cancellationToken);
 }
@@ -70,13 +76,21 @@ public static class DataSeedingExtensions
     /// await app.Services.SeedDataAsync();
     /// </code>
     /// </example>
-    public static async Task SeedDataAsync(this IServiceProvider services, bool includeTenants = true, CancellationToken cancellationToken = default)
+    /// <param name="services">Uygulamanın servisleri.</param>
+    /// <param name="includeTenants">Her aktif tenant için de çalıştır.</param>
+    /// <param name="includeDevelopmentData">Örnek veri seeder'larını da çalıştır (<see cref="IDataSeeder.DevelopmentOnly"/>); geliştirmede true.</param>
+    /// <param name="cancellationToken">İptal.</param>
+    public static async Task SeedDataAsync(
+        this IServiceProvider services,
+        bool includeTenants = true,
+        bool includeDevelopmentData = false,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(services);
 
         await using (AsyncServiceScope scope = services.CreateAsyncScope())
         {
-            await RunAsync(scope.ServiceProvider, new DataSeedContext(null), cancellationToken).ConfigureAwait(false);
+            await RunAsync(scope.ServiceProvider, new DataSeedContext(null), includeDevelopmentData, cancellationToken).ConfigureAwait(false);
         }
 
         if (!includeTenants || services.GetService<ITenantStore>() is not { } store)
@@ -88,14 +102,15 @@ public static class DataSeedingExtensions
                 continue;
 
             await using AsyncServiceScope scope = services.CreateTenantScope(tenant);
-            await RunAsync(scope.ServiceProvider, new DataSeedContext(tenant), cancellationToken).ConfigureAwait(false);
+            await RunAsync(scope.ServiceProvider, new DataSeedContext(tenant), includeDevelopmentData, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private static async Task RunAsync(IServiceProvider services, DataSeedContext context, CancellationToken cancellationToken)
+    private static async Task RunAsync(IServiceProvider services, DataSeedContext context, bool includeDevelopmentData, CancellationToken cancellationToken)
     {
         IEnumerable<IDataSeeder> seeders = services
             .GetServices<IDataSeeder>()
+            .Where(s => includeDevelopmentData || !s.DevelopmentOnly)
             .OrderBy(s => s.Order)
             .ThenBy(s => s.GetType().FullName, StringComparer.Ordinal);
 

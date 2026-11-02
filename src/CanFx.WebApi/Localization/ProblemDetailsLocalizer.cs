@@ -17,6 +17,9 @@ internal static class ProblemDetailsLocalizer
     /// <summary>Result yolunda hatalar bu anahtarla <see cref="HttpContext.Items"/>'a konur (metadata kaybolmasın).</summary>
     internal static readonly object ErrorsKey = new();
 
+    /// <summary>Exception yolunda <c>{ad}</c> yer tutucu değerleri (<c>exception.With("name", x)</c>) bu anahtarla konur.</summary>
+    internal static readonly object ArgumentsKey = new();
+
     private static readonly Dictionary<string, string> TitleKeys = new(StringComparer.Ordinal)
     {
         [ProblemTitles.Validation] = "problem.validation",
@@ -52,7 +55,11 @@ internal static class ProblemDetailsLocalizer
         {
             LocalizedString text = localizer[key];
             if (!text.ResourceNotFound)
-                problem.Detail = text.Value;
+            {
+                problem.Detail = context.HttpContext.Items.TryGetValue(ArgumentsKey, out object? values) && values is IReadOnlyDictionary<string, object?> arguments
+                    ? LocalizerExtensions.FormatNamed(text.Value, arguments)
+                    : text.Value;
+            }
         }
         else if (problem.Status >= StatusCodes.Status500InternalServerError && problem.Detail == ErrorProblemResult.UnexpectedDetail)
         {

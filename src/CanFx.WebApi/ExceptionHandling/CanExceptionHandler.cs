@@ -78,7 +78,11 @@ public sealed class CanExceptionHandler : IExceptionHandler
         else
         {
             _logger.LogDebug(exception, "{Status} {Method} {Path}", status, httpContext.Request.Method, httpContext.Request.Path);
-            problem.Detail = exception.Message;
+            // {ad} yer tutucuları: varsayılan mesajda doldurulur; çeviride doldurulsun diye değerler isteğe iliştirilir.
+            IReadOnlyDictionary<string, object?> arguments = exception.GetArguments();
+            problem.Detail = global::CanFx.Localization.LocalizerExtensions.FormatNamed(exception.Message, arguments);
+            if (arguments.Count > 0)
+                httpContext.Items[Localization.ProblemDetailsLocalizer.ArgumentsKey] = arguments;
         }
 
         httpContext.Response.StatusCode = status;

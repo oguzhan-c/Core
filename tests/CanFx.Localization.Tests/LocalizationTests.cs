@@ -95,6 +95,30 @@ public class LocalizationTests
         }
     }
 
+    [Fact]
+    public void Finds_keys_missing_in_some_cultures()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "can-loc-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "tr.json"), """{ "brand": { "not_exists": "Marka yok.", "name_exists": "{name} var." } }""");
+        File.WriteAllText(Path.Combine(directory, "en.json"), """{ "brand": { "not_exists": "No brand." } }""");
+
+        try
+        {
+            var store = new JsonLocalizationStore(new CanLocalizationOptions { ResourcesPath = directory });
+
+            IReadOnlyDictionary<string, IReadOnlyList<string>> missing = store.FindMissingTranslations(["tr", "en", "de"]);
+
+            Assert.Equal(["brand.name_exists"], missing["en"]);
+            Assert.Equal(["brand.name_exists", "brand.not_exists"], missing["de"]); // hiç dosyası yok
+            Assert.False(missing.ContainsKey("tr"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData("tr.json", "tr")]
     [InlineData("errors.en-US.json", "en-US")]

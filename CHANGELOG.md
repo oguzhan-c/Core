@@ -14,7 +14,29 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-02
+
+### Eklendi
+
+- **Kullanıcı**: `UserAggregateRoot<TId>` (domain event yayınlayan kullanıcı). Sade kullanıcı için `User<TId>` kullanılır.
+- **Hız sınırı**: `RateLimiting:Policies` ile appsettings'ten kendi politikalarını tanımlama; her kural için
+  `PartitionBy` (`UserOrIp`, `Ip`, `Tenant`). Uç noktada kullanılan ama tanımlı olmayan politika adı uygulamayı açılışta durdurur.
+- **Hata mesajları**: `exception.With("name", value)` ile parametreli mesajlar; `{name}` çeviride de doldurulur.
+  `JsonLocalizationStore.FindMissingTranslations(...)` ve Development'ta eksik çeviri uyarısı.
+- **Veritabanı açılışı**: `DatabaseStartup.PrepareAsync(db, mode, isDevelopment)` — `Migrate`, `Recreate`, `None`.
+  `Recreate` yalnızca Development'ta ve yerel veritabanında çalışır.
+- **Seed**: `IDataSeeder.DevelopmentOnly` (örnek veri), `SeedDataAsync(includeDevelopmentData: ...)`, JSON seed dosyaları
+  (`SeedFiles.ReadJsonAsync<T>`) ve tekrarlanabilir örnek veri üretici `SampleData`.
+- **`CanFx.DevServices`** (yeni paket): Development'ta servis bilgisayarda çalışıyorsa onu kullanır, yoksa
+  docker-compose ile yalnızca o servisi başlatır. Servis başına `Auto` / `Docker` / `Local` / `Off`.
+- **`CanFx.WebApi.Postman`** (yeni paket): Development'ta OpenAPI belgesini Postman'e aktarır; sonraki açılışlarda aynı
+  koleksiyonu günceller (kopya oluşturmaz), `baseUrl`'li ortam hazırlar. Anahtar user-secrets'ta (`Postman:ApiKey`).
+
 ### Değişti
+
+- **Kırıcı**: `User<TId>` artık `FullAuditedEntity<TId>`'den türer (domain event yok). Event gerekiyorsa
+  `UserAggregateRoot<TId>`'den türet.
+- **Kırıcı**: `SeedDataAsync` imzası `includeDevelopmentData` parametresi aldı.
 
 - Proje şablonu (`CanFx.Templates`), kod üretici (`CanFx.Generator`, komutu `canfxgen`) ve Rider eklentisi ayrı repoya taşındı
   (github.com/oguzhan-c/Generator); bu repo yalnızca `CanFx.*` paketlerini yayınlar.

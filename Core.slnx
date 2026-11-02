@@ -46,6 +46,8 @@
     <Project Path="src/CanFx.Testing/CanFx.Testing.csproj" />
     <Project Path="src/CanFx.Testing.EntityFrameworkCore/CanFx.Testing.EntityFrameworkCore.csproj" />
     <Project Path="src/CanFx.Testing.AspNetCore/CanFx.Testing.AspNetCore.csproj" />
+    <Project Path="src/CanFx.DevServices/CanFx.DevServices.csproj" />
+    <Project Path="src/CanFx.WebApi.Postman/CanFx.WebApi.Postman.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CanFx.Domain.Tests/CanFx.Domain.Tests.csproj" />
@@ -77,6 +79,8 @@
     <Project Path="tests/CanFx.Sms.Tests/CanFx.Sms.Tests.csproj" />
     <Project Path="tests/CanFx.Logging.Tests/CanFx.Logging.Tests.csproj" />
     <Project Path="tests/CanFx.WebApi.Tests/CanFx.WebApi.Tests.csproj" />
+    <Project Path="tests/CanFx.DevServices.Tests/CanFx.DevServices.Tests.csproj" />
+    <Project Path="tests/CanFx.WebApi.Postman.Tests/CanFx.WebApi.Postman.Tests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />

@@ -57,6 +57,7 @@ Lisans: MIT.
 | `CanFx.Logging.Serilog` | Serilog | `AddCanSerilog()`, `UseCanRequestLogging()` |
 | `CanFx.WebApi` | ASP.NET Core | Hata → ProblemDetails, `HttpCurrentUser`, token'dan tenant çözümleme, cookie tabanlı `AddCanJwtAuthentication()` |
 | `CanFx.WebApi.OpenApi` | WebApi, AspNetCore.OpenApi | Sürüm başına OpenAPI belgesi, cookie güvenlik şeması, ProblemDetails yanıtları, paketsiz Scalar arayüzü |
+| `CanFx.WebApi.Postman` | WebApi.OpenApi | Development'ta OpenAPI belgesini Postman'e aktarır, sonraki açılışlarda aynı koleksiyonu günceller; `baseUrl`'li ortam. Anahtar user-secrets'ta (`Postman:ApiKey`) |
 | `CanFx.Settings` | Caching.Hybrid | Tipli uygulama/tenant ayarları: tenant → uygulama → varsayılan, doğrulama, gizli (şifreli) değerler, önbellek |
 | `CanFx.Settings.EntityFrameworkCore` | EF Core | `SettingValues` tablosu ve deposu: `ApplyCanSettingsModel()`, `UseEntityFrameworkStore<TContext>()` |
 | `CanFx.Settings.AspNetCore` | ASP.NET Core | `MapCanSettings()`: listele/değiştir/sıfırla (düzey bazlı yetki), istemci ayarları; `UseDataProtection()` |
@@ -66,6 +67,7 @@ Lisans: MIT.
 | `CanFx.Observability.OpenTelemetry` | OpenTelemetry | CanFx ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
 | `CanFx.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>`, `ICursorPage<T>` — EF'e bağımlı değil |
 | `CanFx.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
+| `CanFx.DevServices` | Hosting.Abstractions | Development'ta servisler (veritabanı, Redis ...): bilgisayarda çalışıyorsa onu kullanır, yoksa docker-compose ile başlatır; servis başına Auto/Docker/Local/Off |
 
 ```bash
 dotnet build Core.slnx
