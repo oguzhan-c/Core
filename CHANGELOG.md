@@ -14,6 +14,17 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-03
+
+### Değişti
+
+- DevServices: servisin portu doluysa (ör. bilgisayardaki PostgreSQL ya da başka bir projenin konteyneri) servis
+  sıradaki boş portta başlatılır (`PortRange`, varsayılan 100) ve uygulamanın okuduğu adres (`AddressFrom`) o
+  çalıştırma için yeni portla değiştirilir; dosyalara dokunulmaz. Bu projenin konteyneri zaten çalışıyorsa portu
+  neyse o kullanılır. docker-compose'da olmayan (yorumda kalmış) servis açıkça bildirilir. **Kırıcı:** `Auto` artık
+  önce docker'ı kullanır (bilgisayardaki kurulumu kullanmak için `Local`); kayıt
+  `AddCanDevServices(configuration, environment)` (portlar kayıtta seçilir, adresleri okuyan kayıtlardan önce çağır).
+
 ## [0.3.0] - 2026-11-03
 
 ### Değişti
