@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using CanFx.DevServices;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -53,7 +54,7 @@ public sealed class DevServicesTests : IDisposable
         DevServicesRunner runner = CreateRunner(o =>
         {
             o.Add("Database", "postgres", $"127.0.0.1:{port}");
-            o.Services["Database"] = DevServiceMode.Docker;
+            o.Services["Database"] = new DevServiceSettings { Mode = DevServiceMode.Docker };
         }, commands);
 
         await runner.StartAsync(CancellationToken.None);
@@ -102,7 +103,7 @@ public sealed class DevServicesTests : IDisposable
         DevServicesRunner runner = CreateRunner(o =>
         {
             o.Add("Database", "postgres", $"127.0.0.1:{FreePort()}");
-            o.Services["Database"] = mode;
+            o.Services["Database"] = new DevServiceSettings { Mode = mode };
         }, commands);
 
         await runner.StartAsync(CancellationToken.None);
@@ -136,6 +137,89 @@ public sealed class DevServicesTests : IDisposable
 
         Assert.Empty(commands.Calls);
     }
+
+    [Theory]
+    [InlineData("Host=localhost;Port=5433;Database=app;Username=app;Password=app", "localhost", 5433)]
+    [InlineData("Host=localhost;Database=app", "localhost", 5432)]
+    [InlineData("Server=localhost,1434;Database=App;User Id=sa;Password=x;TrustServerCertificate=True", "localhost", 1434)]
+    [InlineData("Server=tcp:127.0.0.1;Database=App", "127.0.0.1", 1433)]
+    [InlineData("Data Source=.\\SQLEXPRESS;Database=App", "localhost", 1433)]
+    [InlineData("localhost:6379,abortConnect=false", "localhost", 6379)]
+    [InlineData("amqp://guest:guest@localhost:5672/", "localhost", 5672)]
+    [InlineData("amqp://localhost", "localhost", 5672)]
+    [InlineData("http://localhost:9200", "localhost", 9200)]
+    [InlineData("db.example.com:5432", "db.example.com", 5432)]
+    public void Reads_host_and_port_from_connection_strings_and_urls(string value, string host, int port)
+    {
+        Assert.True(DevServiceAddress.TryParse(value, out string parsedHost, out int parsedPort));
+        Assert.Equal((host, port), (parsedHost, parsedPort));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Data Source=app.db")]
+    [InlineData("Data Source=/var/data/app.sqlite")]
+    [InlineData("Server=(localdb)\\MSSQLLocalDB;Database=App")]
+    [InlineData("localhost")]
+    public void Addresses_without_a_service_are_not_parsed(string value)
+    {
+        Assert.False(DevServiceAddress.TryParse(value, out _, out _));
+    }
+
+    [Fact]
+    public async Task Services_are_read_from_settings_with_their_address_setting()
+    {
+        int port = FreePort();
+        string compose = WriteComposeFile();
+        var commands = new FakeCommands();
+        IConfiguration configuration = Configuration(new()
+        {
+            ["Redis:ConnectionString"] = $"localhost:{port},abortConnect=false",
+            ["Mail:Provider"] = "Pickup",
+            ["Mail:Smtp:Host"] = "localhost",
+            ["Mail:Smtp:Port"] = FreePort().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["Search:Elasticsearch:Url"] = "",
+            ["EventBus:RabbitMq:ConnectionString"] = "amqp://guest:guest@rabbit.example.com:5672/",
+        });
+        DevServicesRunner runner = CreateRunner(o =>
+        {
+            o.Configuration = configuration;
+            o.Services["Redis"] = new DevServiceSettings { Compose = "redis", AddressFrom = "Redis:ConnectionString" };
+            o.Services["Mail"] = new DevServiceSettings { Compose = "mailpit", AddressFrom = "Mail:Smtp", When = "Mail:Provider=Smtp" };
+            o.Services["Search"] = new DevServiceSettings { Compose = "elasticsearch", AddressFrom = "Search:Elasticsearch:Url" };
+            o.Services["EventBus"] = new DevServiceSettings { Compose = "rabbitmq", AddressFrom = "EventBus:RabbitMq:ConnectionString" };
+        }, commands);
+
+        await runner.StartAsync(CancellationToken.None);
+
+        // Yalnızca Redis: Mail'in koşulu sağlanmadı, Search'ün adresi boş, RabbitMQ bu bilgisayarda değil.
+        Assert.Equal(new[] { "compose version", $"compose -f {compose} up -d --wait redis" }, commands.Calls);
+    }
+
+    [Fact]
+    public void Settings_bind_strictly_from_configuration()
+    {
+        IConfiguration configuration = Configuration(new()
+        {
+            ["DevServices:StartTimeout"] = "00:00:30",
+            ["DevServices:Services:Database:Compose"] = "postgres",
+            ["DevServices:Services:Database:AddressFrom"] = "ConnectionStrings:App",
+            ["DevServices:Services:Mail:Mode"] = "Off",
+        });
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddCanDevServices(configuration);
+        DevServicesOptions options = (DevServicesOptions)services.Single(d => d.ServiceType == typeof(DevServicesOptions)).ImplementationInstance!;
+
+        Assert.Equal(TimeSpan.FromSeconds(30), options.StartTimeout);
+        Assert.Equal("postgres", options.Services["database"].Compose);
+        Assert.Equal(DevServiceMode.Off, options.ModeOf("Mail"));
+
+        IConfiguration unknown = Configuration(new() { ["DevServices:Services:Database:Port"] = "5432" });
+        Assert.Throws<InvalidOperationException>(() => new Microsoft.Extensions.DependencyInjection.ServiceCollection().AddCanDevServices(unknown));
+    }
+
+    private static IConfiguration Configuration(Dictionary<string, string?> values) =>
+        new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
     private DevServicesRunner CreateRunner(Action<DevServicesOptions> configure, FakeCommands commands, string environment = "Development")
     {

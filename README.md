@@ -67,7 +67,7 @@ Lisans: MIT.
 | `CanFx.Observability.OpenTelemetry` | OpenTelemetry | CanFx ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
 | `CanFx.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>`, `ICursorPage<T>` — EF'e bağımlı değil |
 | `CanFx.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
-| `CanFx.DevServices` | Hosting.Abstractions | Development'ta servisler (veritabanı, Redis ...): bilgisayarda çalışıyorsa onu kullanır, yoksa docker-compose ile başlatır; servis başına Auto/Docker/Local/Off |
+| `CanFx.DevServices` | Hosting.Abstractions, Configuration.Binder | Development'ta servisler (veritabanı, Redis ...): bilgisayarda çalışıyorsa onu kullanır, yoksa docker-compose ile başlatır; servisler, docker-compose adları ve adreslerinin okunduğu ayar appsettings'te, kod gerekmez; servis başına Auto/Docker/Local/Off |
 
 ```bash
 dotnet build Core.slnx

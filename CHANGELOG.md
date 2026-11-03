@@ -14,6 +14,17 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-03
+
+### Değişti
+
+- DevServices: servisler kod gerekmeden appsettings'ten tanımlanır: `AddCanDevServices(configuration)` ve
+  `"DevServices": { "Services": { "Redis": { "Compose": "redis", "AddressFrom": "Redis:ConnectionString" } } }`.
+  Adres o ayardan açılışta okunur (bağlantı dizesi, URL, `sunucu:port` ya da `Host`/`Port` bölümü); boşsa, dosyaysa
+  (SQLite) ya da bu bilgisayar değilse servis başlatılmaz. `When` ile koşul (`Mail:Provider=Smtp`). **Kırıcı:**
+  `Services` artık servis başına ayar nesnesi (`"Database": "Auto"` yerine `"Database": { "Mode": "Auto", ... }`).
+  Kodda `Add(...)` ile tanımlama sürüyor.
+
 ## [0.2.1] - 2026-11-02
 
 ### Değişti
