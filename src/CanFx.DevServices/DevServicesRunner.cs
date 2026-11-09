@@ -59,7 +59,8 @@ internal sealed partial class DevServicesRunner(
         List<string> arguments = ["compose", "-f", composeFile];
         if (item.OverrideFile is not null)
             arguments.AddRange(["-f", item.OverrideFile]);
-        arguments.AddRange(["up", "-d", "--wait", item.Compose]);
+        // Profilli servis (redis: profiles: [cache, all]) adıyla verilse de profil açık olmalı; yalnızca o servis başlar.
+        arguments.AddRange(["--profile", "*", "up", "-d", "--wait", item.Compose]);
 
         (int exitCode, string output) = await commands.RunAsync(
             "docker", arguments, Path.GetDirectoryName(composeFile)!, options.StartTimeout, cancellationToken).ConfigureAwait(false);

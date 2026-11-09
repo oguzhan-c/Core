@@ -267,10 +267,13 @@ internal sealed class DevServicesPlanner(DevServicesOptions options, IConfigurat
 
     private bool IsDockerAvailable(string composeFile) => Run(composeFile, "compose", "version").ExitCode == 0;
 
-    /// <summary><c>docker compose config</c>: servis → port eşlemeleri. Okunamazsa null (servis var sayılır).</summary>
+    /// <summary>
+    /// <c>docker compose config</c>: servis → port eşlemeleri. Okunamazsa null (servis var sayılır). Tüm profiller açılır:
+    /// yoksa profilli servisler (redis: <c>profiles: [cache, all]</c>) listede çıkmaz ve "servis yok" sanılır.
+    /// </summary>
     private Dictionary<string, List<PortMapping>>? ReadDeclaredPorts(string composeFile)
     {
-        (int exitCode, string output) = Run(composeFile, "compose", "-f", composeFile, "config", "--format", "json");
+        (int exitCode, string output) = Run(composeFile, "compose", "-f", composeFile, "--profile", "*", "config", "--format", "json");
         return exitCode == 0 ? ParseDeclaredPorts(output) : null;
     }
 

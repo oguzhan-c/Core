@@ -61,8 +61,8 @@ public sealed class DevServicesTests : IDisposable
 
         await runner.StartAsync(CancellationToken.None);
 
-        Assert.Equal(new[] { "compose version", $"compose -f {compose} config --format json", $"compose -f {compose} ps --format json",
-            $"compose -f {compose} up -d --wait postgres" }, commands.Calls);
+        Assert.Equal(new[] { "compose version", $"compose -f {compose} --profile * config --format json", $"compose -f {compose} ps --format json",
+            $"compose -f {compose} --profile * up -d --wait postgres" }, commands.Calls);
     }
 
     [Fact]
@@ -193,8 +193,8 @@ public sealed class DevServicesTests : IDisposable
         await runner.StartAsync(CancellationToken.None);
 
         // Yalnızca Redis: Mail'in koşulu sağlanmadı, Search'ün adresi boş, RabbitMQ bu bilgisayarda değil.
-        Assert.Equal(new[] { "compose version", $"compose -f {compose} config --format json", $"compose -f {compose} ps --format json",
-            $"compose -f {compose} up -d --wait redis" }, commands.Calls);
+        Assert.Equal(new[] { "compose version", $"compose -f {compose} --profile * config --format json", $"compose -f {compose} ps --format json",
+            $"compose -f {compose} --profile * up -d --wait redis" }, commands.Calls);
         Assert.Empty(_plan!.Overrides);
     }
 
@@ -219,7 +219,7 @@ public sealed class DevServicesTests : IDisposable
         Assert.Equal($"localhost:{item.Port},abortConnect=false", _plan.Overrides["Redis:ConnectionString"]);
         Assert.NotNull(item.OverrideFile);
         Assert.Contains($"\"{item.Port}:6379\"", File.ReadAllText(item.OverrideFile));
-        Assert.Equal($"compose -f {compose} -f {item.OverrideFile} up -d --wait redis", commands.Calls[^1]);
+        Assert.Equal($"compose -f {compose} -f {item.OverrideFile} --profile * up -d --wait redis", commands.Calls[^1]);
     }
 
     [Fact]

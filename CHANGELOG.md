@@ -14,6 +14,15 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-09
+
+### Düzeltildi
+
+- DevServices: profilli docker-compose servisleri (`redis: profiles: [cache, all]`, rabbitmq, elasticsearch ...)
+  "docker-compose.yml'de servis yok" sanılıp başlatılmıyordu; yalnızca profilsiz veritabanı servisi başlıyordu.
+  `docker compose config` ve `up` artık tüm profiller açık (`--profile "*"`) çalıştırılır; yine yalnızca istenen
+  servis başlar.
+
 ## [0.4.0] - 2026-11-03
 
 ### Değişti

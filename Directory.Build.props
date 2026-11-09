@@ -12,7 +12,7 @@
       CI etiketli derlemede sürümü etiketten alır (v1.2.0 → 1.2.0), etiketsizde "VersionPrefix-ci.<derleme no>" verir
       (build/ci.sh → -p:Version=...). Yerelde: VersionPrefix.
     -->
-    <VersionPrefix>0.4.0</VersionPrefix>
+    <VersionPrefix>0.4.1</VersionPrefix>
 
     <!-- Paket bilgileri -->
     <Authors>Oğuzhan Can</Authors>
