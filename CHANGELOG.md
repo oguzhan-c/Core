@@ -14,6 +14,8 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
 ### Eklendi
 
 - Security: `ILoginThrottle`: hatalı girişler hesap + IP çifti başına sayılır; saldırgan yanlış şifre deneyerek yalnızca
