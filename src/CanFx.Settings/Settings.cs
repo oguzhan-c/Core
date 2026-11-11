@@ -63,7 +63,11 @@ public sealed record SettingView(
     object? Value,
     object? DefaultValue,
     SettingSource Source,
-    bool IsOverridden);
+    bool IsOverridden)
+{
+    /// <summary>Seçilebilecek değerler (<see cref="SettingDefinition.Options"/>); yoksa <see langword="null"/>.</summary>
+    public IReadOnlyList<string>? Options { get; init; }
+}
 
 /// <summary>Ayar değerlerinin deposu. Tenant anahtarı: tenant kimliği, uygulama geneli için boş metin.</summary>
 public interface ISettingStore
@@ -288,7 +292,7 @@ internal sealed class SettingService : ISettings, ISettingManager
             bool overridden = scope == SettingScope.Tenant ? source == SettingSource.Tenant : source == SettingSource.Global;
             views.Add(new SettingView(
                 definition.Name, definition.DisplayName, definition.Description, definition.Group, definition.Kind, definition.Scopes,
-                definition.IsSecret, value, definition.IsSecret ? null : definition.DefaultValueObject, source, overridden));
+                definition.IsSecret, value, definition.IsSecret ? null : definition.DefaultValueObject, source, overridden) { Options = definition.Options });
         }
 
         return views;

@@ -41,6 +41,17 @@ public sealed class RedisConnection : IAsyncDisposable, IDisposable
 
     public async Task<IDatabase> GetDatabaseAsync() => (await GetAsync().ConfigureAwait(false)).GetDatabase();
 
+    /// <summary>
+    /// Redis'e şu an bağlıysa veritabanı, değilse <see langword="null"/>. Bağlantı yokken komut göndermek zaman aşımına
+    /// (varsayılan 5 sn) kadar bekler; her istekte çalışan parçalar (hız sınırı, giriş sınırı, çıktı önbelleği) önce
+    /// bununla bakar ve beklemeden yedeğe geçer.
+    /// </summary>
+    public async Task<IDatabase?> TryGetDatabaseAsync()
+    {
+        IConnectionMultiplexer connection = await GetAsync().ConfigureAwait(false);
+        return connection.IsConnected ? connection.GetDatabase() : null;
+    }
+
     /// <summary>Uygulamaya özel anahtar: <c>{ApplicationName}:{suffix}</c>.</summary>
     public string Key(string suffix) => $"{Options.ApplicationName}:{suffix}";
 

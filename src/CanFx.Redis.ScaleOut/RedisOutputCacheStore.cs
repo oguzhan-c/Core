@@ -32,7 +32,10 @@ internal sealed partial class RedisOutputCacheStore : IOutputCacheStore
         ArgumentNullException.ThrowIfNull(key);
         try
         {
-            IDatabase db = await _connection.GetDatabaseAsync().ConfigureAwait(false);
+            // Bağlantı yokken beklemeden "önbellekte yok" de (komut zaman aşımına kadar beklerdi).
+            IDatabase? db = await _connection.TryGetDatabaseAsync().ConfigureAwait(false);
+            if (db is null)
+                return null;
             RedisValue value = await db.StringGetAsync(EntryKey(key)).ConfigureAwait(false);
             return value.IsNull ? null : (byte[]?)value;
         }
@@ -49,6 +52,8 @@ internal sealed partial class RedisOutputCacheStore : IOutputCacheStore
         ArgumentNullException.ThrowIfNull(value);
         try
         {
+            if (await _connection.TryGetDatabaseAsync().ConfigureAwait(false) is null)
+                return;
             await SetCoreAsync(key, value, tags, validFor).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

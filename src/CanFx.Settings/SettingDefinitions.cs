@@ -60,19 +60,26 @@ public abstract partial class SettingDefinition
     /// <summary>Giriş yapmış her kullanıcıya verilir (<c>/settings/client</c>; arayüz ayarları). Gizli ayarda yok sayılır.</summary>
     public bool IsVisibleToClients { get; init; }
 
+    /// <summary>
+    /// Seçilebilecek değerler (yönetim ekranı kutucuk / liste olarak gösterir). Liste ayarlarında
+    /// (<see cref="SettingKeys.OptionList"/>) kaydedilen her değer bunlardan biri olmalıdır.
+    /// </summary>
+    public IReadOnlyList<string>? Options { get; init; }
+
     /// <summary>Değiştirmek için ek yetki (düzeyin yetkisine ek olarak).</summary>
     public string? Permission { get; init; }
 
     /// <summary>Varsayılan değer (kayıt yoksa).</summary>
     public abstract object? DefaultValueObject { get; }
 
-    /// <summary>Arayüz için tip: <c>boolean</c>, <c>integer</c>, <c>number</c>, <c>string</c>, <c>json</c>.</summary>
+    /// <summary>Arayüz için tip: <c>boolean</c>, <c>integer</c>, <c>number</c>, <c>string</c>, <c>list</c> (metin listesi), <c>json</c>.</summary>
     public string Kind => ValueType switch
     {
         _ when ValueType == typeof(bool) => "boolean",
         _ when ValueType == typeof(int) || ValueType == typeof(long) || ValueType == typeof(short) => "integer",
         _ when ValueType == typeof(decimal) || ValueType == typeof(double) || ValueType == typeof(float) => "number",
         _ when ValueType == typeof(string) || ValueType.IsEnum || ValueType == typeof(TimeSpan) || ValueType == typeof(Guid) => "string",
+        _ when ValueType == typeof(string[]) => "list",
         _ => "json",
     };
 
@@ -137,5 +144,42 @@ public sealed class SettingKey<T> : SettingDefinition
             return $"Değer {typeof(T).Name} olmalı.";
         T typed = (T)value!;
         return _rules.FirstOrDefault(r => !r.Rule(typed)).Message;
+    }
+}
+
+/// <summary>Sık kullanılan ayar biçimleri için hazır anahtarlar.</summary>
+public static class SettingKeys
+{
+    /// <summary>
+    /// Sabit bir listeden seçim yapılan ayar (ör. kabul edilen dosya türleri). Kaydedilen her değer
+    /// <paramref name="allowed"/> içinde olmalıdır: yönetici, kodda izin verilmeyen bir değeri açamaz.
+    /// </summary>
+    /// <param name="name">Ayarın adı (<c>files.upload.allowed-extensions</c>).</param>
+    /// <param name="allowed">Seçilebilecek değerler.</param>
+    /// <param name="enabledByDefault">Varsayılan seçim; verilmezse hepsi.</param>
+    /// <param name="displayName">Görünen ad.</param>
+    /// <param name="group">Yönetim ekranındaki grup.</param>
+    /// <param name="scopes">Değiştirilebildiği düzeyler.</param>
+    public static SettingKey<string[]> OptionList(
+        string name,
+        IEnumerable<string> allowed,
+        IEnumerable<string>? enabledByDefault = null,
+        string? displayName = null,
+        string? group = null,
+        SettingScope scopes = SettingScope.Global | SettingScope.Tenant)
+    {
+        ArgumentNullException.ThrowIfNull(allowed);
+        string[] options = [.. allowed.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
+        if (options.Length == 0)
+            throw new ArgumentException("En az bir seçenek gerekli.", nameof(allowed));
+
+        var known = new HashSet<string>(options, StringComparer.OrdinalIgnoreCase);
+        string[] defaults = enabledByDefault is null ? options : [.. enabledByDefault];
+        if (defaults.FirstOrDefault(d => !known.Contains(d)) is { } unknown)
+            throw new ArgumentException($"Varsayılan değer '{unknown}' seçenekler arasında değil.", nameof(enabledByDefault));
+
+        return new SettingKey<string[]>(name, defaults) { Options = options, DisplayName = displayName, Group = group, Scopes = scopes }
+            .Validate(values => values is not null && values.All(v => v is not null && known.Contains(v)), $"Yalnızca şu değerler seçilebilir: {string.Join(", ", options)}.")
+            .Validate(values => values is not null && values.Distinct(StringComparer.OrdinalIgnoreCase).Count() == values.Length, "Aynı değer iki kez yazılamaz.");
     }
 }

@@ -1,5 +1,6 @@
 using CanFx.Security.Devices;
 using CanFx.Security.Hashing;
+using CanFx.Security.Lockout;
 using CanFx.Security.Otp;
 using CanFx.Security.Passkeys;
 using CanFx.Security.RecoveryCodes;
@@ -28,6 +29,9 @@ public sealed class CanSecurityOptions
 
     /// <summary>Passkey ayarları. Verilmezse <see cref="IPasskeyService"/> kaydedilmez.</summary>
     public PasskeyOptions? Passkey { get; set; }
+
+    /// <summary>Hesap + IP başına hatalı giriş sınırı (<see cref="ILoginThrottle"/>) ve hesap genelindeki kilit sınırı.</summary>
+    public LoginThrottleOptions LoginThrottle { get; set; } = new();
 }
 
 public static class SecurityServiceCollectionExtensions
@@ -62,6 +66,10 @@ public static class SecurityServiceCollectionExtensions
         services.TryAddSingleton<IPasswordHasher>(new Pbkdf2PasswordHasher(options.PasswordHashIterations));
         services.TryAddSingleton<ITokenService, TokenService>();
         services.TryAddSingleton<ITotpService, TotpService>();
+        options.LoginThrottle.ToLimits().Validate();
+        services.TryAddSingleton(options.LoginThrottle);
+        services.TryAddSingleton<InMemoryLoginThrottle>();
+        services.TryAddSingleton<ILoginThrottle>(sp => sp.GetRequiredService<InMemoryLoginThrottle>());
 
         if (options.VerificationCodeKey is { } codeKey)
         {

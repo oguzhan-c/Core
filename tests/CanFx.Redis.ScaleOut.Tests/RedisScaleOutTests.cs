@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using CanFx.Application;
+using CanFx.Security.Lockout;
 using CanFx.WebApi.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.OutputCaching;
@@ -218,9 +219,9 @@ public class RedisScaleOutIntegrationTests
     }
 
     [Fact]
-    public async Task Redis_outage_lets_requests_through()
+    public async Task Redis_outage_falls_back_to_a_local_limit()
     {
-        // Redis'e hiç ulaşılamayan adres: sınırlayıcı isteği engellememeli (siteyi durdurmasın).
+        // Redis'e hiç ulaşılamayan adres: site durmaz ama sınır da kalkmaz; bu sunucunun belleğinde uygulanır.
         var options = new RedisScaleOutOptions { ConnectionString = "127.0.0.1:1,connectTimeout=200,syncTimeout=200,asyncTimeout=200", ApplicationName = NewApplication() };
         await using var connection = new RedisConnection(options);
         var factory = new RedisRateLimiterFactory(connection, TimeProvider.System, NullLogger<RedisRateLimiterFactory>.Instance);
@@ -228,6 +229,29 @@ public class RedisScaleOutIntegrationTests
         RateLimiter limiter = factory.Create("auth:x", new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(1) });
 
         Assert.True((await limiter.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);
-        Assert.True((await limiter.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        RateLimitLease second = await limiter.AcquireAsync(1, TestContext.Current.CancellationToken);
+        Assert.False(second.IsAcquired);                                   // yedek sayaç sınırı uyguluyor
+        Assert.True(second.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter) && retryAfter > TimeSpan.Zero);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), $"Bağlantı yokken beklenmemeli ({watch.Elapsed}).");
+    }
+
+    [Fact]
+    public async Task Login_throttle_falls_back_to_memory_when_redis_is_down()
+    {
+        var options = new RedisScaleOutOptions { ConnectionString = "127.0.0.1:1,connectTimeout=200,syncTimeout=200,asyncTimeout=200", ApplicationName = NewApplication() };
+        await using var connection = new RedisConnection(options);
+        var limits = new LoginThrottleOptions { MaxAttemptsPerIp = 2 };
+        var throttle = new RedisLoginThrottle(connection, new InMemoryLoginThrottle(limits, TimeProvider.System), limits);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        Assert.False(await throttle.RegisterFailureAsync("ali@example.com", "10.0.0.1", cancellationToken: ct));
+        Assert.True(await throttle.RegisterFailureAsync("ali@example.com", "10.0.0.1", cancellationToken: ct));
+        Assert.True(await throttle.IsBlockedAsync("ali@example.com", "10.0.0.1", ct));
+        Assert.False(await throttle.IsBlockedAsync("ali@example.com", "10.0.0.2", ct));
+
+        await throttle.ResetAsync("ali@example.com", "10.0.0.1", ct);
+        Assert.False(await throttle.IsBlockedAsync("ali@example.com", "10.0.0.1", ct));
     }
 }

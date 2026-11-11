@@ -179,6 +179,48 @@ public class SettingServiceTests
         Assert.False(currency.IsOverridden); // bu düzeyde değil
         Assert.Equal("integer", tenant.Single(v => v.Name == "orders.max-lines").Kind);
     }
+
+    [Fact]
+    public async Task Option_list_setting_accepts_only_listed_options()
+    {
+        SettingKey<string[]> fields = SettingKeys.OptionList("products.filter-fields", ["name", "price", "categoryName"], enabledByDefault: ["name", "price"]);
+        await using var host = new Host(configure: s => s.AddCanSettings(b => b.Add(fields)));
+
+        Assert.Equal(new[] { "name", "price" }, await host.GetAsync(fields));
+
+        await host.SetAsync(fields, ["categoryName"], SettingScope.Global);
+        Assert.Equal(new[] { "categoryName" }, await host.GetAsync(fields));
+
+        // Listede olmayan değer seçilemez; aynı değer iki kez yazılamaz.
+        await Assert.ThrowsAsync<ValidationException>(() => host.SetAsync(fields, ["name", "passwordHash"], SettingScope.Global));
+        await Assert.ThrowsAsync<ValidationException>(() => host.SetAsync(fields, ["name", "NAME"], SettingScope.Global));
+        await host.SetAsync(fields, [], SettingScope.Global);       // hepsi kapalı
+        Assert.Empty(await host.GetAsync(fields));
+
+        SettingView view = (await host.InScope(sp => sp.GetRequiredService<ISettingManager>().ListAsync(SettingScope.Global))).Single(v => v.Name == fields.Name);
+        Assert.Equal("list", view.Kind);
+        Assert.Equal(new[] { "categoryName", "name", "price" }, view.Options);
+
+        Assert.Throws<ArgumentException>(() => SettingKeys.OptionList("x.fields", ["a"], enabledByDefault: ["b"]));
+    }
+
+    [Fact]
+    public async Task Built_in_keys_can_be_registered_and_security_keys_are_global_only()
+    {
+        await using var host = new Host(configure: s => s.AddCanSettings(b => b.Add(CanSettingKeys.All)));
+        host.Tenant.Id = "acme";
+
+        Assert.Equal(5, await host.GetAsync(CanSettingKeys.Login.MaxAttemptsPerIp));
+        Assert.Contains(".pdf", await host.GetAsync(CanSettingKeys.Upload.AllowedExtensions));
+
+        // Tenant yöneticisi güvenliği gevşetemez; çalıştırılabilir tür ayardan açılamaz.
+        await Assert.ThrowsAsync<ValidationException>(() => host.SetAsync(CanSettingKeys.Login.MaxAttemptsPerIp, 50, SettingScope.Tenant));
+        await Assert.ThrowsAsync<ValidationException>(() => host.SetAsync(CanSettingKeys.Upload.AllowedExtensions, [".exe"], SettingScope.Global));
+        await Assert.ThrowsAsync<ValidationException>(() => host.SetAsync(CanSettingKeys.Upload.AllowedExtensions, [], SettingScope.Global));
+
+        await host.SetAsync(CanSettingKeys.Upload.MaxSizeMegabytes, 25, SettingScope.Tenant);
+        Assert.Equal(25, await host.GetAsync(CanSettingKeys.Upload.MaxSizeMegabytes));
+    }
 }
 
 public sealed class SettingsDbContext(DbContextOptions<SettingsDbContext> options) : DbContext(options)

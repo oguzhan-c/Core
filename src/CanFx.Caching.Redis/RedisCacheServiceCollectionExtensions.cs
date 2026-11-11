@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace CanFx.Caching.Redis;
 
@@ -47,7 +48,14 @@ public static class RedisCacheServiceCollectionExtensions
 
         services.AddStackExchangeRedisCache(redis =>
         {
+            // Redis yokken uygulama yavaşlamasın: bağlantı arka planda yeniden denenir (AbortOnConnectFail kapalı) ve
+            // bağlantı yokken komutlar zaman aşımını (5 sn) beklemeden hemen hata verir; HybridCache bu durumda
+            // sunucunun kendi belleğiyle devam eder.
+            ConfigurationOptions configuration = ConfigurationOptions.Parse(options.ConnectionString);
+            configuration.AbortOnConnectFail = false;
+            configuration.BacklogPolicy = BacklogPolicy.FailFast;
             redis.Configuration = options.ConnectionString;
+            redis.ConfigurationOptions = configuration;       // ikisi de verilince bu kullanılır
             redis.InstanceName = options.InstanceName;
         });
 

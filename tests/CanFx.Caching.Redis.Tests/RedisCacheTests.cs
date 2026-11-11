@@ -29,6 +29,10 @@ public class RedisCacheTests
         RedisCacheOptions options = provider.GetRequiredService<IOptions<RedisCacheOptions>>().Value;
         Assert.Equal("test:", options.InstanceName);
         Assert.Equal("localhost:6379,abortConnect=false", options.Configuration);
+        // Redis yokken beklemeden hata: uygulama yavaşlamaz.
+        Assert.NotNull(options.ConfigurationOptions);
+        Assert.False(options.ConfigurationOptions.AbortOnConnectFail);
+        Assert.Same(StackExchange.Redis.BacklogPolicy.FailFast, options.ConfigurationOptions.BacklogPolicy);
     }
 
     [Fact]

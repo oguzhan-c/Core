@@ -1,4 +1,5 @@
 using CanFx.Application;
+using CanFx.Security.Lockout;
 using CanFx.WebApi.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
@@ -62,6 +63,23 @@ public sealed class RedisScaleOutBuilder
             sp.GetRequiredService<RedisConnection>(),
             sp.GetService<TimeProvider>() ?? TimeProvider.System,
             sp.GetRequiredService<ILogger<RedisOutputCacheStore>>()));
+        return this;
+    }
+
+    /// <summary>
+    /// Hesap + IP başına hatalı giriş sayaçları (<see cref="ILoginThrottle"/>) Redis'te: tüm sunucular aynı sayacı
+    /// görür. Redis'e ulaşılamazsa sayaç sunucunun belleğinde tutulur.
+    /// </summary>
+    public RedisScaleOutBuilder UseForLoginThrottle()
+    {
+        Services.RemoveAll<ILoginThrottle>();
+        Services.AddSingleton<ILoginThrottle>(sp =>
+        {
+            LoginThrottleOptions limits = sp.GetService<LoginThrottleOptions>() ?? new LoginThrottleOptions();
+            InMemoryLoginThrottle memory = sp.GetService<InMemoryLoginThrottle>()
+                ?? new InMemoryLoginThrottle(limits, sp.GetService<TimeProvider>() ?? TimeProvider.System);
+            return new RedisLoginThrottle(sp.GetRequiredService<RedisConnection>(), memory, limits);
+        });
         return this;
     }
 

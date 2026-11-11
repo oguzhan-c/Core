@@ -13,17 +13,28 @@ internal sealed partial class RedisRateLimiterFactory(RedisConnection connection
     public RateLimiter Create(string partitionKey, RateLimitRule rule) =>
         new RedisRateLimiter(connection, connection.Key($"ratelimit:{partitionKey}"), rule, timeProvider, this);
 
-    internal void Unavailable(Exception exception) => LogUnavailable(logger, exception);
+    private int _unavailable;
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Hız sınırı için Redis'e ulaşılamadı; istek sınırlanmadan geçirildi.")]
-    private static partial void LogUnavailable(ILogger logger, Exception exception);
+    /// <summary>Redis'e ulaşılamadı: sınır bu sunucunun belleğinde uygulanır. Durum değişince bir kez loglanır.</summary>
+    internal void Unavailable(Exception? exception)
+    {
+        if (Interlocked.Exchange(ref _unavailable, 1) == 0)
+            LogUnavailable(logger, exception);
+    }
+
+    internal void Available()
+    {
+        if (Interlocked.Exchange(ref _unavailable, 0) == 1)
+            LogRecovered(logger);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Hız sınırı için Redis'e ulaşılamıyor; sınır her sunucunun kendi belleğinde uygulanıyor (sunucular arası paylaşılmıyor).")]
+    private static partial void LogUnavailable(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hız sınırı yeniden Redis üzerinden uygulanıyor.")]
+    private static partial void LogRecovered(ILogger logger);
 }
 
-/// <summary>
-/// Redis'te sabit ya da kayan pencere. Kayan pencere yaklaşık hesaplanır (önceki pencerenin sayısı, geçen sürenin
-/// oranında sayılır) — iki anahtar ve tek Lua çağrısıyla, her istekte sabit maliyet. Redis'e ulaşılamazsa istek
-/// geçirilir (sınırlayıcı kesintisi siteyi durdurmasın) ve uyarı loglanır.
-/// </summary>
 internal sealed class RedisRateLimiter : RateLimiter
 {
     // KEYS[1] = bu pencere, KEYS[2] = önceki pencere; ARGV = limit, ömür (ms), önceki pencere ağırlığı, istenen izin
@@ -44,7 +55,10 @@ internal sealed class RedisRateLimiter : RateLimiter
     private readonly RateLimitRule _rule;
     private readonly TimeProvider _timeProvider;
     private readonly RedisRateLimiterFactory _factory;
+    private readonly Lock _localGate = new();
     private long _lastUsedTicks;
+    private long _localWindow = -1;
+    private int _localCount;
 
     public RedisRateLimiter(RedisConnection connection, string key, RateLimitRule rule, TimeProvider timeProvider, RedisRateLimiterFactory factory)
     {
@@ -94,15 +108,47 @@ internal sealed class RedisRateLimiter : RateLimiter
             permitCount,
         ];
 
+        var retryAfter = TimeSpan.FromMilliseconds(windowMs - elapsedMs);
+
+        // Bağlantı yokken komut zaman aşımına kadar bekler: beklemeden bu sunucunun sayacına geç.
+        IDatabase? database = await _connection.TryGetDatabaseAsync().ConfigureAwait(false);
+        if (database is null)
+        {
+            _factory.Unavailable(null);
+            return AcquireLocally(permitCount, index, retryAfter);
+        }
+
         try
         {
-            IDatabase database = await _connection.GetDatabaseAsync().ConfigureAwait(false);
             RedisResult result = await database.ScriptEvaluateAsync(Script, keys, values).ConfigureAwait(false);
-            return (int)result == 1 ? new Lease(true, null) : new Lease(false, TimeSpan.FromMilliseconds(windowMs - elapsedMs));
+            _factory.Available();
+            return (int)result == 1 ? new Lease(true, null) : new Lease(false, retryAfter);
         }
         catch (Exception ex) when (ex is RedisException or RedisTimeoutException or RedisConnectionException)
         {
             _factory.Unavailable(ex);
+            return AcquireLocally(permitCount, index, retryAfter);
+        }
+    }
+
+    /// <summary>
+    /// Redis yokken yedek: aynı sınır, sabit pencereyle, yalnızca bu sunucunun belleğinde. Sunucular birbirini görmez
+    /// (N sunucuda toplam sınır en çok N katına çıkar) ama sınır hiç kalkmaz.
+    /// </summary>
+    private RateLimitLease AcquireLocally(int permitCount, long windowIndex, TimeSpan retryAfter)
+    {
+        lock (_localGate)
+        {
+            if (_localWindow != windowIndex)
+            {
+                _localWindow = windowIndex;
+                _localCount = 0;
+            }
+
+            if (_localCount + permitCount > _rule.PermitLimit)
+                return new Lease(false, retryAfter);
+
+            _localCount += permitCount;
             return new Lease(true, null);
         }
     }

@@ -50,6 +50,7 @@ public static class FileStorageServiceCollectionExtensions
         services.RemoveAll<IFileStorage>();
 
         services.AddSingleton(options);
+        services.TryAddSingleton<IFileUploadValidator>(new FileUploadValidator());   // AddCanFileUploadValidation ile özelleştirilir
         services.AddSingleton(sp => new FileStorageBackend(backendFactory(sp)));
         services.AddScoped<IFileStorage>(sp =>
         {
@@ -59,6 +60,35 @@ public static class FileStorageServiceCollectionExtensions
                 : backend;
         });
 
+        return services;
+    }
+
+    /// <summary>
+    /// Yüklenen dosyaların varsayılan kuralları (boyut, uzantılar, içerik denetimi): <see cref="IFileUploadValidator"/>.
+    /// Çağrılmazsa <see cref="FileUploadPolicy"/> varsayılanları geçerlidir.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// builder.Services.AddCanFileUploadValidation(p =&gt;
+    /// {
+    ///     p.MaxSizeBytes = 5 * 1024 * 1024;
+    ///     p.AllowedExtensions = new HashSet&lt;string&gt; { ".jpg", ".png", ".pdf" };
+    /// });
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddCanFileUploadValidation(this IServiceCollection services, Action<FileUploadPolicy>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var policy = new FileUploadPolicy();
+        configure?.Invoke(policy);
+        if (policy.MaxSizeBytes <= 0)
+            throw new InvalidOperationException("FileUploadPolicy.MaxSizeBytes pozitif olmalı.");
+        if (policy.AllowedExtensions.Count == 0)
+            throw new InvalidOperationException("FileUploadPolicy.AllowedExtensions boş olamaz.");
+
+        services.RemoveAll<IFileUploadValidator>();
+        services.AddSingleton<IFileUploadValidator>(new FileUploadValidator(policy));
         return services;
     }
 }

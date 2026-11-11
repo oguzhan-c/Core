@@ -14,6 +14,26 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+### Eklendi
+
+- Security: `ILoginThrottle`: hatalı girişler hesap + IP çifti başına sayılır; saldırgan yanlış şifre deneyerek yalnızca
+  kendi IP'sini engeller, hesabın sahibi başka IP'den girmeye devam eder. `AddCanSecurity` bellek içi uygulamayı
+  kaydeder (`o.LoginThrottle`: IP başına 5 deneme, 15 dk); hesap genelindeki kilit için `AccountMaxAttempts` (20).
+  Birden çok sunucuda: Redis.ScaleOut → `UseForLoginThrottle()`.
+- FileStorage: `IFileUploadValidator` / `FileUploadPolicy`: boyut, izinli ve yasak uzantılar (ara uzantılar dahil:
+  `fatura.php.jpg`), içeriğin uzantıyla uyumu (dosya imzası) ve çalıştırılabilir içerik denetimi;
+  `FileUploadValidator.SafeFileName`. `AddCanFileUploadValidation(...)` ile varsayılan kurallar.
+- Settings: `SettingKeys.OptionList(...)` (sabit bir listeden seçim; tip `list`, `SettingDefinition.Options` /
+  `SettingView.Options`) ve hazır ayarlar `CanSettingKeys` (giriş güvenliği, dosya yükleme).
+
+### Değişti
+
+- Redis.ScaleOut: Redis'e ulaşılamazken hız sınırı artık kalkmıyor: sınır sunucunun kendi belleğinde uygulanır
+  (önceden istekler sınırlanmadan geçiyordu). Bağlantı yokken hız sınırı ve çıktı önbelleği komut zaman aşımını
+  (5 sn) beklemez; durum değişimi bir kez loglanır.
+- Caching.Redis: bağlantı yokken komutlar beklemeden hata verir (`AbortOnConnectFail = false`,
+  `BacklogPolicy.FailFast`); HybridCache sunucunun belleğiyle devam eder.
+
 ## [0.4.1] - 2026-11-09
 
 ### Düzeltildi
