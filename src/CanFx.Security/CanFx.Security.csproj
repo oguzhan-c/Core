@@ -12,6 +12,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
     <PackageReference Include="Fido2" />
+    <!-- Fido2'nin getirdiği açıklı sürümü ezer (Directory.Packages.props). -->
+    <PackageReference Include="System.Formats.Cbor" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>

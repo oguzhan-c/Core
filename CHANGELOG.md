@@ -14,6 +14,15 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-17
+
+### Güvenlik
+
+- `Microsoft.AspNetCore.SignalR.StackExchangeRedis` 10.0.15'e yükseltildi (10.0.13: GHSA-wr8v-9x5q-ggcm, yüksek;
+  CanFx.Redis.ScaleOut).
+- Fido2'nin getirdiği `System.Formats.Cbor` 9.0.0 (GHSA-vmv3-wvjp-wqpj, orta) 10.0.15'e sabitlendi (CanFx.Security).
+  İkisi de uyarıları hata sayan projelerde (NU1902 / NU1903) derlemeyi durduruyordu.
+
 ## [0.5.0] - 2026-11-11
 
 ### Eklendi
