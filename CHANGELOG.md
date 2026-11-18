@@ -14,6 +14,12 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+### Düzeltildi
+
+- WebApi.Postman: OpenAPI belgesindeki sunucu adresi sonunda "/" ile geldiği için (http://localhost:5280/) Postman
+  koleksiyonundaki istekler `//api/...` adresine gidiyor ve 404 alıyordu (ortam seçilmemişken). Sondaki "/" içe
+  aktarmadan önce kırpılır; mevcut koleksiyonlar bir sonraki açılışta bir kez yeniden aktarılır.
+
 ## [0.5.1] - 2026-11-17
 
 ### Güvenlik

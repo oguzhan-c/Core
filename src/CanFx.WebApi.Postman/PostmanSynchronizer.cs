@@ -34,6 +34,7 @@ internal static class PostmanSynchronizer
         JsonObject document = JsonNode.Parse(documentJson)?.AsObject() ?? throw new InvalidOperationException("OpenAPI belgesi okunamadı.");
         if (document["info"] is JsonObject info)
             info["title"] = collectionName;   // koleksiyon adı belge başlığından gelir
+        TrimServerUrls(document);
 
         string importedUid = await api.ImportOpenApiAsync(workspaceId, document, cancellationToken).ConfigureAwait(false);
         if (existing is null)
@@ -96,7 +97,27 @@ internal static class PostmanSynchronizer
         return await api.CreateEnvironmentAsync(workspaceId, name, initial, cancellationToken).ConfigureAwait(false);
     }
 
-    internal static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+    /// <remarks>
+    /// Sürüm öneki, içe aktarma kuralları değiştiğinde (ör. sunucu adresinin sonundaki "/" kırpılması) belge aynı kalsa
+    /// da koleksiyonun bir kez yeniden aktarılmasını sağlar.
+    /// </remarks>
+    internal static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("v2\n" + text)));
+
+    /// <summary>
+    /// ASP.NET Core belgedeki sunucu adresini sonunda "/" ile yazar (http://localhost:5280/). Postman bunu koleksiyonun
+    /// <c>baseUrl</c> değişkeni yapar ve istekleri <c>{{baseUrl}}/api/...</c> diye kurar: adres "//api/..." olur, uygulama
+    /// 404 döner. Ortam seçilmemişken de doğru adres gitsin diye sondaki "/" kırpılır.
+    /// </summary>
+    internal static void TrimServerUrls(JsonObject document)
+    {
+        if (document["servers"] is not JsonArray servers)
+            return;
+        foreach (JsonObject server in servers.OfType<JsonObject>())
+        {
+            if (server["url"] is JsonValue value && value.TryGetValue(out string? url) && url.Length > 1 && url.EndsWith('/'))
+                server["url"] = url.TrimEnd('/');
+        }
+    }
 
     /// <summary>
     /// Başka bir koleksiyonun içeriğini PUT ile yazmadan önce kimlikler temizlenmeli (Postman aksi halde reddeder).

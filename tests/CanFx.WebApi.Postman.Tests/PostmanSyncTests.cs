@@ -26,6 +26,19 @@ public sealed class PostmanSyncTests
     }
 
     [Fact]
+    public async Task Server_url_trailing_slash_is_trimmed_so_requests_do_not_get_a_double_slash()
+    {
+        var postman = new FakePostman();
+        const string withServer = """{"openapi":"3.1.1","info":{"title":"Shop | v1","version":"1.0.0"},"servers":[{"url":"http://localhost:5280/"},{"url":"/"}],"paths":{}}""";
+
+        await PostmanSynchronizer.SyncCollectionAsync(new PostmanApi(postman.Client), null, "Shop", withServer, null, CancellationToken.None);
+
+        JsonArray servers = postman.LastImport!["input"]!["servers"]!.AsArray();
+        Assert.Equal("http://localhost:5280", servers[0]!["url"]!.GetValue<string>());
+        Assert.Equal("/", servers[1]!["url"]!.GetValue<string>());   // kök adres olduğu gibi kalır
+    }
+
+    [Fact]
     public async Task Unchanged_document_sends_no_request()
     {
         var postman = new FakePostman();
