@@ -48,6 +48,7 @@
     <Project Path="src/CanFx.Testing.AspNetCore/CanFx.Testing.AspNetCore.csproj" />
     <Project Path="src/CanFx.DevServices/CanFx.DevServices.csproj" />
     <Project Path="src/CanFx.WebApi.Postman/CanFx.WebApi.Postman.csproj" />
+    <Project Path="src/CanFx.FakeData/CanFx.FakeData.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CanFx.Domain.Tests/CanFx.Domain.Tests.csproj" />
@@ -78,6 +79,7 @@
     <Project Path="tests/CanFx.Mailing.Tests/CanFx.Mailing.Tests.csproj" />
     <Project Path="tests/CanFx.Sms.Tests/CanFx.Sms.Tests.csproj" />
     <Project Path="tests/CanFx.Logging.Tests/CanFx.Logging.Tests.csproj" />
+    <Project Path="tests/CanFx.FakeData.Tests/CanFx.FakeData.Tests.csproj" />
     <Project Path="tests/CanFx.WebApi.Tests/CanFx.WebApi.Tests.csproj" />
     <Project Path="tests/CanFx.DevServices.Tests/CanFx.DevServices.Tests.csproj" />
     <Project Path="tests/CanFx.WebApi.Postman.Tests/CanFx.WebApi.Postman.Tests.csproj" />

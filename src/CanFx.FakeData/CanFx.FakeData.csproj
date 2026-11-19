@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>CanFx.FakeData</RootNamespace>
+    <Description>Belirlenimci (tekrar üretilebilir) sahte veri: Türkçe ad, adres, telefon, şirket, ürün, metin, tarih, IBAN, barkod ve kural tabanlı nesne üretimi. Her değer (tohum, entity, alan, sıra) girdisinin özetinden üretilir; kural eklemek ya da sırasını değiştirmek diğer değerleri değiştirmez. Dış paket gerektirmez.</Description>
+    <PackageTags>$(PackageTags);fake-data;test-data;seed</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanFx.FakeData.Tests" />
+  </ItemGroup>
+
+</Project>

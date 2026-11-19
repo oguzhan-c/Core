@@ -27,7 +27,7 @@ Lisans: MIT.
 | `CanFx.Application.Abstractions` | yok | `ICurrentUser`, `ICurrentTenant`, istek işaretleyicileri (`ISecuredRequest`, `ICachableRequest` ...), hata tipleri |
 | `CanFx.Application` | Mediator, FluentValidation, HybridCache | Pipeline behavior'ları, `BaseBusinessRules`, `AddCanApplication(...)` |
 | `CanFx.Security` | IdentityModel, Fido2 | PBKDF2 şifre hash, JWT + refresh token, TOTP, e-posta kodu, passkey; User/Role/RefreshToken entity'leri |
-| `CanFx.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()` |
+| `CanFx.Security.EntityFrameworkCore` | EF Core | Security entity'lerinin tablo, index ve ilişkileri: `ApplyCanSecurityModel<TUser, TId>()`; yetki/rol/admin başlangıç verisi: `AddCanIdentitySeed`, `UseCanIdentitySeeding` |
 | `CanFx.BackgroundJobs` | Hosting.Abstractions | Tenant'ı koruyan iş kuyruğu, tekrarlayan işler |
 | `CanFx.BackgroundJobs.Hangfire` | Hangfire | Aynı `IBackgroundJobQueue` ile kalıcı kuyruk, yeniden deneme, cron, rol korumalı dashboard |
 | `CanFx.Redis.ScaleOut` | StackExchange.Redis, SignalR.StackExchangeRedis | Çok sunucu: ortak Data Protection anahtarları, SignalR backplane, sunucular arası hız sınırı, dağıtık kilit |
@@ -61,12 +61,13 @@ Lisans: MIT.
 | `CanFx.Settings` | Caching.Hybrid | Tipli uygulama/tenant ayarları: tenant → uygulama → varsayılan, doğrulama, gizli (şifreli) değerler, önbellek |
 | `CanFx.Settings.EntityFrameworkCore` | EF Core | `SettingValues` tablosu ve deposu: `ApplyCanSettingsModel()`, `UseEntityFrameworkStore<TContext>()` |
 | `CanFx.Settings.AspNetCore` | ASP.NET Core | `MapCanSettings()`: listele/değiştir/sıfırla (düzey bazlı yetki), istemci ayarları; `UseDataProtection()` |
+| `CanFx.FakeData` | yok | Tekrarlanabilir (seed'li) Türkçe sahte veri: kişi, adres, telefon, şirket, ürün, IBAN, EAN-13, GuidV7; `FakeBuilder<T>` ile entity üretimi. Generator'ın `HasData` çıktısı bunu kullanır |
 | `CanFx.Testing` | yok | Testler için: elle ilerletilen `TestClock` (zamanlayıcılar dahil), `TestCurrentUser`, `TestCurrentTenant` |
 | `CanFx.Testing.EntityFrameworkCore` | EF Core SQLite | `SqliteTestDatabase`: test başına bellekte gerçek ilişkisel veritabanı |
 | `CanFx.Testing.AspNetCore` | ASP.NET Core TestHost | Test kimlik doğrulaması (`client.AsUser(...)`), `CanTestApp` |
 | `CanFx.Observability.OpenTelemetry` | OpenTelemetry | CanFx ve .NET'in iz/metriklerini OTLP ile dışa aktarır: `AddCanOpenTelemetry()` |
 | `CanFx.Persistence.Abstractions` | Domain | `IRepository<TEntity,TId>`, `IUnitOfWork`, `DynamicQuery` (filtre/sıralama), `IPaginate<T>`, `ICursorPage<T>` — EF'e bağımlı değil |
-| `CanFx.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, seed, `AddCanPersistence(...)` |
+| `CanFx.Persistence` | EF Core | `CanDbContext`, `EfRepository`, `UnitOfWork`, audit ve domain event interceptor'ları, outbox, değişiklik geçmişi, `AddCanPersistence(...)` |
 | `CanFx.DevServices` | Hosting.Abstractions, Configuration | Development'ta servisler (veritabanı, Redis ...) docker-compose ile başlatılır; port doluysa sıradaki boş port kullanılır ve adres ona göre ayarlanır; servisler, docker-compose adları ve adreslerinin okunduğu ayar appsettings'te, kod gerekmez; servis başına Auto/Docker/Local/Off |
 
 ```bash
@@ -627,22 +628,49 @@ entity'lerinde şifre hash'i, gizli anahtarlar ve token hash'leri zaten işaretl
 
 **Başlangıç verisi**
 
-```csharp
-public sealed class CategorySeeder(AppDbContext db) : IDataSeeder
-{
-    public int Order => 1;
-    public async Task SeedAsync(DataSeedContext context, CancellationToken ct)
-    {
-        if (context.IsHost || await db.Categories.AnyAsync(ct)) return;   // idempotent
-        db.Categories.Add(new Category("İçecekler"));
-        await db.SaveChangesAsync(ct);
-    }
-}
+Yetki, rol ve ilk admin `CanFx.Security.EntityFrameworkCore` ile eklenir. EF Core'un `UseAsyncSeeding` kancasını
+kullanır: `Migrate`, `EnsureCreated`, `dotnet ef database update` ve migration bundle'ları sırasında çalışır.
+Tekrar çalıştırmak güvenlidir: yalnızca eksikler eklenir, yönetim ekranından geri alınan yetkiler geri gelmez,
+katalogdan çıkan yetki silinmez, kullanımdan kaldırıldı (`IsDeprecated`) olarak işaretlenir.
 
-builder.Services.AddCanDataSeeders(typeof(Program).Assembly);
-await app.Services.InitializeTenantDatabasesAsync<AppDbContext>();   // migration
-await app.Services.SeedDataAsync();   // önce host, sonra her aktif tenant kendi scope'unda
+```csharp
+builder.Services.AddCanIdentitySeed<AppUser, Guid>(o =>
+{
+    o.Permissions = Permissions.All;                    // (Name, Description) listesi
+    o.Roles = ["Admin", "Editor"];
+    o.RoleGrants = new Dictionary<string, string[]> { ["Editor"] = ["products.read", "products.write"] };
+    o.NewId = Guid.CreateVersion7;
+    o.AdminEmail = builder.Configuration["Seed:AdminEmail"];
+    o.AdminPassword = builder.Configuration["Seed:AdminPassword"];   // user-secrets ya da appsettings; yoksa admin oluşturulmaz
+    o.CreateAdmin = (email, hash) => { var u = new AppUser(email, "Yönetici"); u.SetPasswordHash(hash); return u; };
+    o.RunWhen = sp => sp.GetRequiredService<ICurrentTenant>().Id is null;   // çok kiracılıda yalnızca host
+});
+
+builder.Services.AddDbContext<AppDbContext>((sp, o) => o
+    .UseNpgsql(connectionString)
+    .UseCanIdentitySeeding<AppUser, Guid>(sp));
+
+// İsterseniz elle: await app.Services.SeedIdentityAsync<AppDbContext, AppUser, Guid>();
 ```
+
+Geliştirme verisi için `CanFx.FakeData`: aynı seed her zaman aynı veriyi üretir, bu yüzden `HasData` içinde
+migration'lar her seferinde değişmez. Her alan (seed, entity, sıra, alan) üzerinden ayrı üretilir; yeni kural eklemek
+diğer alanların değerini değiştirmez.
+
+```csharp
+var fake = new Fake(seed: 42);
+string name = fake.Person.FullName();            // "Elif Yıldız"
+string iban = fake.Finance.Iban();               // geçerli TR IBAN
+
+Product[] products = new FakeBuilder<Product>(fake)
+    .Rule(p => p.Name, f => f.Commerce.ProductName())
+    .Rule(p => p.Price, f => f.Commerce.Price(50, 5000))
+    .Rule(p => p.Slug, (f, row) => FakeFormat.Slug(row.Get<string>("Name")))
+    .Generate(20)
+    .ToArray();
+```
+
+`HasData` için literal değerleri `canfxgen generate fake-data` üretir (entity'ye özel kurallarla).
 
 **Transaction**
 

@@ -3,37 +3,10 @@ using CanFx.Persistence.AuditTrail;
 using CanFx.Persistence.DependencyInjection;
 using CanFx.Persistence.Outbox;
 using CanFx.Persistence.Repositories;
-using CanFx.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CanFx.Persistence.Tests;
-
-public sealed class CategorySeeder(TestDbContext db, EventLog log) : IDataSeeder
-{
-    public int Order => 1;
-
-    public async Task SeedAsync(DataSeedContext context, CancellationToken cancellationToken)
-    {
-        log.Add("seed:category");
-        if (await db.Categories.AnyAsync(cancellationToken))
-            return;
-
-        db.Categories.Add(new Category("Kırtasiye"));
-        await db.SaveChangesAsync(cancellationToken);
-    }
-}
-
-public sealed class FirstSeeder(EventLog log) : IDataSeeder
-{
-    public int Order => -1;
-
-    public Task SeedAsync(DataSeedContext context, CancellationToken cancellationToken)
-    {
-        log.Add($"seed:first:{(context.IsHost ? "host" : context.Tenant!.Id)}");
-        return Task.CompletedTask;
-    }
-}
 
 public class OutboxAuditSeedingTests
 {
@@ -336,21 +309,5 @@ public class OutboxAuditSeedingTests
         AuditLog log = Assert.Single(await AuditLogsAsync(host));
         Assert.Equal(nameof(Product), log.EntityType);
         Assert.Equal(AuditAction.Created, log.Action);
-    }
-
-    // ---------------------------------------------------------------- seed
-
-    [Fact]
-    public async Task Seeders_run_in_order_and_are_idempotent()
-    {
-        await using TestHost host = await TestHost.CreateAsync(s => s.AddCanDataSeeders(typeof(CategorySeeder).Assembly));
-
-        await host.Services.SeedDataAsync();
-        await host.Services.SeedDataAsync();
-
-        Assert.Equal(new[] { "seed:first:host", "seed:category", "seed:first:host", "seed:category" }, host.Events.Entries);
-
-        await using AsyncServiceScope scope = host.CreateScope();
-        Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<TestDbContext>().Categories.CountAsync());
     }
 }
