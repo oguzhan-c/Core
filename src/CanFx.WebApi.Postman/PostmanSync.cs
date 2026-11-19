@@ -24,7 +24,7 @@ public sealed class PostmanSyncOptions
     /// <summary>Kapalıysa hiçbir şey yapılmaz. Anahtar yoksa da çalışmaz.</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Postman API anahtarı (Postman → Settings → API keys). Yalnızca user-secrets / ortam değişkeni.</summary>
+    /// <summary>Postman API anahtarı (Postman → Settings → API keys). user-secrets (önerilen), appsettings ya da ortam değişkeni.</summary>
     public string? ApiKey { get; set; }
 
     /// <summary>Koleksiyon ve ortamın oluşturulacağı çalışma alanı. Boşsa anahtarın varsayılan çalışma alanı.</summary>
@@ -186,7 +186,7 @@ internal sealed partial class PostmanSyncService(
         await JsonSerializer.SerializeAsync(stream, state, StateJson, cancellationToken).ConfigureAwait(false);
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Postman eşitleme kapalı: anahtar yok. Açmak için: dotnet user-secrets set \"Postman:ApiKey\" \"PMAK-...\"")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Postman eşitleme kapalı: anahtar yok. Açmak için: dotnet user-secrets set \"Postman:ApiKey\" \"PMAK-...\" (ya da appsettings → Postman:ApiKey)")]
     private partial void LogNoApiKey();
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Postman eşitleme: uygulamanın dinlediği adres bulunamadı; atlandı.")]

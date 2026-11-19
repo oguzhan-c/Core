@@ -14,11 +14,33 @@ sonraki sürüme al, commit'le ve `vx.y.z` etiketini push et. CI paketleri derle
 
 ## [Unreleased]
 
+Hedef sürüm: 0.6.0.
+
+### Eklendi
+
+- **CanFx.FakeData** (yeni paket, bağımlılığı yok): tekrarlanabilir Türkçe sahte veri. `Fake` (seed + referans tarih),
+  kişi, adres (81 il, plaka uyumlu posta kodu), telefon, internet (example.* alan adları), şirket, ürün (EAN-13,
+  SKU), metin, tarih, finans (mod-97 geçerli TR IBAN), `GuidV7`. `FakeBuilder<T>`: protected/private setter'lara
+  yazar, her alan ayrı üretilir (kural eklemek diğer alanları değiştirmez). `FakeKinds`: alan adından tür tahmini.
+  Veri listeleri projeye özeldir; üçüncü taraf lisans notu gerekmez.
+- Security.EntityFrameworkCore: yetki/rol/ilk admin başlangıç verisi. `AddCanIdentitySeed<TUser, TId>(...)`,
+  `UseCanIdentitySeeding<TUser, TId>(sp)` (EF Core `UseSeeding`/`UseAsyncSeeding`), `SeedIdentityAsync(...)`.
+  Tekrar çalıştırmak güvenli; geri alınan yetkiler geri gelmez, katalogdan çıkan yetki `IsDeprecated` olur.
+  Şifre yoksa admin oluşturulmaz (uyarı yazılır); `RunWhen` ile çok kiracılıda yalnızca host'ta çalıştırılabilir.
+
+### Kaldırıldı
+
+- **Kırıcı**: `CanFx.Persistence.Seeding` (`IDataSeeder`, `AddCanDataSeeders`, `SeedDataAsync`, `SeedFiles`,
+  `SampleData`). Yerine kimlik verisi için `AddCanIdentitySeed`, geliştirme verisi için `CanFx.FakeData` +
+  `HasData`.
+
 ### Düzeltildi
 
 - WebApi.Postman: OpenAPI belgesindeki sunucu adresi sonunda "/" ile geldiği için (http://localhost:5280/) Postman
   koleksiyonundaki istekler `//api/...` adresine gidiyor ve 404 alıyordu (ortam seçilmemişken). Sondaki "/" içe
   aktarmadan önce kırpılır; mevcut koleksiyonlar bir sonraki açılışta bir kez yeniden aktarılır.
+- WebApi.Postman: anahtar yok mesajı ve belgeler appsettings'i de anar (Postman:ApiKey user-secrets'ta ya da
+  appsettings'te olabilir; ikisi de okunur).
 
 ## [0.5.1] - 2026-11-17
 
